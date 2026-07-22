@@ -1,0 +1,358 @@
+import React, { useEffect, useState, useCallback } from 'react'
+
+// ── Types ──────────────────────────────────────
+
+type AppPhase =
+  | 'loading' | 'checking' | 'update-available' | 'downloading'
+  | 'downloaded' | 'update-error' | 'onboarding-lang'
+  | 'onboarding-theme' | 'onboarding-auth' | 'main'
+
+type ThemeId = 'predator' | 'ocean' | 'stealth' | 'nebula'
+
+interface ThemeColors {
+  accent: string; light: string; dark: string
+  bg: string; card: string; name: string; icon: string
+}
+
+const THEMES: Record<ThemeId, ThemeColors> = {
+  predator: { accent: '#ff4444', light: '#ff6b35', dark: '#cc0000', bg: '#0a0a0f', card: '#12121a', name: 'Predator Red', icon: '🔴' },
+  ocean:    { accent: '#3B82F6', light: '#60A5FA', dark: '#1D4ED8', bg: '#0a0f1a', card: '#121a2a', name: 'Ocean Blue', icon: '🔵' },
+  stealth:  { accent: '#6B7280', light: '#9CA3AF', dark: '#374151', bg: '#0a0a0c', card: '#121214', name: 'Stealth Black', icon: '⚫' },
+  nebula:   { accent: '#8B5CF6', light: '#A78BFA', dark: '#6D28D9', bg: '#0f0a1a', card: '#1a122a', name: 'Nebula Purple', icon: '🟣' },
+}
+
+type Lang = 'ru' | 'en'
+
+const T: Record<Lang, Record<string, string>> = {
+  ru: {
+    title: 'Система проверки безопасности', checking: 'Проверка обновлений...',
+    updateAvailable: 'Доступно обновление', download: 'Загрузить', skip: 'Пропустить',
+    downloading: 'Загрузка обновления...', downloaded: 'Обновление готово!',
+    installRestart: 'Установить и перезапустить', later: 'Позже',
+    ready: 'Система готова', startCheck: 'Начать проверку', continue: 'Продолжить',
+    langTitle: 'Выберите язык', langDesc: 'Язык интерфейса приложения',
+    langRu: 'Русский', langEn: 'English', next: 'Далее',
+    themeTitle: 'Выберите тему', themeDesc: 'Оформление приложения',
+    authTitle: 'Авторизация', authDesc: 'Введите токен доступа, полученный от администратора',
+    authPlaceholder: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX',
+    authError: 'Токен должен содержать 32 символа',
+    authBtn: 'Подтвердить', authAlt: 'Запросить доступ через сайт',
+    tokenLabel: 'Токен доступа',
+  },
+  en: {
+    title: 'Security Check System', checking: 'Checking for updates...',
+    updateAvailable: 'Update Available', download: 'Download', skip: 'Skip',
+    downloading: 'Downloading update...', downloaded: 'Update Ready!',
+    installRestart: 'Install & Restart', later: 'Later',
+    ready: 'System Ready', startCheck: 'Start Check', continue: 'Continue',
+    langTitle: 'Choose Language', langDesc: 'Application interface language',
+    langRu: 'Русский', langEn: 'English', next: 'Next',
+    themeTitle: 'Choose Theme', themeDesc: 'Application appearance',
+    authTitle: 'Authorization', authDesc: 'Enter the access token from your administrator',
+    authPlaceholder: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX',
+    authError: 'Token must contain 32 characters',
+    authBtn: 'Confirm', authAlt: 'Request access via website',
+    tokenLabel: 'Access Token',
+  },
+}
+
+// ── App ────────────────────────────────────────
+
+const App: React.FC = () => {
+  const [phase, setPhase] = useState<AppPhase>('loading')
+  const [version, setVersion] = useState('')
+  const [lang, setLang] = useState<Lang>('ru')
+  const [theme, setTheme] = useState<ThemeId>('predator')
+  const [token, setToken] = useState('')
+  const [tokenError, setTokenError] = useState('')
+
+  // Download progress state
+  const [dlPercent, setDlPercent] = useState(0)
+  const [dlSpeed, setDlSpeed] = useState('')
+  const [dlSize, setDlSize] = useState('')
+  const [updateVersion, setUpdateVersion] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
+
+  const t = (key: string) => T[lang][key] || key
+
+  // ── Apply theme to CSS variables ──
+  useEffect(() => {
+    const c = THEMES[theme]
+    const r = document.documentElement
+    r.style.setProperty('--accent-red', c.accent)
+    r.style.setProperty('--accent-orange', c.light)
+    r.style.setProperty('--accent-gradient', `linear-gradient(135deg, ${c.accent}, ${c.light}, ${c.dark})`)
+    r.style.setProperty('--bg-primary', c.bg)
+    r.style.setProperty('--bg-secondary', c.card)
+  }, [theme])
+
+  // ── Init ──
+  useEffect(() => {
+    const api = window.electronAPI
+    if (!api) {
+      // Dev mode or no Electron — skip updates, go to onboarding
+      setPhase('onboarding-lang')
+      return
+    }
+
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+    api.getAppVersion().then(setVersion)
+    api.onCheckingForUpdate(() => {
+      setPhase('checking')
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+    })
+    api.onUpdateAvailable((info) => {
+      setUpdateVersion(info.version)
+      setPhase('update-available')
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+    })
+    api.onUpdateNotAvailable(() => {
+      setPhase('onboarding-lang')
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+    })
+    api.onDownloadProgress((data) => {
+      setDlPercent(data.percent)
+      setDlSpeed(data.bytesPerSecond > 0 ? `${(data.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : '')
+      setDlSize(`${(data.transferred / 1024 / 1024).toFixed(1)} / ${(data.total / 1024 / 1024).toFixed(1)} MB`)
+      setPhase('downloading')
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+    })
+    api.onUpdateDownloaded(() => {
+      setPhase('downloaded')
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+    })
+    api.onUpdateError((msg) => {
+      setErrorMsg(msg)
+      setPhase('update-error')
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+    })
+
+    // Fallback: if no update event arrives within 4s (dev mode, offline, etc.)
+    fallbackTimer = setTimeout(() => {
+      setPhase('onboarding-lang')
+    }, 4000)
+
+    return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+    }
+  }, [])
+
+  // ── Handlers ──
+  const hInstall = useCallback(() => window.electronAPI?.startDownload(), [])
+  const hRestart = useCallback(() => window.electronAPI?.restartApp(), [])
+  const hSkip = useCallback(() => setPhase('onboarding-lang'), [])
+  const hCheckAgain = useCallback(async () => {
+    setPhase('checking')
+    const r = await window.electronAPI?.startUpdateCheck()
+    if (r?.updateAvailable) { setUpdateVersion(r.version || ''); setPhase('update-available') }
+    else setPhase('onboarding-lang')
+  }, [])
+
+  const hNextLang = useCallback(() => setPhase('onboarding-theme'), [])
+  const hNextTheme = useCallback(() => setPhase('onboarding-auth'), [])
+  const hNextAuth = useCallback(() => {
+    const clean = token.replace(/[-\s]/g, '')
+    if (clean.length > 0 && clean.length !== 32) { setTokenError(t('authError')); return }
+    if (clean.length === 32) { setTokenError(''); setPhase('main'); return }
+    // Empty token → skip auth
+    setPhase('main')
+  }, [token, lang])
+
+  // ── Shared: logo + footer ──
+  const Logo = () => (
+    <div className="logo-section">
+      <div className="logo-icon">
+        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+          <circle cx="40" cy="40" r="38" stroke="url(#logo-grad)" strokeWidth="2" />
+          <path d="M40 10C40 10 25 30 25 45C25 55 31.7 62 40 62C48.3 62 55 55 55 45C55 30 40 10 40 10Z" fill="url(#logo-grad)" opacity="0.9" />
+          <path d="M28 50L16 68H64L52 50" stroke="url(#logo-grad)" strokeWidth="2" />
+          <circle cx="40" cy="42" r="6" fill="white" opacity="0.3" />
+          <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="80" y2="80">
+            <stop offset="0%" stopColor={THEMES[theme].accent} />
+            <stop offset="50%" stopColor={THEMES[theme].light} />
+            <stop offset="100%" stopColor={THEMES[theme].dark} />
+          </linearGradient></defs>
+        </svg>
+      </div>
+      <h1 className="title">Predator</h1>
+      <p className="subtitle">{t('title')}</p>
+    </div>
+  )
+
+  const Footer = () => (
+    <div className="footer">
+      <span className="version">v{version || '0.0.3'}</span>
+      <span className="dot">•</span>
+      <span className="secure">Secure Connection</span>
+    </div>
+  )
+
+  // ── Screens ──
+  const renderCard = (children: React.ReactNode) => (
+    <div className="status-section">
+      <div className="status-card">{children}</div>
+    </div>
+  )
+
+  // ── Render ──
+  return (
+    <div className="app">
+      <div className="background-gradient">
+        <div className="gradient-orb orb-1" />
+        <div className="gradient-orb orb-2" />
+        <div className="gradient-orb orb-3" />
+      </div>
+      <div className="scan-line" />
+
+      <div className="container">
+        <Logo />
+
+        {/* Loading */}
+        {phase === 'loading' && renderCard(
+          <><div className="spinner"><div className="spinner-ring" /></div>
+            <p className="status-text">Загрузка...</p>
+            <div className="progress-bar indeterminate"><div className="progress-fill" /></div></>
+        )}
+
+        {/* Checking updates */}
+        {phase === 'checking' && renderCard(
+          <><div className="spinner"><div className="spinner-ring" /></div>
+            <p className="status-text">{t('checking')}</p>
+            <div className="progress-bar indeterminate"><div className="progress-fill" /></div></>
+        )}
+
+        {/* Update available */}
+        {phase === 'update-available' && renderCard(
+          <><div className="update-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="22" stroke={THEMES[theme].light} strokeWidth="2" />
+              <path d="M24 14V34M14 24H34" stroke={THEMES[theme].light} strokeWidth="3" strokeLinecap="round" />
+            </svg></div>
+            <p className="status-title">{t('updateAvailable')}</p>
+            <p className="status-text">{updateVersion}</p>
+            <button className="start-button" onClick={hInstall}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>{t('download')}</button>
+            <button className="skip-button" onClick={hSkip}>{t('skip')}</button></>
+        )}
+
+        {/* Downloading */}
+        {phase === 'downloading' && renderCard(
+          <><div className="progress-header-dl">
+              <span className="progress-label-dl">{t('downloading')}</span>
+              <span className="progress-percent-dl">{dlPercent}%</span>
+            </div>
+            <div className="update-progress-bar">
+              <div className="update-progress-fill" style={{ width: `${dlPercent}%` }} />
+            </div>
+            <div className="progress-info"><span>{dlSpeed}</span><span>{dlSize}</span></div></>
+        )}
+
+        {/* Downloaded */}
+        {phase === 'downloaded' && renderCard(
+          <><div className="ready-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" />
+              <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg></div>
+            <p className="ready-text">{t('downloaded')}</p>
+            <button className="start-button" onClick={hRestart}>{t('installRestart')}</button>
+            <button className="skip-button" onClick={hSkip}>{t('later')}</button></>
+        )}
+
+        {/* Update error */}
+        {phase === 'update-error' && renderCard(
+          <><div className="error-icon-dl">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" />
+              <line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
+              <line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
+            </svg></div>
+            <p className="status-text" style={{ color: '#EF4444', animation: 'none' }}>{errorMsg}</p>
+            <button className="start-button" onClick={hSkip}>{t('continue')}</button></>
+        )}
+
+        {/* ── ONBOARDING: Language ── */}
+        {phase === 'onboarding-lang' && renderCard(
+          <><p className="onb-label">{t('langTitle')}</p>
+            <p className="onb-desc">{t('langDesc')}</p>
+            <div className="lang-grid">
+              <button className={`lang-btn${lang === 'ru' ? ' active' : ''}`} onClick={() => setLang('ru')}>
+                <span className="lang-flag">🇷🇺</span>
+                <span className="lang-name">{t('langRu')}</span>
+              </button>
+              <button className={`lang-btn${lang === 'en' ? ' active' : ''}`} onClick={() => setLang('en')}>
+                <span className="lang-flag">🇬🇧</span>
+                <span className="lang-name">{t('langEn')}</span>
+              </button>
+            </div>
+            <button className="start-button" onClick={hNextLang} style={{ marginTop: 12 }}>{t('next')}</button></>
+        )}
+
+        {/* ── ONBOARDING: Theme ── */}
+        {phase === 'onboarding-theme' && renderCard(
+          <><p className="onb-label">{t('themeTitle')}</p>
+            <p className="onb-desc">{t('themeDesc')}</p>
+            <div className="theme-grid">
+              {(Object.entries(THEMES) as [ThemeId, ThemeColors][]).map(([id, th]) => (
+                <button key={id} className={`theme-btn${theme === id ? ' active' : ''}`}
+                  style={{ '--theme-accent': th.accent, '--theme-bg': th.card } as React.CSSProperties}
+                  onClick={() => setTheme(id)}>
+                  <span className="theme-swatch" style={{ background: th.accent }} />
+                  <span className="theme-name">{th.name}</span>
+                </button>
+              ))}
+            </div>
+            <button className="start-button" onClick={hNextTheme} style={{ marginTop: 12 }}>{t('next')}</button></>
+        )}
+
+        {/* ── ONBOARDING: Auth ── */}
+        {phase === 'onboarding-auth' && renderCard(
+          <><p className="onb-label">{t('authTitle')}</p>
+            <p className="onb-desc">{t('authDesc')}</p>
+            <div className="token-input-wrap">
+              <label className="token-label">{t('tokenLabel')}</label>
+              <div className="token-field">
+                <input type="text" className="token-input" value={token}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^A-Za-z0-9-]/g, '')
+                    // Auto-format: groups of 8 with dashes
+                    const clean = raw.replace(/-/g, '')
+                    let formatted = ''
+                    for (let i = 0; i < clean.length && i < 32; i++) {
+                      if (i > 0 && i % 8 === 0) formatted += '-'
+                      formatted += clean[i]
+                    }
+                    setToken(formatted)
+                    setTokenError('')
+                  }}
+                  placeholder={t('authPlaceholder')}
+                  maxLength={39} // 32 chars + 7 dashes
+                />
+              </div>
+              {tokenError && <p className="token-error">{tokenError}</p>}
+            </div>
+            <button className="start-button" onClick={hNextAuth} style={{ marginTop: 8 }}>{t('authBtn')}</button>
+            <button className="skip-button" onClick={() => setPhase('main')}>{t('authAlt')}</button></>
+        )}
+
+        {/* ── MAIN SCREEN ── */}
+        {phase === 'main' && renderCard(
+          <><div className="ready-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" />
+              <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg></div>
+            <p className="ready-text">{t('ready')}</p>
+            <button className="start-button" onClick={hCheckAgain}>{t('startCheck')}</button></>
+        )}
+
+        <Footer />
+      </div>
+    </div>
+  )
+}
+
+export default App

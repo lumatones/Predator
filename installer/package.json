@@ -1,0 +1,40 @@
+{
+  "name": "predator-installer",
+  "version": "1.0.0",
+  "description": "Predator Installer — Премиальный установщик с стеклянным дизайном",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable",
+    "build:dir": "electron-builder --win portable --dir"
+  },
+  "build": {
+    "appId": "com.predator.installer",
+    "productName": "Predator Installer",
+    "directories": {
+      "output": "../release-installer"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-${version}.${ext}",
+      "signAndEditExecutable": false
+    },
+    "extraResources": []
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.0"
+  }
+}

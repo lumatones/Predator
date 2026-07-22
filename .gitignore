@@ -1,0 +1,40 @@
+# ── Dependencies ──
+node_modules/
+.pnp
+.pnp.js
+
+# ── Build output ──
+dist/
+dist-electron/
+release/
+release-installer/
+*.tsbuildinfo
+
+# ── IDE & Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.notes.md
+
+# ── OS files ──
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# ── Environment ──
+.env
+.env.local
+.env.*.local
+
+# ── Freebuff Desktop ──
+.freebuff/
+
+# ── Installer build cache ──
+installer/node_modules/
+installer/release/
+
+# ── TypeScript output (from tsconfig.node.json) ──
+ts-out/

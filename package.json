@@ -1,0 +1,88 @@
+{
+  "name": "predator",
+  "version": "0.0.3",
+  "description": "Predator — Cheat checker for GTA 5 RP (Majestic)",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron:dev": "vite & sleep 2 && electron .",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "postinstall": "electron-builder install-app-deps",
+    "generate:resources": "node scripts/generate-resources.js"
+  },
+  "build": {
+    "appId": "com.predator.anticheat",
+    "productName": "Predator",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.png",
+      "artifactName": "${productName}-${version}.${ext}",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Predator",
+      "installerIcon": "resources/icon-32.ico",
+      "uninstallerIcon": "resources/icon-32.ico",
+      "installerHeaderIcon": "resources/icon-32.ico",
+      "installerSidebar": "resources/installer-sidebar.bmp",
+      "installerHeader": "resources/installer-header.bmp",
+      "uninstallerSidebar": "resources/installer-sidebar.bmp",
+      "license": "LICENSE.txt",
+      "include": "resources/installer.nsh",
+      "guid": "7A9F8B3C-5D6E-4F1A-8B2C-9D0E1F2A3B4C",
+      "unicode": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "lumatones",
+      "repo": "Predator",
+      "releaseType": "release"
+    }
+  },
+  "keywords": [
+    "anticheat",
+    "gta5",
+    "majestic",
+    "rp"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-plugin-electron": "^0.28.0",
+    "vite-plugin-electron-renderer": "^0.14.0"
+  }
+}

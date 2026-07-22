@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.github.com https://github.com;" />
+  <title>Predator Installer</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- Drag region (custom titlebar) -->
+  <div class="titlebar" id="titlebar">
+    <div class="titlebar-drag" id="drag-region"></div>
+    <button class="titlebar-btn" id="btn-minimize" aria-label="Свернуть">
+      <svg width="12" height="12" viewBox="0 0 12 1"><line x1="0" y1="0.5" x2="12" y2="0.5" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+    <button class="titlebar-btn close" id="btn-close" aria-label="Закрыть">
+      <svg width="12" height="12" viewBox="0 0 12 12"><line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+  </div>
+
+  <!-- Main installer window -->
+  <div class="installer-window" id="app">
+
+    <!-- LEFT PANEL - Logo & Branding -->
+    <div class="left-panel">
+      <div class="logo-glow"></div>
+      <div class="logo-container">
+        <svg class="logo" width="120" height="120" viewBox="0 0 120 120" fill="none">
+          <circle cx="60" cy="60" r="56" stroke="url(#logo-grad)" stroke-width="2" opacity="0.8"/>
+          <path d="M60 20C60 20 38 45 38 65C38 78 47.5 88 60 88C72.5 88 82 78 82 65C82 45 60 20 60 20Z" fill="url(#logo-grad)" opacity="0.9"/>
+          <path d="M44 74L28 96H92L76 74" stroke="url(#logo-grad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="60" cy="64" r="10" fill="rgba(255,255,255,0.15)"/>
+          <defs>
+            <linearGradient id="logo-grad" x1="0" y1="0" x2="120" y2="120">
+              <stop offset="0%" stop-color="#ff4444"/>
+              <stop offset="50%" stop-color="#ff6b35"/>
+              <stop offset="100%" stop-color="#cc0000"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <h1 class="logo-title">Predator</h1>
+        <p class="logo-subtitle">Система проверки безопасности</p>
+      </div>
+      <div class="version-badge" id="version-badge">v0.0.2</div>
+    </div>
+
+    <!-- RIGHT PANEL - Content -->
+    <div class="right-panel" id="right-panel">
+
+      <!-- === SCREEN 1: Welcome === -->
+      <div class="screen active" id="screen-welcome">
+        <span class="section-label">Установка</span>
+        <h2 class="screen-title">Добро пожаловать!</h2>
+        <p class="screen-desc">
+          Установщик загрузит последнюю версию Predator и настроит всё 
+          необходимое для работы системы проверки безопасности.
+        </p>
+
+        <div class="setting-group">
+          <span class="setting-label">Путь установки</span>
+          <div class="path-selector">
+            <input type="text" class="path-input" id="install-path" value="C:\Program Files\Predator" readonly />
+            <button class="btn-icon" id="btn-browse" title="Выбрать папку">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <span class="setting-label">Сервер загрузки</span>
+          <div class="radio-group">
+            <label class="radio-item">
+              <input type="radio" name="server" value="github" checked />
+              <span>GitHub (международный)</span>
+            </label>
+            <label class="radio-item">
+              <input type="radio" name="server" value="mirror" />
+              <span>Зеркало (РФ)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="install-options">
+          <label class="checkbox-item">
+            <input type="checkbox" id="chk-desktop" checked />
+            <span>Ярлык на рабочем столе</span>
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" id="chk-startmenu" checked />
+            <span>Ярлык в меню Пуск</span>
+          </label>
+        </div>
+
+        <button class="btn-primary" id="btn-install">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Установить
+        </button>
+      </div>
+
+      <!-- === SCREEN 2: Installation Progress === -->
+      <div class="screen" id="screen-installing">
+        <span class="section-label">Установка</span>
+        <h2 class="screen-title">Загрузка компонентов</h2>
+        <p class="screen-desc" id="install-status">Подготовка к загрузке...</p>
+
+        <div class="progress-section">
+          <div class="progress-header">
+            <span class="progress-label" id="progress-label">Загрузка Predator...</span>
+            <span class="progress-percent" id="progress-percent">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-details">
+            <span class="progress-speed" id="progress-speed">0 MB/s</span>
+            <span class="progress-size" id="progress-size">0 / 0 MB</span>
+          </div>
+        </div>
+
+        <div class="install-log" id="install-log">
+          <div class="log-entry pending">Ожидание начала...</div>
+        </div>
+      </div>
+
+      <!-- === SCREEN 3: Complete === -->
+      <div class="screen" id="screen-complete">
+        <div class="complete-icon">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="30" stroke="#ff4444" stroke-width="2"/>
+            <path d="M20 32L28 40L44 24" stroke="#ff6b35" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span class="section-label">Установка завершена</span>
+        <h2 class="screen-title">Всё готово!</h2>
+        <p class="screen-desc" id="complete-version">
+          Predator успешно установлен на ваш компьютер.
+        </p>
+
+        <div class="complete-actions">
+          <button class="btn-primary" id="btn-launch">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Запустить Predator
+          </button>
+          <button class="btn-secondary" id="btn-close-installer">Закрыть</button>
+        </div>
+      </div>
+
+      <!-- === SCREEN 4: Error === -->
+      <div class="screen" id="screen-error">
+        <div class="error-icon">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="30" stroke="#EF4444" stroke-width="2"/>
+            <line x1="22" y1="22" x2="42" y2="42" stroke="#EF4444" stroke-width="3" stroke-linecap="round"/>
+            <line x1="42" y1="22" x2="22" y2="42" stroke="#EF4444" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="section-label">Ошибка</span>
+        <h2 class="screen-title">Что-то пошло не так</h2>
+        <p class="screen-desc" id="error-message">Произошла ошибка при установке.</p>
+        <button class="btn-primary err" id="btn-retry">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+          </svg>
+          Попробовать снова
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
