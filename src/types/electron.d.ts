@@ -1,3 +1,5 @@
+export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma'
+
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
 
@@ -14,14 +16,14 @@ export interface ElectronAPI {
   getPCName: () => Promise<string>
 
   // Scanner
-  startScan: () => Promise<ScanResponse>
+  startScan: (mode?: ScanMode) => Promise<ScanResponse>
   onScanProgress: (callback: (data: ScanProgress) => void) => void
 }
 
 export interface ScanResult {
   path: string
   fileName: string
-  type: 'file' | 'browser'
+  type: 'file' | 'browser' | 'process' | 'registry' | 'hardware' | 'software'
   risk: 'high' | 'medium' | 'low'
   matches: string[]
   size: number

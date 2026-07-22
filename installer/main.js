@@ -155,17 +155,30 @@ ipcMain.handle('download-predator', async (event, { installPath, server }) => {
 
     const exePath = path.join(installPath, releaseInfo.name)
 
-    // Download the file with progress
+    // Download the file with progress (including speed tracking)
     await new Promise((resolve, reject) => {
       httpsGet(releaseInfo.url, { headers: { 'User-Agent': 'Predator-Installer' } }).then((res) => {
         const total = parseInt(res.headers['content-length'] || releaseInfo.size, 10)
         let downloaded = 0
+        let lastTime = Date.now()
+        let lastBytes = 0
         const file = fs.createWriteStream(exePath)
 
         res.on('data', (chunk) => {
+          const now = Date.now()
           downloaded += chunk.length
           const percent = Math.round((downloaded / total) * 100)
-          mainWindow?.webContents.send('download-progress', { percent, downloaded, total, speed: 0 })
+
+          // Calculate speed every ~500ms
+          const elapsed = now - lastTime
+          let speed = 0
+          if (elapsed >= 500) {
+            speed = Math.round(((downloaded - lastBytes) / elapsed) * 1000)
+            lastTime = now
+            lastBytes = downloaded
+          }
+
+          mainWindow?.webContents.send('download-progress', { percent, downloaded, total, speed })
         })
 
         res.pipe(file)

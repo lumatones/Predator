@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import type { ScanResult, ScanProgress, ScanResponse } from '../types/electron'
+import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
 
 interface CheckerProps {
   lang: 'ru' | 'en'
@@ -9,119 +9,222 @@ interface CheckerProps {
 const T: Record<string, Record<string, string>> = {
   ru: {
     title: 'Сканирование системы',
-    desc: 'Поиск подозрительных файлов и скриптов',
     startBtn: 'Начать проверку',
-    scanning: 'Сканирование файлов...',
+    scanning: 'Сканирование...',
     analyzing: 'Анализ результатов...',
     done: 'Проверка завершена',
     found: 'Найдено',
-    high: 'Высокий',
-    medium: 'Средний',
-    low: 'Низкий',
+    high: 'Высокий', medium: 'Средний', low: 'Низкий',
     risk: 'Риск',
-    noThreats: 'Подозрительных файлов не обнаружено',
-    threatsFound: 'обнаруженных угроз',
-    filesScanned: 'файлов просканировано',
-    time: 'Время',
-    sec: 'сек',
-    clear: 'Очистить результаты',
-    file: 'Файл',
-    matches: 'Совпадения',
-    path: 'Путь',
+    noThreats: 'Подозрительных элементов не обнаружено',
+    threatsFound: 'обнаружено',
+    filesScanned: 'просканировано',
+    time: 'Время', sec: 'сек',
+    clear: 'Очистить',
+    file: 'Файл', matches: 'Совпадения', path: 'Путь',
     scanAgain: 'Проверить снова',
     browser: 'История браузера',
+    tabFiles: 'Файлы', tabFilesDesc: 'Поиск подозрительных файлов и скриптов',
+    tabProcesses: 'Процессы', tabProcessesDesc: 'Запущенные и недавние процессы',
+    tabCheats: 'Читы', tabCheatsDesc: 'Поиск Nightfall, DMA, 0Xcheat и других',
+    tabDma: 'DMA', tabDmaDesc: 'Обнаружение DMA-карт и FPGA-устройств',
+    riskHigh: 'Высокий риск', riskMedium: 'Средний риск', riskLow: 'Низкий риск',
+    processRunning: 'Запущен', processRecent: 'Недавние', processPrefetch: 'Prefetch', processMem: 'Память',
+    cheatFiles: 'Файлы', cheatBrowser: 'История', cheatRegistry: 'Реестр',
+    dmaPci: 'PCI-устройства', dmaSoftware: 'ПО', dmaDriver: 'Драйверы', dmaRegistry: 'Реестр',
+    typeFile: 'Файл', typeBrowser: 'Браузер', typeProcess: 'Процесс', typeRegistry: 'Реестр',
+    typeHardware: 'Оборудование', typeSoftware: 'ПО',
+    noData: 'Нет данных для отображения',
+    dmaDetected: 'Обнаружено DMA-устройств',
+    cheatsFound: 'Найдено следов читов',
+    processesFound: 'Подозрительных процессов',
   },
   en: {
     title: 'System Scan',
-    desc: 'Searching for suspicious files and scripts',
     startBtn: 'Start Scan',
-    scanning: 'Scanning files...',
+    scanning: 'Scanning...',
     analyzing: 'Analyzing results...',
     done: 'Scan complete',
     found: 'Found',
-    high: 'High',
-    medium: 'Medium',
-    low: 'Low',
+    high: 'High', medium: 'Medium', low: 'Low',
     risk: 'Risk',
-    noThreats: 'No suspicious files detected',
-    threatsFound: 'threats found',
-    filesScanned: 'files scanned',
-    time: 'Time',
-    sec: 'sec',
-    clear: 'Clear results',
-    file: 'File',
-    matches: 'Matches',
-    path: 'Path',
+    noThreats: 'No suspicious items detected',
+    threatsFound: 'found',
+    filesScanned: 'scanned',
+    time: 'Time', sec: 'sec',
+    clear: 'Clear',
+    file: 'File', matches: 'Matches', path: 'Path',
     scanAgain: 'Scan Again',
     browser: 'Browser History',
+    tabFiles: 'Files', tabFilesDesc: 'Search suspicious files & scripts',
+    tabProcesses: 'Processes', tabProcessesDesc: 'Running and recent processes',
+    tabCheats: 'Cheats', tabCheatsDesc: 'Search Nightfall, DMA, 0Xcheat & more',
+    tabDma: 'DMA', tabDmaDesc: 'Detect DMA cards & FPGA devices',
+    riskHigh: 'High risk', riskMedium: 'Medium risk', riskLow: 'Low risk',
+    processRunning: 'Running', processRecent: 'Recent', processPrefetch: 'Prefetch', processMem: 'Memory',
+    cheatFiles: 'Files', cheatBrowser: 'History', cheatRegistry: 'Registry',
+    dmaPci: 'PCI devices', dmaSoftware: 'Software', dmaDriver: 'Drivers', dmaRegistry: 'Registry',
+    typeFile: 'File', typeBrowser: 'Browser', typeProcess: 'Process', typeRegistry: 'Registry',
+    typeHardware: 'Hardware', typeSoftware: 'Software',
+    noData: 'No data to display',
+    dmaDetected: 'DMA devices detected',
+    cheatsFound: 'Cheat traces found',
+    processesFound: 'Suspicious processes',
   },
 }
 
+interface TabConfig {
+  id: ScanMode
+  icon: string
+  label: string
+  desc: string
+  color: string
+}
+
+const TABS: TabConfig[] = [
+  { id: 'files',     icon: '📁', label: 'tabFiles',     desc: 'tabFilesDesc',     color: '#ff4444' },
+  { id: 'processes', icon: '⚙️', label: 'tabProcesses', desc: 'tabProcessesDesc', color: '#3B82F6' },
+  { id: 'cheats',    icon: '🎯', label: 'tabCheats',    desc: 'tabCheatsDesc',    color: '#F59E0B' },
+  { id: 'dma',       icon: '🔌', label: 'tabDma',       desc: 'tabDmaDesc',       color: '#8B5CF6' },
+]
+
+// ── Realistic mock data per mode ──
+
+function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: ScanResponse['summary'] } {
+  const now = new Date().toISOString()
+
+  const mockSets: Record<ScanMode, { results: ScanResult[]; scanned: number }> = {
+    files: {
+      results: [
+        { path: '~/Downloads/cheat_loader.js', fileName: 'cheat_loader.js', type: 'file', risk: 'high', matches: ['filename:cheat', 'content:inject', 'content:hack'], size: 15234, modifiedAt: now },
+        { path: '~/Desktop/menu.dll', fileName: 'menu.dll', type: 'file', risk: 'high', matches: ['pattern:mod menu', 'dll inject'], size: 245760, modifiedAt: now },
+        { path: '~/.config/script_hook.lua', fileName: 'script_hook.lua', type: 'file', risk: 'medium', matches: ['filename:script hook'], size: 8912, modifiedAt: now },
+      ],
+      scanned: 340,
+    },
+    processes: {
+      results: [
+        { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine', 'suspicious debugger'], size: 0, modifiedAt: now },
+        { path: 'process:Injector Helper (PID: 0)', fileName: 'Injector Helper', type: 'process', risk: 'high', matches: ['process:inject', 'recent:injector'], size: 0, modifiedAt: now },
+        { path: 'Prefetch/DMA_TOOL.EXE-*.pf', fileName: 'DMA_TOOL.EXE-*.pf', type: 'file', risk: 'medium', matches: ['prefetch:dma last run'], size: 0, modifiedAt: now },
+      ],
+      scanned: 45,
+    },
+    cheats: {
+      results: [
+        { path: '~/Downloads/Nightfall', fileName: 'Nightfall Loader', type: 'file', risk: 'high', matches: ['cheat:nightfall → nightfall', 'filename:nightfall'], size: 0, modifiedAt: now },
+        { path: 'HKCU\\...\\Uninstall', fileName: 'Registry: Nightfall', type: 'registry', risk: 'high', matches: ['registry:nightfall installed'], size: 0, modifiedAt: now },
+        { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma'], size: 4096, modifiedAt: now },
+      ],
+      scanned: 12,
+    },
+    dma: {
+      results: [
+        { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx (VEN_10ee)', 'FPGA device detected'], size: 0, modifiedAt: now },
+        { path: '~/Downloads/pcileech/', fileName: 'pcileech.exe', type: 'software', risk: 'high', matches: ['dma-software:pcileech.exe', 'DMA memory tool'], size: 0, modifiedAt: now },
+        { path: 'System32/drivers/', fileName: 'leeched.sys', type: 'software', risk: 'high', matches: ['dma-driver:leeched.sys', 'DMA kernel driver'], size: 0, modifiedAt: now },
+      ],
+      scanned: 8,
+    },
+  }
+
+  const data = mockSets[mode]
+  return {
+    results: data.results,
+    summary: {
+      totalScanned: data.scanned,
+      suspiciousFiles: data.results.length,
+      highRiskCount: data.results.filter(r => r.risk === 'high').length,
+      scanTimeMs: 1500 + Math.random() * 2000,
+    },
+  }
+}
+
+// ── Component ──
+
 export default function Checker({ lang, onBack }: CheckerProps) {
   const t = (key: string) => T[lang][key] || key
-
+  const [activeTab, setActiveTab] = useState<ScanMode>('files')
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>('idle')
   const [progress, setProgress] = useState<ScanProgress | null>(null)
   const [results, setResults] = useState<ScanResult[]>([])
   const [summary, setSummary] = useState<ScanResponse['summary'] | null>(null)
   const [selectedResult, setSelectedResult] = useState<ScanResult | null>(null)
   const [error, setError] = useState('')
+  const [tabTransition, setTabTransition] = useState<'enter' | 'idle' | 'exit'>('idle')
+  const scanRef = useRef<boolean>(false)
+  const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const currentTab = TABS.find(t => t.id === activeTab)!
+  const activeTabIndex = TABS.findIndex(t => t.id === activeTab)
+
+  // Cleanup scan + transition timer on unmount
+  useEffect(() => {
+    return () => {
+      scanRef.current = false
+      if (transitionTimer.current) clearTimeout(transitionTimer.current)
+    }
+  }, [])
 
   const handleStartScan = useCallback(async () => {
     const api = window.electronAPI
-    if (!api?.startScan) {
-      // Dev mode — simulate scan
-      setPhase('scanning')
-      setError('')
-      setResults([])
-      setSummary(null)
-      setSelectedResult(null)
 
-      const mockResults: ScanResult[] = [
-        { path: '~/Downloads/cheat_loader.js', fileName: 'cheat_loader.js', type: 'file', risk: 'high', matches: ['filename:cheat', 'content:inject', 'content:hack'], size: 15234, modifiedAt: new Date().toISOString() },
-        { path: '~/Desktop/mod_menu.dll', fileName: 'mod_menu.dll', type: 'file', risk: 'high', matches: ['filename:mod menu', 'pattern:mod menu'], size: 245760, modifiedAt: new Date().toISOString() },
-      ]
+    // Prevent double-start
+    if (scanRef.current) return
+    scanRef.current = true
 
-      // Simulate progress
-      for (let i = 0; i <= 100; i += 10) {
-        await new Promise(r => setTimeout(r, 200))
-        setProgress({
-          phase: i < 80 ? 'scanning' : i < 100 ? 'analyzing' : 'done',
-          currentDir: i < 80 ? '~/Downloads/...' : 'Browser history',
-          filesFound: i < 80 ? Math.floor(i / 20) : mockResults.length,
-          filesScanned: Math.floor(i * 3),
-          totalDirs: 5,
-          dirsDone: Math.min(Math.floor(i / 20), 5),
-        })
-      }
-
-      setResults(mockResults)
-      setSummary({ totalScanned: 300, suspiciousFiles: 2, highRiskCount: 2, scanTimeMs: 3200 })
-      setPhase('done')
-      return
-    }
-
-    // Real scan via Electron
     setPhase('scanning')
     setError('')
     setResults([])
     setSummary(null)
     setSelectedResult(null)
+    setProgress(null)
 
-    api.onScanProgress((data: ScanProgress) => {
-      setProgress({ ...data })
-    })
+    if (!api?.startScan) {
+      for (let i = 0; i <= 100; i += 10) {
+        if (!scanRef.current) return // aborted by tab switch
+        await new Promise(r => setTimeout(r, 150))
+        setProgress({
+          phase: i < 80 ? 'scanning' : i < 100 ? 'analyzing' : 'done',
+          currentDir: i < 80 ? `${t(currentTab.label)} scanning...` : 'Analyzing...',
+          filesFound: Math.floor(i / 20),
+          filesScanned: Math.floor(i * 3),
+          totalDirs: 5,
+          dirsDone: Math.min(Math.floor(i / 20), 5),
+        })
+      }
+      if (!scanRef.current) return
+
+      const mock = generateMockData(activeTab)
+      setResults(mock.results)
+      setSummary(mock.summary)
+      setPhase('done')
+      scanRef.current = false
+      return
+    }
+
+    // Real scan
+    const progressHandler = (data: ScanProgress) => {
+      if (scanRef.current) setProgress({ ...data })
+    }
+    api.onScanProgress(progressHandler)
 
     try {
-      const response: ScanResponse = await api.startScan()
-      setResults(response.results)
-      setSummary(response.summary)
-      setPhase('done')
+      const response = await api.startScan(activeTab)
+      if (scanRef.current) {
+        setResults(response.results)
+        setSummary(response.summary)
+        setPhase('done')
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сканирования')
-      setPhase('idle')
+      if (scanRef.current) {
+        setError(err instanceof Error ? err.message : 'Scan error')
+        setPhase('idle')
+      }
+    } finally {
+      scanRef.current = false
     }
-  }, [])
+  }, [activeTab, currentTab])
 
   const handleClear = useCallback(() => {
     setResults([])
@@ -129,7 +232,32 @@ export default function Checker({ lang, onBack }: CheckerProps) {
     setProgress(null)
     setSelectedResult(null)
     setPhase('idle')
+    scanRef.current = false
   }, [])
+
+  const handleTabChange = useCallback((tab: ScanMode) => {
+    if (tab === activeTab) return
+    // Abort any running scan
+    scanRef.current = false
+
+    // Start exit animation
+    setTabTransition('exit')
+    if (transitionTimer.current) clearTimeout(transitionTimer.current)
+
+    transitionTimer.current = setTimeout(() => {
+      setActiveTab(tab)
+      setPhase('idle')
+      setResults([])
+      setSummary(null)
+      setProgress(null)
+      setSelectedResult(null)
+      setError('')
+
+      // Start enter animation after state is updated
+      setTabTransition('enter')
+      setTimeout(() => setTabTransition('idle'), 200)
+    }, 150)
+  }, [activeTab])
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`
@@ -138,7 +266,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
   }
 
   const formatTime = (ms: number) => {
-    if (ms < 1000) return `${ms} мс`
+    if (ms < 1000) return `${ms} ms`
     return `${(ms / 1000).toFixed(1)} ${t('sec')}`
   }
 
@@ -148,23 +276,53 @@ export default function Checker({ lang, onBack }: CheckerProps) {
   const riskLabel = (risk: string) =>
     risk === 'high' ? t('high') : risk === 'medium' ? t('medium') : t('low')
 
-  // Progress percentage
+  const typeIcon = (type: string) => {
+    switch (type) {
+      case 'file': return '📄'
+      case 'browser': return '🌐'
+      case 'process': return '⚙️'
+      case 'registry': return '📋'
+      case 'hardware': return '🔌'
+      case 'software': return '💻'
+      default: return '📄'
+    }
+  }
+
+  const typeName = (type: string) => {
+    switch (type) {
+      case 'file': return t('typeFile')
+      case 'browser': return t('typeBrowser')
+      case 'process': return t('typeProcess')
+      case 'registry': return t('typeRegistry')
+      case 'hardware': return t('typeHardware')
+      case 'software': return t('typeSoftware')
+      default: return type
+    }
+  }
+
   const calcPercent = () => {
     if (!progress) return 0
     if (progress.phase === 'done') return 100
-    if (progress.phase === 'analyzing') return 85 + Math.min(progress.filesFound * 2, 15)
-    return Math.min(
-      (progress.dirsDone / Math.max(progress.totalDirs, 1)) * 70 +
-      (progress.filesScanned % 100) * 0.1,
-      84
-    )
+    // Анализ: 85-99% (зависит от количества найденного)
+    if (progress.phase === 'analyzing') return 85 + Math.min(progress.filesFound * 2, 14)
+
+    // Сканирование: 0-84% — монотонно, без сбросов
+    // dirsDone/totalDirs — вклад пройденных директорий (0-70%)
+    // filesScanned — плавный вклад внутри и между директориями (0-14%)
+    const dirWeight = progress.totalDirs > 0
+      ? Math.min(progress.dirsDone / progress.totalDirs, 1)
+      : 0
+    // filesScanned монотонно растёт, не сбрасывается каждые 100
+    const fileWeight = Math.min(progress.filesScanned / 300, 1)
+
+    return Math.min(dirWeight * 70 + fileWeight * 14, 84)
   }
 
   return (
     <div className="checker-wrapper">
       <div className="checker-header">
         <div className="checker-title-row">
-          <button className="checker-back-btn" onClick={onBack} title="Назад">
+          <button className="checker-back-btn" onClick={onBack} title="Back">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
@@ -172,19 +330,48 @@ export default function Checker({ lang, onBack }: CheckerProps) {
           <h2 className="checker-title">{t('title')}</h2>
           <div className="checker-status-dot" data-phase={phase} />
         </div>
-        <p className="checker-desc">{t('desc')}</p>
       </div>
 
-      {/* Scan button / progress */}
+      {/* Tabs */}
+      <div className="checker-tabs" role="tablist">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            className={`checker-tab${activeTab === tab.id ? ' active' : ''}`}
+            onClick={() => handleTabChange(tab.id)}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            data-color={tab.color}
+            style={{ '--tab-accent': tab.color } as React.CSSProperties}
+          >
+            <span className="checker-tab-icon">{tab.icon}</span>
+            <div className="checker-tab-text">
+              <span className="checker-tab-label">{t(tab.label)}</span>
+              <span className="checker-tab-desc">{t(tab.desc)}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <p className="checker-desc" style={{ marginBottom: 16 }}>{t(currentTab.desc)}</p>
+
+      {/* Tab content with transitions */}
+      <div className={`tab-content${tabTransition === 'exit' ? ' exit' : ''}${tabTransition === 'enter' ? ' enter' : ''}`}>
+
+      {/* Idle */}
       {phase === 'idle' && (
-        <button className="checker-start-btn" onClick={handleStartScan}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-          </svg>
-          {t('startBtn')}
-        </button>
+        <div className="checker-idle">
+          <div className="checker-idle-icon" style={{ animationDelay: `${activeTabIndex * -0.8}s` }}>{currentTab.icon}</div>
+          <button className="checker-start-btn" data-tab={activeTab} onClick={handleStartScan}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+            </svg>
+            {t('startBtn')}
+          </button>
+        </div>
       )}
 
+      {/* Scanning */}
       {phase === 'scanning' && (
         <div className="checker-scanning">
           <div className="checker-radar">
@@ -193,37 +380,51 @@ export default function Checker({ lang, onBack }: CheckerProps) {
             <div className="radar-ring" />
             <div className="radar-dot" />
           </div>
+
           <div className="checker-progress-header">
             <span className="checker-progress-label">
-              {progress?.phase === 'analyzing' ? t('analyzing') : t('scanning')}
+              <span key={progress?.phase || 'scanning'} className="progress-label-text">
+                {progress?.phase === 'analyzing' ? t('analyzing') : t('scanning')}
+              </span>
             </span>
-            <span className="checker-progress-pct">{Math.round(calcPercent())}%</span>
+            <span className="checker-progress-pct"><span key={Math.round(calcPercent())} className="pct-num">{Math.round(calcPercent())}</span>%</span>
           </div>
+
           <div className="checker-progress-bar">
             <div className="checker-progress-fill" style={{ width: `${calcPercent()}%` }} />
           </div>
+
           <div className="checker-progress-info">
             <span>{t('found')}: {progress?.filesFound || 0}</span>
-            <span>{progress?.filesScanned || 0} {t('filesScanned').split(' ')[0]}</span>
+            <span>{progress?.filesScanned || 0} {t('filesScanned')}</span>
           </div>
+
           {progress?.currentDir && (
             <div className="checker-current-dir">{progress.currentDir}</div>
           )}
         </div>
       )}
 
-      {error && (
-        <div className="checker-error">{error}</div>
-      )}
+      {/* Error */}
+      {error && <div className="checker-error">{error}</div>}
 
       {/* Results */}
       {phase === 'done' && (
         <div className="checker-results">
-          {/* Summary */}
           {summary && (
-            <div className="checker-summary">
+            <div className="checker-summary stagger-summary">
               <div className={`checker-summary-icon ${summary.suspiciousFiles > 0 ? 'warning' : 'safe'}`}>
-                {summary.suspiciousFiles > 0 ? '⚠️' : '✅'}
+                {summary.suspiciousFiles > 0 ? (
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                ) : (
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                )}
               </div>
               <div className="checker-summary-text">
                 {summary.suspiciousFiles > 0
@@ -235,92 +436,102 @@ export default function Checker({ lang, onBack }: CheckerProps) {
                 <span className="checker-summary-dot">•</span>
                 <span>{t('time')}: {formatTime(summary.scanTimeMs)}</span>
               </div>
+              {summary.suspiciousFiles > 0 && (
+                <div className="checker-summary-risks">
+                  {summary.highRiskCount > 0 && (
+                    <span className="risk-badge risk-high">{summary.highRiskCount} {t('high')}</span>
+                  )}
+                  {summary.suspiciousFiles - summary.highRiskCount > 0 && (
+                    <span className="risk-badge risk-medium">{summary.suspiciousFiles - summary.highRiskCount} {t('medium')}</span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Results table */}
           {results.length > 0 && (
             <div className="checker-table-wrap">
               <table className="checker-table">
                 <thead>
                   <tr>
-                    <th>{t('risk')}</th>
+                    <th></th>
                     <th>{t('file')}</th>
                     <th>{t('matches')}</th>
-                    <th>Размер</th>
+                    <th>{t('risk')}</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {results.map((r, i) => (
-                    <tr key={i} className={riskClass(r.risk)} onClick={() => setSelectedResult(selectedResult?.path === r.path ? null : r)}>
-                      <td>
-                        <span className={`risk-badge ${riskClass(r.risk)}`}>
-                          {riskLabel(r.risk)}
-                        </span>
+                    <tr key={i} className={`${riskClass(r.risk)} stagger-row`}
+                      style={{ animationDelay: `${i * 0.08}s` }}
+                      onClick={() => setSelectedResult(
+                        selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? null : r
+                      )}>
+                      <td className="checker-type-cell">
+                        <span className="checker-type-icon" style={{ animationDelay: `${i * 0.08 + 0.12}s` }} title={typeName(r.type)}>{typeIcon(r.type)}</span>
                       </td>
                       <td className="checker-file-cell">
-                        <span className={`checker-file-icon ${r.type === 'browser' ? 'browser-icon' : ''}`}>
-                          {r.type === 'browser' ? '🌐' : '📄'}
-                        </span>
                         <span className="checker-file-name">{r.fileName}</span>
+                        <span className="checker-file-type">{typeName(r.type)}</span>
                       </td>
                       <td>
                         <div className="checker-matches">
-                          {r.matches.slice(0, 3).map((m, j) => (
-                            <span key={j} className="match-tag">{m}</span>
+                          {r.matches.slice(0, 2).map((m, j) => (
+                            <span key={j} className="match-tag">{m.includes(':') ? m.split(':').slice(1).join(':') : m}</span>
                           ))}
-                          {r.matches.length > 3 && (
-                            <span className="match-more">+{r.matches.length - 3}</span>
-                          )}
+                          {r.matches.length > 2 && <span className="match-more">+{r.matches.length - 2}</span>}
                         </div>
                       </td>
-                      <td className="checker-size">{formatSize(r.size)}</td>
-                      <td>
-                        <span className="checker-expand">{selectedResult?.path === r.path ? '▲' : '▼'}</span>
-                      </td>
+                      <td><span className={`risk-badge ${riskClass(r.risk)}`}>{riskLabel(r.risk)}</span></td>
+                      <td><span className="checker-expand">{selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? '▲' : '▼'}</span></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              {/* Selected file details */}
               {selectedResult && (
                 <div className="checker-detail">
                   <div className="checker-detail-header">
-                    <span className="checker-detail-title">{t('path')}</span>
+                    <div className="checker-detail-title-row">
+                      <span className="checker-type-icon-large">{typeIcon(selectedResult.type)}</span>
+                      <div>
+                        <div className="checker-detail-filename">{selectedResult.fileName}</div>
+                        <div className="checker-detail-type">{typeName(selectedResult.type)}</div>
+                      </div>
+                    </div>
+                    <span className={`risk-badge ${riskClass(selectedResult.risk)}`}>{riskLabel(selectedResult.risk)}</span>
+                  </div>
+                  <div className="checker-detail-section">
+                    <span className="checker-detail-label">{t('path')}</span>
                     <span className="checker-detail-path">{selectedResult.path}</span>
                   </div>
-                  <div className="checker-detail-header">
-                    <span className="checker-detail-title">{t('matches')}</span>
+                  {selectedResult.size > 0 && (
+                    <div className="checker-detail-section">
+                      <span className="checker-detail-label">Size</span>
+                      <span className="checker-detail-value">{formatSize(selectedResult.size)}</span>
+                    </div>
+                  )}
+                  <div className="checker-detail-section">
+                    <span className="checker-detail-label">{t('matches')}</span>
                     <div className="checker-matches" style={{ marginTop: 4 }}>
                       {selectedResult.matches.map((m, j) => (
                         <span key={j} className="match-tag">{m}</span>
                       ))}
                     </div>
                   </div>
-                  <div className="checker-detail-header">
-                    <span className="checker-detail-title">{t('risk')}</span>
-                    <span className={`risk-badge ${riskClass(selectedResult.risk)}`} style={{ marginTop: 4 }}>
-                      {riskLabel(selectedResult.risk)}
-                    </span>
-                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Actions */}
           <div className="checker-actions">
-            <button className="checker-action-btn secondary" onClick={handleClear}>
-              {t('clear')}
-            </button>
-            <button className="checker-action-btn primary" onClick={handleStartScan}>
-              {t('scanAgain')}
-            </button>
+            <button className="checker-action-btn secondary" onClick={handleClear}>{t('clear')}</button>
+            <button className="checker-action-btn primary" onClick={handleStartScan}>{t('scanAgain')}</button>
           </div>
         </div>
       )}
+      </div>{/* /tab-content */}
     </div>
   )
 }

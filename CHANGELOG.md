@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.0.5] — 2026-07-22
+
+### Добавлено
+
+#### Микро-анимации в чекере
+- **Staggered row entry** — строки таблицы результатов появляются каскадом с задержкой 80ms (`rowSlideIn`)
+- **Summary pop-in** — саммари-блок появляется сверху со скейлом 0.92→1 (`summaryPopIn`)
+- **Tab transitions** — плавное затемнение/появление контента при переключении табов (150ms exit → 200ms enter)
+- **Tab icon bounce** — иконка таба подпрыгивает при активации (`tabIconBounce`, cubic-bezier overshoot)
+- **Tab hover glow + shift** — при наведении таб приподнимается на 1px с glow-эффектом в цвет таба
+- **Tab activation glow pulse** — тройной glow по контуру таба при активации, затухает за 1s (`tabGlowPulse`)
+- **Tab accent colors** — каждый таб теперь подсвечивается своим цветом через CSS переменную `--tab-accent`
+- **Status dot glow** — усиленное свечение статус-дота: пульсация + расходящийся box-shadow (6→10px)
+- **Radar dot glow** — центральная точка радара пульсирует с glow (6→18px, scale 1→1.2)
+- **Detail panel slide-up** — панель деталей плавно выезжает снизу с opacity (`detailSlideUp`)
+- **Risk badge snap-in** — бейджи риска «защёлкиваются» scale(0)→scale(1) с overshoot (`badgeSnapIn`)
+- **Percentage counter bump** — цифра процента пульсирует scale(1)→1.15→1 при каждом обновлении (`pctBump`)
+- **Progress label fade** — текст «Сканирование...» / «Анализ...» меняется с fade-up (`labelFadeIn`)
+- **Idle icon staggered float** — иконка в idle-состоянии покачивается с разной фазой для каждого таба
+- **Icon pop-in in table** — иконки в таблице «выпрыгивают» с rotate+scale через 120ms после появления строки (stagger внутри stagger)
+
+#### Сканер — 4 режима поиска (`electron/scanner.ts`)
+- `files` — подозрительные файлы (было)
+- `processes` — проверка запущенных процессов (`tasklist`), Recent Items, Prefetch, история браузера
+- `cheats` — целевой поиск Nightfall, DMA, 0Xcheat, 1337 cheat, NoleetCheats (файлы + браузер + реестр)
+- `dma` — PCI-устройства (`wmic` + PowerShell fallback), DMA-софт и драйверы (pcileech, fuser, screamer), FTDI USB, реестр
+
+### Исправлено
+- Жёсткие `C:\` пути → переменные окружения (`ProgramFiles`, `ProgramData`, `SystemRoot`)
+- PowerShell fallback для `wmic` (Windows 11 24H2+)
+- Убрано дублирование `scanBrowserHistory` — переиспользуется с фильтром по ключевым словам
+- `calcPercent()` — переписана на монотонную формулу (без сбросов каждые 100 файлов)
+- IPC-утечка: `scanRef` guard предотвращает запись в стейт после смены таба
+- `--accent-dim` → `rgba()` для hover-стилей (не существовавшая CSS-переменная)
+- Установщик: реальный расчёт скорости скачивания (было `speed: 0` всегда)
+
 ## [0.0.4] — 2026-07-22
 
 ### Добавлено

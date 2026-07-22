@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPCName: () => ipcRenderer.invoke('get-pc-name'),
 
   // Scanner
-  startScan: () => ipcRenderer.invoke('start-scan'),
+  startScan: (mode?: string) => ipcRenderer.invoke('start-scan', mode || 'files'),
   onScanProgress: (callback: (data: import('./scanner').ScanProgress) => void) => {
     ipcRenderer.on('scan-progress', (_event, data) => callback(data))
   },
