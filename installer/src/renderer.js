@@ -55,6 +55,14 @@ if (!api) {
 btnMinimize.addEventListener('click', () => api.minimize())
 btnClose.addEventListener('click', () => api.close())
 
+// ── Init: Set default install path ──────────────
+
+api.getDefaultPath().then((defaultPath) => {
+  if (defaultPath) installPath.value = defaultPath
+}).catch(() => {
+  // keep HTML default — user can browse manually
+})
+
 // ── Path Selector ───────────────────────────────
 
 btnBrowse.addEventListener('click', async () => {

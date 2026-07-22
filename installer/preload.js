@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('installerAPI', {
   close: () => ipcRenderer.invoke('window-close'),
 
   // Install directory
+  getDefaultPath: () => ipcRenderer.invoke('get-default-path'),
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
 
   // Download & install

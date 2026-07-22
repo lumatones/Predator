@@ -11,6 +11,40 @@ export interface ElectronAPI {
   startUpdateCheck: () => Promise<{ updateAvailable: boolean; version?: string }>
   startDownload: () => Promise<{ success: boolean; error?: string }>
   restartApp: () => Promise<void>
+  getPCName: () => Promise<string>
+
+  // Scanner
+  startScan: () => Promise<ScanResponse>
+  onScanProgress: (callback: (data: ScanProgress) => void) => void
+}
+
+export interface ScanResult {
+  path: string
+  fileName: string
+  type: 'file' | 'browser'
+  risk: 'high' | 'medium' | 'low'
+  matches: string[]
+  size: number
+  modifiedAt: string
+}
+
+export interface ScanProgress {
+  phase: 'scanning' | 'analyzing' | 'done'
+  currentDir: string
+  filesFound: number
+  filesScanned: number
+  totalDirs: number
+  dirsDone: number
+}
+
+export interface ScanResponse {
+  results: ScanResult[]
+  summary: {
+    totalScanned: number
+    suspiciousFiles: number
+    highRiskCount: number
+    scanTimeMs: number
+  }
 }
 
 declare global {

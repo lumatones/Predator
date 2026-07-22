@@ -1,0 +1,20 @@
+{
+  "name": "predator-server",
+  "version": "1.0.0",
+  "description": "Predator Backend API — авторизация, токены, админ-панель",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "db:init": "node src/db/init.js",
+    "postinstall": "node -e \"require('fs').existsSync('.env')||require('fs').copyFileSync('.env.example','.env')\""
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0"
+  }
+}

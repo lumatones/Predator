@@ -1,11 +1,14 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { validateToken, useToken, requestAccess, checkRequestStatus } from './api'
+import Checker from './pages/Checker'
 
 // ── Types ──────────────────────────────────────
 
 type AppPhase =
   | 'loading' | 'checking' | 'update-available' | 'downloading'
   | 'downloaded' | 'update-error' | 'onboarding-lang'
-  | 'onboarding-theme' | 'onboarding-auth' | 'main'
+  | 'onboarding-theme' | 'onboarding-auth' | 'requesting-access'
+  | 'main' | 'checker'
 
 type ThemeId = 'predator' | 'ocean' | 'stealth' | 'nebula'
 
@@ -38,6 +41,9 @@ const T: Record<Lang, Record<string, string>> = {
     authError: 'Токен должен содержать 32 символа',
     authBtn: 'Подтвердить', authAlt: 'Запросить доступ через сайт',
     tokenLabel: 'Токен доступа',
+    requestSent: 'Запрос отправлен!', requestPending: 'Ожидание подтверждения администратором...',
+    requestApproved: 'Запрос одобрен!', requestRejected: 'Запрос отклонён',
+    requestId: 'ID запроса', requesting: 'Отправка запроса...', cancel: 'Отмена',
   },
   en: {
     title: 'Security Check System', checking: 'Checking for updates...',
@@ -53,6 +59,9 @@ const T: Record<Lang, Record<string, string>> = {
     authError: 'Token must contain 32 characters',
     authBtn: 'Confirm', authAlt: 'Request access via website',
     tokenLabel: 'Access Token',
+    requestSent: 'Request sent!', requestPending: 'Waiting for admin approval...',
+    requestApproved: 'Request approved!', requestRejected: 'Request rejected',
+    requestId: 'Request ID', requesting: 'Sending request...', cancel: 'Cancel',
   },
 }
 
@@ -65,6 +74,12 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<ThemeId>('predator')
   const [token, setToken] = useState('')
   const [tokenError, setTokenError] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [pcName, setPCName] = useState('')
+  const [requestId, setRequestId] = useState<number | null>(null)
+  const [requestStatus, setRequestStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
   // Download progress state
   const [dlPercent, setDlPercent] = useState(0)
@@ -85,6 +100,22 @@ const App: React.FC = () => {
     r.style.setProperty('--bg-primary', c.bg)
     r.style.setProperty('--bg-secondary', c.card)
   }, [theme])
+
+  // ── Get PC name (for auth) ──
+  useEffect(() => {
+    if (window.electronAPI?.getPCName) {
+      window.electronAPI.getPCName().then(setPCName).catch(() => setPCName('unknown'))
+    } else {
+      setPCName('dev-' + Math.random().toString(36).slice(2, 8))
+    }
+  }, [])
+
+  // ── Cleanup poll timer on unmount ──
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [])
 
   // ── Init ──
   useEffect(() => {
@@ -149,15 +180,92 @@ const App: React.FC = () => {
     else setPhase('onboarding-lang')
   }, [])
 
+  const hStartChecker = useCallback(() => setPhase('checker'), [])
+
   const hNextLang = useCallback(() => setPhase('onboarding-theme'), [])
   const hNextTheme = useCallback(() => setPhase('onboarding-auth'), [])
-  const hNextAuth = useCallback(() => {
+  const hNextAuth = useCallback(async () => {
     const clean = token.replace(/[-\s]/g, '')
-    if (clean.length > 0 && clean.length !== 32) { setTokenError(t('authError')); return }
-    if (clean.length === 32) { setTokenError(''); setPhase('main'); return }
+    if (clean.length > 0 && clean.length !== 32) {
+      setTokenError(t('authError'))
+      return
+    }
     // Empty token → skip auth
-    setPhase('main')
-  }, [token, lang])
+    if (clean.length === 0) {
+      setPhase('main')
+      return
+    }
+
+    setAuthLoading(true)
+    setAuthError('')
+    setTokenError('')
+
+    try {
+      const validateResult = await validateToken(token)
+      if (!validateResult.valid) {
+        setAuthError(validateResult.error || 'Токен недействителен')
+        setAuthLoading(false)
+        return
+      }
+
+      // Mark token as used
+      const useResult = await useToken(token, pcName || 'unknown')
+      if (!useResult.valid) {
+        setAuthError(useResult.error || 'Не удалось активировать токен')
+        setAuthLoading(false)
+        return
+      }
+
+      setPhase('main')
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Ошибка подключения к серверу')
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [token, lang, pcName])
+
+  const hRequestAccess = useCallback(async () => {
+    setAuthLoading(true)
+    setAuthError('')
+
+    try {
+      const result = await requestAccess(pcName || 'unknown')
+      if (result.success && result.request_id) {
+        setRequestId(result.request_id)
+        setRequestStatus('pending')
+        setPhase('requesting-access')
+
+        // Start polling for status
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = setInterval(async () => {
+          try {
+            const reqId = result.request_id!
+            const status = await checkRequestStatus(reqId)
+            setRequestStatus(status.status as 'pending' | 'approved' | 'rejected')
+
+            if (status.status === 'approved') {
+              if (pollRef.current) clearInterval(pollRef.current)
+              setPhase('main')
+            } else if (status.status === 'rejected') {
+              if (pollRef.current) clearInterval(pollRef.current)
+              setAuthError('Запрос отклонён администратором')
+              setRequestId(null)
+              setRequestStatus(null)
+              setPhase('onboarding-auth')
+            }
+          } catch {
+            // Ignore poll errors — retry on next interval
+          }
+        }, 3000)
+      } else {
+        setAuthError(result.error || 'Ошибка отправки запроса')
+      }
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Ошибка подключения к серверу')
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [pcName])
 
   // ── Shared: logo + footer ──
   const Logo = () => (
@@ -327,15 +435,79 @@ const App: React.FC = () => {
                     }
                     setToken(formatted)
                     setTokenError('')
+                    setAuthError('')
                   }}
                   placeholder={t('authPlaceholder')}
                   maxLength={39} // 32 chars + 7 dashes
                 />
               </div>
-              {tokenError && <p className="token-error">{tokenError}</p>}
+              {(tokenError || authError) && (
+                <p className="token-error">{tokenError || authError}</p>
+              )}
             </div>
-            <button className="start-button" onClick={hNextAuth} style={{ marginTop: 8 }}>{t('authBtn')}</button>
-            <button className="skip-button" onClick={() => setPhase('main')}>{t('authAlt')}</button></>
+            <button
+              className="start-button"
+              onClick={hNextAuth}
+              disabled={authLoading}
+              style={{ marginTop: 8 }}
+            >
+              {authLoading ? (
+                <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, position: 'relative', display: 'inline-block' }}><span className="spinner-ring" style={{ position: 'absolute', inset: 0 }} /></span> Проверка...</>
+              ) : (
+                t('authBtn')
+              )}
+            </button>
+            <button
+              className="skip-button"
+              onClick={hRequestAccess}
+              disabled={authLoading}
+            >
+              {t('authAlt')}
+            </button></>
+        )}
+
+        {/* ── REQUESTING ACCESS ── */}
+        {phase === 'requesting-access' && renderCard(
+          <>
+            {/* Default / pending — show waiting screen */}
+            {(!requestStatus || requestStatus === 'pending') && (
+              <><div className="spinner"><div className="spinner-ring" /></div>
+                <p className="onb-label">{t('requestSent')}</p>
+                <p className="status-text" style={{ animation: 'textPulse 1.5s ease-in-out infinite', margin: '4px 0' }}>
+                  {t('requestPending')}
+                </p>
+                <div className="request-id-badge">
+                  {t('requestId')}: #{requestId || '...'}
+                </div>
+                <div className="progress-bar indeterminate" style={{ marginTop: 8 }}>
+                  <div className="progress-fill" />
+                </div>
+                <button className="skip-button" onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setPhase('onboarding-auth'); setRequestId(null); setRequestStatus(null); }}>
+                  {t('cancel')}
+                </button></>
+            )}
+            {requestStatus === 'approved' && (
+              <><div className="ready-icon">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                  <circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" />
+                  <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg></div>
+                <p className="ready-text">{t('requestApproved')}</p>
+                <p className="status-text" style={{ animation: 'none' }}>Перенаправление...</p></>
+            )}
+            {requestStatus === 'rejected' && (
+              <><div className="error-icon-dl">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                  <circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" />
+                  <line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
+                  <line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
+                </svg></div>
+                <p className="status-text" style={{ color: '#EF4444', animation: 'none' }}>{t('requestRejected')}</p>
+                <button className="start-button" onClick={() => setPhase('onboarding-auth')}>
+                  {t('authBtn')}
+                </button></>
+            )}
+          </>
         )}
 
         {/* ── MAIN SCREEN ── */}
@@ -346,7 +518,12 @@ const App: React.FC = () => {
               <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             </svg></div>
             <p className="ready-text">{t('ready')}</p>
-            <button className="start-button" onClick={hCheckAgain}>{t('startCheck')}</button></>
+            <button className="start-button" onClick={hStartChecker}>{t('startCheck')}</button></>
+        )}
+
+        {/* ── CHECKER ── */}
+        {phase === 'checker' && (
+          <Checker lang={lang} onBack={() => setPhase('main')} />
         )}
 
         <Footer />

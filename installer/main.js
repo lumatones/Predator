@@ -58,12 +58,19 @@ app.on('activate', () => {
 ipcMain.handle('window-minimize', () => mainWindow?.minimize())
 ipcMain.handle('window-close', () => mainWindow?.close())
 
+// ── Default install path (user local app data) ────
+
+ipcMain.handle('get-default-path', () => {
+  return path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'Predator')
+})
+
 // ── Select install directory ─────────────────────
 
 ipcMain.handle('select-directory', async () => {
+  const defaultPath = path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'Predator')
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
-    defaultPath: 'C:\\Program Files\\Predator',
+    defaultPath,
   })
   if (!result.canceled && result.filePaths.length > 0) {
     return result.filePaths[0]

@@ -27,4 +27,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startUpdateCheck: () => ipcRenderer.invoke('start-update-check'),
   startDownload: () => ipcRenderer.invoke('start-download'),
   restartApp: () => ipcRenderer.invoke('restart-app'),
+  getPCName: () => ipcRenderer.invoke('get-pc-name'),
+
+  // Scanner
+  startScan: () => ipcRenderer.invoke('start-scan'),
+  onScanProgress: (callback: (data: import('./scanner').ScanProgress) => void) => {
+    ipcRenderer.on('scan-progress', (_event, data) => callback(data))
+  },
 })

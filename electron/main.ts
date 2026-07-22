@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
+import os from 'os'
 import { autoUpdater } from 'electron-updater'
+import { registerScanHandlers } from './scanner'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -141,3 +143,11 @@ ipcMain.handle('start-download', async () => {
 ipcMain.handle('restart-app', async () => {
   autoUpdater.quitAndInstall()
 })
+
+ipcMain.handle('get-pc-name', () => {
+  return os.userInfo().username || process.env.USERNAME || 'unknown'
+})
+
+// ── Scanner ──────────────────────────────────────
+
+registerScanHandlers()
