@@ -41,6 +41,8 @@ const T: Record<string, Record<string, string>> = {
     groupHigh: 'Высокий риск', groupMedium: 'Средний риск', groupLow: 'Низкий риск',
     showAll: 'Показать все', collapse: 'Свернуть',
     groupHidden: 'ещё скрыто',
+    searchPlaceholder: 'Поиск по имени, пути или совпадениям...',
+    searchNoResults: 'Ничего не найдено',
   },
   en: {
     title: 'System Scan',
@@ -76,6 +78,8 @@ const T: Record<string, Record<string, string>> = {
     groupHigh: 'High risk', groupMedium: 'Medium risk', groupLow: 'Low risk',
     showAll: 'Show all', collapse: 'Collapse',
     groupHidden: 'more hidden',
+    searchPlaceholder: 'Search by name, path or matches...',
+    searchNoResults: 'Nothing found',
   },
 }
 
@@ -162,6 +166,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
   const [tabTransition, setTabTransition] = useState<'enter' | 'idle' | 'exit'>('idle')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['high']))
   const [showAllGroups, setShowAllGroups] = useState<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
   const scanRef = useRef<boolean>(false)
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -245,6 +250,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
     scanRef.current = false
     setExpandedGroups(new Set(['high']))
     setShowAllGroups(new Set())
+    setSearchQuery('')
   }, [])
 
   const handleTabChange = useCallback((tab: ScanMode) => {
@@ -264,6 +270,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
       setProgress(null)
       setSelectedResult(null)
       setError('')
+      setSearchQuery('')
 
       // Start enter animation after state is updated
       setTabTransition('enter')
@@ -451,15 +458,51 @@ export default function Checker({ lang, onBack }: CheckerProps) {
             </div>
           )}
 
+          {/* Search input — only show when there are results */}
+          {results.length > 0 && (
+            <div className="checker-search">
+              <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                className="search-input"
+                placeholder={t('searchPlaceholder')}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button className="search-clear" onClick={() => setSearchQuery('')}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+
           {results.length > 0 && (
             <div className="checker-groups">
-              {/* Group results by risk level: high → medium → low */}
-              {(['high', 'medium', 'low'] as const).map(riskLevel => {
-                const group = results.filter(r => r.risk === riskLevel)
+              {/* Compute filtered results */}
+              {(() => {
+                const q = searchQuery.toLowerCase().trim()
+                const filtered = q
+                  ? results.filter(r =>
+                      r.fileName.toLowerCase().includes(q) ||
+                      r.path.toLowerCase().includes(q) ||
+                      r.matches.some(m => m.toLowerCase().includes(q))
+                    )
+                  : results
+
+                if (q && filtered.length === 0) {
+                  return <div className="search-no-results">{t('searchNoResults')}</div>
+                }
+
+                return (['high', 'medium', 'low'] as const).map(riskLevel => {
+                const group = filtered.filter(r => r.risk === riskLevel)
                 if (group.length === 0) return null
                 const isExpanded = expandedGroups.has(riskLevel)
                 const isShowAll = showAllGroups.has(riskLevel)
-                const INITIAL_SHOW = 5
                 const visible = isShowAll ? group : group.slice(0, INITIAL_SHOW)
                 const hidden = group.length - INITIAL_SHOW
 
@@ -568,7 +611,8 @@ export default function Checker({ lang, onBack }: CheckerProps) {
                     )}
                   </div>
                 )
-              })}
+              })
+              })()}
             </div>
           )}
 

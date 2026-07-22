@@ -1389,7 +1389,69 @@ body {
   opacity: 0.3;
 }
 
-/* Results groups (replaces old table) */
+/* Search input */
+.checker-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0 12px;
+  transition: border-color 0.2s;
+}
+
+.checker-search:focus-within {
+  border-color: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+}
+
+.search-icon {
+  flex-shrink: 0;
+  color: rgba(255,255,255,0.2);
+  pointer-events: none;
+}
+
+.search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 10px 0;
+}
+
+.search-input::placeholder {
+  color: rgba(255,255,255,0.15);
+}
+
+.search-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255,255,255,0.2);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  transition: all 0.15s;
+}
+
+.search-clear:hover {
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.05);
+}
+
+.search-no-results {
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.25);
+}
+
+/* Results groups */
 .checker-groups {
   display: flex;
   flex-direction: column;
