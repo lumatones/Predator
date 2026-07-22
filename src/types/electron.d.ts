@@ -1,4 +1,4 @@
-export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma' | 'extended'
+export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma' | 'extended' | 'network'
 
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
@@ -18,6 +18,9 @@ export interface ElectronAPI {
   // Scanner
   startScan: (mode?: ScanMode) => Promise<ScanResponse>
   onScanProgress: (callback: (data: ScanProgress) => void) => void
+
+  // System info dashboard
+  getSystemSnapshot: () => Promise<SystemInfoSnapshot>
 }
 
 export interface ScanResult {
@@ -47,6 +50,42 @@ export interface ScanResponse {
     highRiskCount: number
     scanTimeMs: number
   }
+}
+
+export interface SystemProcess {
+  pid: number
+  name: string
+  memoryMB: number
+  cpuPercent: number
+}
+
+export interface SystemInfoSnapshot {
+  cpu: {
+    usagePercent: number
+    cores: number
+    model: string
+    loadAvg: number[]
+  }
+  memory: {
+    totalGB: number
+    usedGB: number
+    freeGB: number
+    usagePercent: number
+  }
+  temperature: number | null
+  uptime: {
+    days: number
+    hours: number
+    minutes: number
+  }
+  os: {
+    platform: string
+    release: string
+    arch: string
+    hostname: string
+  }
+  processes: SystemProcess[]
+  timestamp: number
 }
 
 declare global {

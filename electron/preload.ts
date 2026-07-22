@@ -34,4 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onScanProgress: (callback: (data: import('./scanner').ScanProgress) => void) => {
     ipcRenderer.on('scan-progress', (_event, data) => callback(data))
   },
+
+  // System info dashboard
+  getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
 })

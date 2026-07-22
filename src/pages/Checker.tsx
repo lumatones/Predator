@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
+import { saveScan } from '../utils/stats-store'
+import { exportHtml, exportJson } from '../utils/export-report'
 
 interface CheckerProps {
   lang: 'ru' | 'en'
@@ -29,6 +31,7 @@ const T: Record<string, Record<string, string>> = {
     tabCheats: 'Читы', tabCheatsDesc: 'Поиск Nightfall, DMA, 0Xcheat и других',
     tabDma: 'DMA', tabDmaDesc: 'Обнаружение DMA-карт и FPGA-устройств',
     tabExtended: 'Расширенный', tabExtendedDesc: 'Полное сканирование системы — файлы, процессы, реестр, Prefetch, DMA',
+    tabNetwork: 'Сеть', tabNetworkDesc: 'Проверка DNS-кеша, hosts файла, сетевых подключений и подозрительных IP',
     riskHigh: 'Высокий риск', riskMedium: 'Средний риск', riskLow: 'Низкий риск',
     processRunning: 'Запущен', processRecent: 'Недавние', processPrefetch: 'Prefetch', processMem: 'Память',
     cheatFiles: 'Файлы', cheatBrowser: 'История', cheatRegistry: 'Реестр',
@@ -45,6 +48,10 @@ const T: Record<string, Record<string, string>> = {
     groupHidden: 'ещё скрыто',
     searchPlaceholder: 'Поиск по имени, пути или совпадениям...',
     searchNoResults: 'Ничего не найдено',
+    exportReport: 'Экспорт',
+    exportHtml: 'HTML отчёт',
+    exportJson: 'JSON отчёт',
+    exportCopied: 'Скопировано!',
   },
   en: {
     title: 'System Scan',
@@ -68,6 +75,7 @@ const T: Record<string, Record<string, string>> = {
     tabCheats: 'Cheats', tabCheatsDesc: 'Search Nightfall, DMA, 0Xcheat & more',
     tabDma: 'DMA', tabDmaDesc: 'Detect DMA cards & FPGA devices',
     tabExtended: 'Extended', tabExtendedDesc: 'Full system scan — files, processes, registry, Prefetch, DMA',
+    tabNetwork: 'Network', tabNetworkDesc: 'Check DNS cache, hosts file, active connections & suspicious IPs',
     riskHigh: 'High risk', riskMedium: 'Medium risk', riskLow: 'Low risk',
     processRunning: 'Running', processRecent: 'Recent', processPrefetch: 'Prefetch', processMem: 'Memory',
     cheatFiles: 'Files', cheatBrowser: 'History', cheatRegistry: 'Registry',
@@ -84,6 +92,10 @@ const T: Record<string, Record<string, string>> = {
     groupHidden: 'more hidden',
     searchPlaceholder: 'Search by name, path or matches...',
     searchNoResults: 'Nothing found',
+    exportReport: 'Export',
+    exportHtml: 'HTML Report',
+    exportJson: 'JSON Report',
+    exportCopied: 'Copied!',
   },
 }
 
@@ -101,6 +113,7 @@ const TABS: TabConfig[] = [
   { id: 'cheats',    icon: '🎯', label: 'tabCheats',    desc: 'tabCheatsDesc',    color: '#F59E0B' },
   { id: 'dma',       icon: '🔌', label: 'tabDma',       desc: 'tabDmaDesc',       color: '#8B5CF6' },
   { id: 'extended',  icon: '🛡️', label: 'tabExtended',  desc: 'tabExtendedDesc',  color: '#22c55e' },
+  { id: 'network',   icon: '🌐', label: 'tabNetwork',   desc: 'tabNetworkDesc',   color: '#06b6d4' },
 ]
 
 // ── Realistic mock data per mode ──
@@ -143,17 +156,51 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
     },
     extended: {
       results: [
-        { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine', 'suspicious debugger'], size: 0, modifiedAt: now },
-        { path: '~/Downloads/cheat_loader.js', fileName: 'cheat_loader.js', type: 'file', risk: 'high', matches: ['filename:cheat', 'content:inject'], size: 15234, modifiedAt: now },
-        { path: '~/AppData/Local/FiveM/mods/', fileName: 'eulen.asi', type: 'file', risk: 'high', matches: ['file:eulen', 'gta cheat menu'], size: 245760, modifiedAt: now },
-        { path: 'HKCU\\...\\Uninstall\\Nightfall', fileName: 'Registry: Nightfall', type: 'registry', risk: 'high', matches: ['registry:nightfall installed'], size: 0, modifiedAt: now },
-        { path: '~/Documents/Cheats/', fileName: 'mod_menu.lua', type: 'file', risk: 'medium', matches: ['lua:mod menu', 'script hook'], size: 8912, modifiedAt: now },
-        { path: 'C:\\Windows\\Prefetch\\DMA_TOOL.EXE-*.pf', fileName: 'DMA_TOOL.EXE-*.pf', type: 'file', risk: 'medium', matches: ['prefetch:dma last run', 'process:dma'], size: 0, modifiedAt: now },
+        // Phase 1: Advanced process scan (v2)
+        { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine', 'suspicious debugger', 'module:CreateRemoteThread (injector)'], size: 0, modifiedAt: now },
+        { path: 'process:Injector Helper (PID: 0)', fileName: 'Module: injector.dll', type: 'process', risk: 'high', matches: ['module:inject (injector)', 'process:cheat loader'], size: 0, modifiedAt: now },
+
+        // Phase 2: Heuristic file scan (v2 — entropy, signatures, digital signature)
+        { path: '~/Downloads/cheat_loader.js', fileName: '[Score:95] cheat_loader.js', type: 'file', risk: 'high', matches: ['Name → [injector]: DLL injector', 'Extension .js: JavaScript', 'Signatures [menu]: ImGui, Direct3D'], size: 15234, modifiedAt: now },
+        { path: '~/Desktop/menu.dll', fileName: '[Score:87] menu.dll', type: 'file', risk: 'high', matches: ['Extension .dll: Dynamic library', 'Name → [menu]: Game menu / overlay', 'High entropy (7.82) — possibly packed'], size: 245760, modifiedAt: now },
+        { path: '~/AppData/Local/FiveM/mods/', fileName: '[Score:80] eulen.asi', type: 'file', risk: 'high', matches: ['Extension .asi: ASI mod GTA', 'File in protected folder', 'No digital signature'], size: 320512, modifiedAt: now },
+        { path: '~/AppData/Roaming/redengine/', fileName: '[Score:75] redengine.dll', type: 'file', risk: 'high', matches: ['Extension .dll: Dynamic library', 'Name → [debugger]: Debugger', 'Signatures [hook]: SetWindowsHookEx'], size: 180224, modifiedAt: now },
+        { path: '~/.config/script_hook.lua', fileName: '[Score:60] script_hook.lua', type: 'file', risk: 'medium', matches: ['Name → [hook]: System function hooking', 'Extension .lua: Lua script'], size: 8912, modifiedAt: now },
+        { path: '~/Documents/bypass_tool.exe', fileName: '[Score:70] bypass_tool.exe', type: 'file', risk: 'medium', matches: ['Name → [bypass]: Security bypass', 'Recently modified (2 days ago)', 'No digital signature'], size: 45056, modifiedAt: now },
+
+        // Phase 3: Deep registry scan (v2)
+        { path: 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', fileName: 'Registry [injector]: inject', type: 'registry', risk: 'high', matches: ['registry-deep:inject (injector)', 'risk:CRITICAL'], size: 0, modifiedAt: now },
+        { path: 'HKCU\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run', fileName: 'Registry [bypass]: bypass', type: 'registry', risk: 'high', matches: ['registry-deep:bypass (bypass)', 'risk:CRITICAL'], size: 0, modifiedAt: now },
+
+        // Phase 4: Prefetch analysis (v2)
+        { path: 'C:\\Windows\\Prefetch\\DMA_TOOL.EXE-*.pf', fileName: 'Prefetch [dma]: DMA_TOOL.EXE-*.pf', type: 'file', risk: 'high', matches: ['prefetch:dma (dma)', 'last-run:2026-07-20'], size: 0, modifiedAt: now },
+        { path: 'C:\\Windows\\Prefetch\\CHEAT_ENGINE.EXE-*.pf', fileName: 'Prefetch [debugger]: CHEAT_ENGINE.EXE-*.pf', type: 'file', risk: 'high', matches: ['prefetch:cheatengine (debugger)', 'last-run:2026-07-21'], size: 0, modifiedAt: now },
+        { path: 'C:\\Windows\\Prefetch\\INJECTOR.EXE-*.pf', fileName: 'Prefetch [injector]: INJECTOR.EXE-*.pf', type: 'file', risk: 'medium', matches: ['prefetch:injector (injector)', 'last-run:2026-07-19'], size: 0, modifiedAt: now },
+
+        // Phase 5: Network connections (v2 — proxy/VPN ports)
+        { path: 'Network Connections', fileName: 'Suspicious connections: 2', type: 'software', risk: 'high', matches: ['netstat:1080 (PID: 4821)', 'netstat:remote:185.123.45.67 (PID: 5678)'], size: 0, modifiedAt: now },
+
+        // Phase 6: DMA detection
         { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx (VEN_10ee)', 'FPGA device detected'], size: 0, modifiedAt: now },
-        { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma', 'browser:cheat'], size: 4096, modifiedAt: now },
-        { path: '~/Downloads/pcileech/', fileName: 'pcileech.exe', type: 'software', risk: 'high', matches: ['dma-software:pcileech.exe', 'DMA memory tool'], size: 0, modifiedAt: now },
+        { path: 'System32/drivers/', fileName: 'Driver: leeched.sys', type: 'software', risk: 'high', matches: ['dma-keyword:leechcore', 'DMA kernel driver'], size: 0, modifiedAt: now },
+
+        // Phase 7: Registry (standard cheat scan)
+        { path: 'HKLM\\...\\Uninstall', fileName: 'Registry: nightfall', type: 'registry', risk: 'high', matches: ['registry:nightfall installed'], size: 0, modifiedAt: now },
+
+        // Phase 8: Browser history
+        { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma', 'browser:injector', 'browser:bypass'], size: 4096, modifiedAt: now },
       ],
-      scanned: 1847,
+      scanned: 2487,
+    },
+    network: {
+      results: [
+        { path: 'DNS Cache', fileName: 'DNS: Suspicious entries (2)', type: 'software', risk: 'medium', matches: ['dns:nightfall', 'dns:unknowncheats'], size: 0, modifiedAt: now },
+        { path: 'C:\\Windows\\System32\\drivers\\etc\\hosts', fileName: 'Hosts: Suspicious entries (3)', type: 'file', risk: 'high', matches: ['hosts-block:nightfall.com', 'hosts-block:eulen.gg', 'hosts-redirect:cheat.dom→185.x.x.x'], size: 1024, modifiedAt: now },
+        { path: 'Active Connections', fileName: 'Cheat-related ports: 2', type: 'software', risk: 'high', matches: ['port:1337 (PID: 4821)', 'port:4444 (PID: 5678)'], size: 0, modifiedAt: now },
+        { path: 'Network Summary', fileName: 'Connections: 45', type: 'process', risk: 'low', matches: ['est:12 active', 'lstn:8 listening', 'foreign:3 unusual IPs'], size: 0, modifiedAt: now },
+        { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma'], size: 4096, modifiedAt: now },
+      ],
+      scanned: 5,
     },
   }
 
@@ -186,6 +233,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['high']))
   const [showAllGroups, setShowAllGroups] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
+  const [exportMsg, setExportMsg] = useState('')
   const scanRef = useRef<boolean>(false)
 
   // Filtered results (client-side search, memoised)
@@ -245,6 +293,8 @@ export default function Checker({ lang, onBack }: CheckerProps) {
       setSummary(mock.summary)
       setPhase('done')
       scanRef.current = false
+      // Save scan to stats
+      saveScan(activeTab, mock.summary.totalScanned, mock.summary.suspiciousFiles, mock.summary.highRiskCount, mock.summary.scanTimeMs, mock.results)
       return
     }
 
@@ -260,6 +310,8 @@ export default function Checker({ lang, onBack }: CheckerProps) {
         setResults(response.results)
         setSummary(response.summary)
         setPhase('done')
+        // Save scan to stats
+        saveScan(activeTab, response.summary.totalScanned, response.summary.suspiciousFiles, response.summary.highRiskCount, response.summary.scanTimeMs, response.results)
       }
     } catch (err) {
       if (scanRef.current) {
@@ -282,6 +334,21 @@ export default function Checker({ lang, onBack }: CheckerProps) {
     setShowAllGroups(new Set())
     setSearchQuery('')
   }, [])
+
+  const handleExport = useCallback((format: 'html' | 'json') => {
+    if (!summary) return
+    const content = format === 'html' ? exportHtml(results, summary) : exportJson(results, summary)
+    const ext = format === 'html' ? 'html' : 'json'
+    const blob = new Blob([content], { type: format === 'html' ? 'text/html' : 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `predator_scan_${new Date().toISOString().slice(0, 10)}.${ext}`
+    a.click()
+    URL.revokeObjectURL(url)
+    setExportMsg('✓')
+    setTimeout(() => setExportMsg(''), 2000)
+  }, [results, summary])
 
   const handleTabChange = useCallback((tab: ScanMode) => {
     if (tab === activeTab) return
@@ -638,6 +705,21 @@ export default function Checker({ lang, onBack }: CheckerProps) {
 
           <div className="checker-actions">
             <button className="checker-action-btn secondary" onClick={handleClear}>{t('clear')}</button>
+            <div className="checker-export-group">
+              <button className="checker-action-btn export" onClick={() => handleExport('html')} title={t('exportHtml')}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                {t('exportHtml')}
+              </button>
+              <button className="checker-action-btn export" onClick={() => handleExport('json')} title={t('exportJson')}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                {t('exportJson')}
+              </button>
+              <span className="checker-export-msg">{exportMsg}</span>
+            </div>
             <button className="checker-action-btn primary" onClick={handleStartScan}>{t('scanAgain')}</button>
           </div>
         </div>

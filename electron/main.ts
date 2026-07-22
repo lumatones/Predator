@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu } from 'electron'
 import path from 'path'
 import os from 'os'
 import { autoUpdater } from 'electron-updater'
 import { registerScanHandlers } from './scanner'
+import { registerSystemInfoHandlers } from './system-info'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -12,6 +13,10 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 
 autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
+
+// ── Hide native menu (File, Edit, View, Window, Help) ──
+
+Menu.setApplicationMenu(null)
 
 // ── Create Window ─────────────────────────────────
 
@@ -162,3 +167,7 @@ ipcMain.handle('get-pc-name', () => {
 // ── Scanner ──────────────────────────────────────
 
 registerScanHandlers()
+
+// ── System Info Dashboard ────────────────────────
+
+registerSystemInfoHandlers()

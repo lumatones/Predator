@@ -1,13 +1,15 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { validateToken, useToken, requestAccess, checkRequestStatus } from './api'
 import Checker from './pages/Checker'
+import Dashboard from './pages/Dashboard'
+import Statistics from './pages/Statistics'
 
 // ── Types ──────────────────────────────────────
 
 type AppPhase =
   | 'loading' | 'onboarding-lang'
   | 'onboarding-theme' | 'onboarding-auth' | 'requesting-access'
-  | 'main' | 'checker'
+  | 'main' | 'checker' | 'dashboard' | 'statistics'
 
 type ThemeId = 'predator' | 'ocean' | 'stealth' | 'nebula'
 
@@ -31,7 +33,7 @@ const T: Record<Lang, Record<string, string>> = {
     close: 'Закрыть', updateAvailable: 'Доступно обновление', download: 'Скачать',
     downloading: 'Загрузка обновления...', downloaded: 'Обновление готово!',
     installRestart: 'Установить и перезапустить',
-    ready: 'Система готова', startCheck: 'Начать проверку', continue: 'Продолжить',
+    ready: 'Система готова', startCheck: 'Начать проверку',    dashboard: 'Мониторинг', statistics: 'Статистика', continue: 'Продолжить',
     langTitle: 'Выберите язык', langDesc: 'Язык интерфейса приложения',
     langRu: 'Русский', langEn: 'English', next: 'Далее',
     themeTitle: 'Выберите тему', themeDesc: 'Оформление приложения',
@@ -49,7 +51,7 @@ const T: Record<Lang, Record<string, string>> = {
     close: 'Close', updateAvailable: 'Update Available', download: 'Download',
     downloading: 'Downloading update...', downloaded: 'Update Ready!',
     installRestart: 'Install & Restart',
-    ready: 'System Ready', startCheck: 'Start Check', continue: 'Continue',
+    ready: 'System Ready', startCheck: 'Start Check',    dashboard: 'Dashboard', statistics: 'Statistics', continue: 'Continue',
     langTitle: 'Choose Language', langDesc: 'Application interface language',
     langRu: 'Русский', langEn: 'English', next: 'Next',
     themeTitle: 'Choose Theme', themeDesc: 'Application appearance',
@@ -192,6 +194,8 @@ const App: React.FC = () => {
   const hCloseModal = useCallback(() => setUpdateModal(prev => ({ ...prev, show: false })), [])
 
   const hStartChecker = useCallback(() => setPhase('checker'), [])
+  const hStartDashboard = useCallback(() => setPhase('dashboard'), [])
+  const hStartStatistics = useCallback(() => setPhase('statistics'), [])
 
   const hNextLang = useCallback(() => setPhase('onboarding-theme'), [])
   const hNextTheme = useCallback(() => setPhase('onboarding-auth'), [])
@@ -479,12 +483,36 @@ const App: React.FC = () => {
               <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             </svg></div>
             <p className="ready-text">{t('ready')}</p>
-            <button className="start-button" onClick={hStartChecker}>{t('startCheck')}</button></>
+            <div className="main-actions">
+              <button className="start-button" onClick={hStartChecker}>{t('startCheck')}</button>
+              <button className="start-button secondary" onClick={hStartDashboard}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+                </svg>
+                {t('dashboard')}
+              </button>
+              <button className="start-button secondary" onClick={hStartStatistics}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 20V10M12 20V4M6 20v-6" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                {t('statistics')}
+              </button>
+            </div></>
         )}
 
         {/* ── CHECKER ── */}
         {phase === 'checker' && (
           <Checker lang={lang} onBack={() => setPhase('main')} />
+        )}
+
+        {/* ── DASHBOARD ── */}
+        {phase === 'dashboard' && (
+          <Dashboard lang={lang} onBack={() => setPhase('main')} />
+        )}
+
+        {/* ── STATISTICS ── */}
+        {phase === 'statistics' && (
+          <Statistics lang={lang} onBack={() => setPhase('main')} />
         )}
 
         {/* ═══ UPDATE MODAL (overlay) ═══ */}
