@@ -58,17 +58,28 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow()
 
-  // Auto-check for updates after window loads
+  // ── Update check helpers ──
+
+  function checkForUpdates() {
+    mainWindow?.webContents.send('checking-for-update')
+    autoUpdater.checkForUpdates().catch(() => {
+      mainWindow?.webContents.send('update-not-available')
+    })
+  }
+
+  // Initial check after window loads
   mainWindow?.webContents.once('did-finish-load', () => {
     if (!VITE_DEV_SERVER_URL) {
-      setTimeout(() => {
-        mainWindow?.webContents.send('checking-for-update')
-        autoUpdater.checkForUpdates().catch(() => {
-          mainWindow?.webContents.send('update-not-available')
-        })
-      }, 1500)
+      setTimeout(checkForUpdates, 1500)
     }
   })
+
+  // Periodic background check every 5 minutes (300 000 ms)
+  setInterval(() => {
+    if (!VITE_DEV_SERVER_URL && mainWindow && !mainWindow.isDestroyed()) {
+      checkForUpdates()
+    }
+  }, 300_000)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
