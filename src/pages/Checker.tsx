@@ -38,6 +38,9 @@ const T: Record<string, Record<string, string>> = {
     dmaDetected: 'Обнаружено DMA-устройств',
     cheatsFound: 'Найдено следов читов',
     processesFound: 'Подозрительных процессов',
+    groupHigh: 'Высокий риск', groupMedium: 'Средний риск', groupLow: 'Низкий риск',
+    showAll: 'Показать все', collapse: 'Свернуть',
+    groupHidden: 'ещё скрыто',
   },
   en: {
     title: 'System Scan',
@@ -70,6 +73,9 @@ const T: Record<string, Record<string, string>> = {
     dmaDetected: 'DMA devices detected',
     cheatsFound: 'Cheat traces found',
     processesFound: 'Suspicious processes',
+    groupHigh: 'High risk', groupMedium: 'Medium risk', groupLow: 'Low risk',
+    showAll: 'Show all', collapse: 'Collapse',
+    groupHidden: 'more hidden',
   },
 }
 
@@ -140,6 +146,8 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
   }
 }
 
+const INITIAL_SHOW = 5
+
 // ── Component ──
 
 export default function Checker({ lang, onBack }: CheckerProps) {
@@ -152,6 +160,8 @@ export default function Checker({ lang, onBack }: CheckerProps) {
   const [selectedResult, setSelectedResult] = useState<ScanResult | null>(null)
   const [error, setError] = useState('')
   const [tabTransition, setTabTransition] = useState<'enter' | 'idle' | 'exit'>('idle')
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['high']))
+  const [showAllGroups, setShowAllGroups] = useState<Set<string>>(new Set())
   const scanRef = useRef<boolean>(false)
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -233,6 +243,8 @@ export default function Checker({ lang, onBack }: CheckerProps) {
     setSelectedResult(null)
     setPhase('idle')
     scanRef.current = false
+    setExpandedGroups(new Set(['high']))
+    setShowAllGroups(new Set())
   }, [])
 
   const handleTabChange = useCallback((tab: ScanMode) => {
@@ -436,92 +448,127 @@ export default function Checker({ lang, onBack }: CheckerProps) {
                 <span className="checker-summary-dot">•</span>
                 <span>{t('time')}: {formatTime(summary.scanTimeMs)}</span>
               </div>
-              {summary.suspiciousFiles > 0 && (
-                <div className="checker-summary-risks">
-                  {summary.highRiskCount > 0 && (
-                    <span className="risk-badge risk-high">{summary.highRiskCount} {t('high')}</span>
-                  )}
-                  {summary.suspiciousFiles - summary.highRiskCount > 0 && (
-                    <span className="risk-badge risk-medium">{summary.suspiciousFiles - summary.highRiskCount} {t('medium')}</span>
-                  )}
-                </div>
-              )}
             </div>
           )}
 
           {results.length > 0 && (
-            <div className="checker-table-wrap">
-              <table className="checker-table">
-                <thead>
-                  <tr>
-                    <th></th>
-                    <th>{t('file')}</th>
-                    <th>{t('matches')}</th>
-                    <th>{t('risk')}</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((r, i) => (
-                    <tr key={i} className={`${riskClass(r.risk)} stagger-row`}
-                      style={{ animationDelay: `${i * 0.08}s` }}
-                      onClick={() => setSelectedResult(
-                        selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? null : r
-                      )}>
-                      <td className="checker-type-cell">
-                        <span className="checker-type-icon" style={{ animationDelay: `${i * 0.08 + 0.12}s` }} title={typeName(r.type)}>{typeIcon(r.type)}</span>
-                      </td>
-                      <td className="checker-file-cell">
-                        <span className="checker-file-name">{r.fileName}</span>
-                        <span className="checker-file-type">{typeName(r.type)}</span>
-                      </td>
-                      <td>
-                        <div className="checker-matches">
-                          {r.matches.slice(0, 2).map((m, j) => (
-                            <span key={j} className="match-tag">{m.includes(':') ? m.split(':').slice(1).join(':') : m}</span>
-                          ))}
-                          {r.matches.length > 2 && <span className="match-more">+{r.matches.length - 2}</span>}
-                        </div>
-                      </td>
-                      <td><span className={`risk-badge ${riskClass(r.risk)}`}>{riskLabel(r.risk)}</span></td>
-                      <td><span className="checker-expand">{selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? '▲' : '▼'}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="checker-groups">
+              {/* Group results by risk level: high → medium → low */}
+              {(['high', 'medium', 'low'] as const).map(riskLevel => {
+                const group = results.filter(r => r.risk === riskLevel)
+                if (group.length === 0) return null
+                const isExpanded = expandedGroups.has(riskLevel)
+                const isShowAll = showAllGroups.has(riskLevel)
+                const INITIAL_SHOW = 5
+                const visible = isShowAll ? group : group.slice(0, INITIAL_SHOW)
+                const hidden = group.length - INITIAL_SHOW
 
-              {selectedResult && (
-                <div className="checker-detail">
-                  <div className="checker-detail-header">
-                    <div className="checker-detail-title-row">
-                      <span className="checker-type-icon-large">{typeIcon(selectedResult.type)}</span>
-                      <div>
-                        <div className="checker-detail-filename">{selectedResult.fileName}</div>
-                        <div className="checker-detail-type">{typeName(selectedResult.type)}</div>
+                const toggleGroup = () => {
+                  setExpandedGroups(prev => {
+                    const next = new Set(prev)
+                    if (next.has(riskLevel)) next.delete(riskLevel)
+                    else next.add(riskLevel)
+                    return next
+                  })
+                }
+                const toggleShowAll = () => {
+                  setShowAllGroups(prev => {
+                    const next = new Set(prev)
+                    if (next.has(riskLevel)) next.delete(riskLevel)
+                    else next.add(riskLevel)
+                    return next
+                  })
+                }
+
+                return (
+                  <div key={riskLevel} className={`result-group group-${riskLevel}`}>
+                    {/* Group header */}
+                    <button className="group-header" onClick={toggleGroup}>
+                      <div className="group-header-left">
+                        <span className={`group-risk-dot dot-${riskLevel}`} />
+                        <span className="group-title">{
+                          riskLevel === 'high' ? t('groupHigh') :
+                          riskLevel === 'medium' ? t('groupMedium') : t('groupLow')
+                        }</span>
                       </div>
-                    </div>
-                    <span className={`risk-badge ${riskClass(selectedResult.risk)}`}>{riskLabel(selectedResult.risk)}</span>
+                      <div className="group-header-right">
+                        <span className="group-count">{group.length}</span>
+                        <span className={`group-chevron ${isExpanded ? 'open' : ''}`}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Collapsible body */}
+                    {isExpanded && (
+                      <div className="group-body">
+                        {visible.map((r, i) => (
+                          <div key={`${r.path}-${i}`}
+                            className={`result-row`}
+                            style={{ animationDelay: `${i * 0.06}s` }}
+                            onClick={() => setSelectedResult(
+                              selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? null : r
+                            )}
+                          >
+                            <div className="result-row-main">
+                              <span className="result-icon" title={typeName(r.type)}>{typeIcon(r.type)}</span>
+                              <div className="result-info">
+                                <span className="result-name">{r.fileName}</span>
+                                <span className="result-path">{r.path.length > 55 ? r.path.slice(0, 52) + '...' : r.path}</span>
+                              </div>
+                              <div className="result-matches">
+                                {r.matches.slice(0, 1).map((m, j) => (
+                                  <span key={j} className="match-tag">{m.includes(':') ? m.split(':').slice(1).join(':') : m}</span>
+                                ))}
+                                {r.matches.length > 1 && <span className="match-more">+{r.matches.length - 1}</span>}
+                              </div>
+                              <span className="result-expand">{selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? '▲' : '▼'}</span>
+                            </div>
+
+                            {/* Detail panel */}
+                            {selectedResult?.path === r.path && selectedResult?.fileName === r.fileName && (
+                              <div className="result-detail">
+                                <div className="result-detail-row">
+                                  <span className="detail-label">{t('path')}</span>
+                                  <span className="detail-value path">{r.path}</span>
+                                </div>
+                                {r.size > 0 && (
+                                  <div className="result-detail-row">
+                                    <span className="detail-label">Size</span>
+                                    <span className="detail-value">{formatSize(r.size)}</span>
+                                  </div>
+                                )}
+                                <div className="result-detail-row">
+                                  <span className="detail-label">{t('matches')}</span>
+                                  <div className="detail-tags">
+                                    {r.matches.map((m, j) => (
+                                      <span key={j} className="match-tag">{m}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
+                        {/* Show more / collapse */}
+                        {hidden > 0 && !isShowAll && (
+                          <button className="group-show-btn" onClick={toggleShowAll}>
+                            {t('showAll')} {group.length} ({hidden} {t('groupHidden')})
+                          </button>
+                        )}
+                        {isShowAll && group.length > INITIAL_SHOW && (
+                          <button className="group-show-btn collapse" onClick={toggleShowAll}>
+                            {t('collapse')}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="checker-detail-section">
-                    <span className="checker-detail-label">{t('path')}</span>
-                    <span className="checker-detail-path">{selectedResult.path}</span>
-                  </div>
-                  {selectedResult.size > 0 && (
-                    <div className="checker-detail-section">
-                      <span className="checker-detail-label">Size</span>
-                      <span className="checker-detail-value">{formatSize(selectedResult.size)}</span>
-                    </div>
-                  )}
-                  <div className="checker-detail-section">
-                    <span className="checker-detail-label">{t('matches')}</span>
-                    <div className="checker-matches" style={{ marginTop: 4 }}>
-                      {selectedResult.matches.map((m, j) => (
-                        <span key={j} className="match-tag">{m}</span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
+                )
+              })}
             </div>
           )}
 
