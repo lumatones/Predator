@@ -1,6 +1,10 @@
 // ── Config ──
 
-const API_BASE = 'http://localhost:3001'
+// ── Config ──
+// Change this to your public IP if you want friends to connect
+// For local-only development, use http://localhost:3001
+
+const API_BASE = 'http://5.164.42.189:3001'
 
 // ── Types ──
 
