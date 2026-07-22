@@ -3,19 +3,19 @@
 **Система проверки безопасности для GTA 5 RP**
 
 <p align="center">
-  <a href="https://github.com/lumatones/Predator/releases/latest/download/Predator-0.0.5.exe">
-    <img src="https://img.shields.io/badge/Скачать_Predator-8B5CF6?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a1a2e" alt="Download Predator">
+  <a href="https://github.com/lumatones/Predator/releases/latest">
+    <img src="https://img.shields.io/badge/Скачать_Predator-ff4444?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a1a2e" alt="Download Predator">
   </a>
   <br>
   <a href="https://github.com/lumatones/Predator/releases">
-    <img src="https://img.shields.io/github/v/release/lumatones/Predator?style=flat-square&label=Версия&color=8B5CF6" alt="Version">
+    <img src="https://img.shields.io/github/v/release/lumatones/Predator?style=flat-square&label=Версия&color=ff4444" alt="Version">
   </a>
   <a href="https://github.com/lumatones/Predator/releases">
-    <img src="https://img.shields.io/github/downloads/lumatones/Predator/total?style=flat-square&label=Скачиваний&color=A78BFA" alt="Downloads">
+    <img src="https://img.shields.io/github/downloads/lumatones/Predator/total?style=flat-square&label=Скачиваний&color=ff6b35" alt="Downloads">
   </a>
 </p>
 
-Predator - десктопное приложение для обнаружения следов стороннего ПО (читов) на компьютере пользователя. Проверяет файловую систему, процессы, историю браузера и DMA-устройства.
+Predator — десктопное приложение для обнаружения следов стороннего ПО (читов) на компьютере пользователя. Проводит комплексную проверку в **5 режимах**: файлы, процессы, поиск читов, DMA-устройства и расширенное сканирование.
 
 ---
 
@@ -35,14 +35,35 @@ Predator - десктопное приложение для обнаружени
 При первом запуске приложение проведёт вас через несколько шагов:
 
 1. **Язык** 🇷🇺 / 🇬🇧
-2. **Тема оформления** - выберите цветовую схему
-3. **Авторизация** - введите токен доступа или запросите его через сайт
+2. **Тема оформления** — выберите цветовую схему
+3. **Авторизация** — введите токен доступа или запросите его через сайт
+
+---
+
+## 🔍 Режимы проверки
+
+| Режим | Иконка | Описание |
+|-------|--------|----------|
+| **Файлы** | 📁 | Поиск подозрительных файлов и скриптов (JS, DLL, LUA, ASI...) |
+| **Процессы** | ⚙️ | Проверка запущенных процессов, недавних элементов и Prefetch |
+| **Читы** | 🎯 | Поиск Nightfall, DMA, 0Xcheat, 1337 Cheat и других |
+| **DMA** | 🔌 | Обнаружение DMA-карт и FPGA-устройств (Xilinx, Altera, FTDI) |
+| **Расширенный** | 🛡️ | **Комплексная проверка**: файлы + процессы + реестр + Prefetch + DMA + история браузера в 6 этапов |
+
+После сканирования доступен **поиск по результатам** 🔍 — фильтрация найденных файлов по имени, пути или совпадениям в реальном времени.
 
 ---
 
 ## 🔄 Обновления
 
-Приложение автоматически проверяет наличие новой версии при запуске. Если обновление найдено - появится окно с выбором:
+Приложение автоматически проверяет наличие новой версии:
+
+- **При запуске** — через 1.5 секунды после старта
+- **Фоном** — каждые 5 минут, даже если вы не перезапускали приложение
+
+Рядом с версией в футере загорается красная пульсирующая точка ●, если обновление доступно.
+
+Если обновление найдено — появится окно с выбором:
 
 | Кнопка | Действие |
 |--------|----------|
