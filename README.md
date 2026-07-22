@@ -2,24 +2,52 @@
 
 **Система проверки безопасности для GTA 5 RP (Majestic)**
 
+<p align="center">
+  <a href="https://github.com/lumatones/Predator/releases/latest/download/Predator-0.0.4.exe">
+    <img src="https://img.shields.io/badge/Скачать_Predator-0.0.4-8B5CF6?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a1a2e" alt="Download Predator">
+  </a>
+  <br>
+  <a href="https://github.com/lumatones/Predator/releases">
+    <img src="https://img.shields.io/github/v/release/lumatones/Predator?style=flat-square&label=Версия&color=8B5CF6" alt="Version">
+  </a>
+  <a href="https://github.com/lumatones/Predator/releases">
+    <img src="https://img.shields.io/github/downloads/lumatones/Predator/total?style=flat-square&label=Скачиваний&color=A78BFA" alt="Downloads">
+  </a>
+  <a href="https://github.com/lumatones/Predator">
+    <img src="https://img.shields.io/github/last-commit/lumatones/Predator?style=flat-square&label=Обновлено&color=C084FC" alt="Last commit">
+  </a>
+  <a href="https://github.com/lumatones/Predator/actions/workflows/release.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/lumatones/Predator/release.yml?style=flat-square&label=Сборка&color=10B981" alt="Build status">
+  </a>
+</p>
+
 Predator — десктопное приложение для поиска следов стороннего ПО (читов) на компьютере пользователя. Проверяет файловую систему, историю браузера и другие артефакты.
 
 ---
 
-## 🚀 Быстрый старт
+## ⬇️ Скачать установщик
+
+| Версия | Ссылка | Размер |
+|--------|--------|--------|
+| **v0.0.4** (latest) | [📥 Predator-0.0.4.exe](https://github.com/lumatones/Predator/releases/download/v0.0.4/Predator-0.0.4.exe) | ~72 MB |
+| Все релизы | [→ GitHub Releases](https://github.com/lumatones/Predator/releases) | — |
+
+> 💡 **Как установить:** Скачайте `Predator-0.0.4.exe`, запустите двойным кликом и следуйте инструкциям установщика.
+
+---
+
+## 🚀 Быстрый старт (для разработки)
 
 ```bash
 # Установка зависимостей
 npm install
 
-# Разработка
+# Запуск в режиме разработки
 npm run dev
 
-# Сборка portable-версии
+# Сборка portable .exe
 npm run electron:build:win
 ```
-
-**Готовый установщик:** `release-installer\Predator Installer-1.0.0.exe`
 
 ---
 
@@ -27,6 +55,7 @@ npm run electron:build:win
 
 | Версия | Дата | Что нового |
 |--------|------|-----------|
+| **v0.0.4** | 2026-07-22 | Backend API, Admin Site, Checker (сканирование файлов) |
 | **v0.0.3** | 2026-07-22 | Auto-Updater, онбординг (язык/тема/токен) |
 | **v0.0.2** | 2026-07-22 | Vite + React + Electron, UI, NSIS-ресурсы |
 | **v0.0.1** | 2026-07-22 | Инициализация репозитория |

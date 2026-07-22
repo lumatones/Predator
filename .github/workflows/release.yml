@@ -1,0 +1,68 @@
+name: 🦅 Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Predator ${{ github.ref_name }}
+    runs-on: windows-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 🗃️ Cache Electron Builder
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron-builder
+          key: electron-builder-${{ hashFiles('package.json') }}
+          restore-keys: |
+            electron-builder-
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔨 Build application
+        run: npm run electron:build:win -- --publish never
+
+      - name: 🏷️ Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/Predator-*.exe
+          generate_release_notes: true
+          name: ${{ github.ref_name }}
+          body: |
+            ## 🦅 Predator ${{ github.ref_name }}
+
+            ### 📥 Скачать
+
+            | Файл | Ссылка |
+            |------|--------|
+            | Установщик (NSIS) | `Predator-${{ github.ref_name }}.exe` |
+
+            > Автоматически собран из коммита `${{ github.sha }}`
+
+            ### ⚙️ Для разработчиков
+
+            ```bash
+            git checkout ${{ github.ref_name }}
+            npm install
+            npm run dev
+            ```
+
+            ---
+            *🏗️ Собрано с ❤️ через GitHub Actions*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
