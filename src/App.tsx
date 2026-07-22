@@ -190,9 +190,8 @@ const App: React.FC = () => {
       setTokenError(t('authError'))
       return
     }
-    // Empty token → skip auth
     if (clean.length === 0) {
-      setPhase('main')
+      setTokenError(t('authError'))
       return
     }
 
