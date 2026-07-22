@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import fs from 'fs'
+import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
 import { execSync } from 'child_process'
@@ -14,6 +15,11 @@ import {
   getScanPaths,
   TARGET_EXTENSIONS,
 } from './cheats-db'
+
+// ── Event-loop yield ──
+// Yields control back to the event loop so the UI stays responsive
+// (clicking, animations, IPC messages) even during heavy scanning.
+const yieldToEventLoop = () => new Promise(resolve => setImmediate(resolve))
 
 // ── Types ──────────────────────────────────────
 
@@ -106,21 +112,26 @@ function getFileRiskLevel(fileName: string, matches: string[]): 'high' | 'medium
   return 'low'
 }
 
-function* walkDir(dirPath: string): Generator<string> {
+// ── Async directory walker ──
+// Walks directories using async APIs and yields to the event loop
+// after EVERY directory, keeping the UI responsive.
+async function* walkDirAsync(dirPath: string): AsyncGenerator<string> {
   try {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    const entries = await fsp.readdir(dirPath, { withFileTypes: true })
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name)
       if (entry.isDirectory()) {
         if (!entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'Temp') {
-          yield* walkDir(fullPath)
+          // Yield after each directory so the event loop can breathe
+          await yieldToEventLoop()
+          yield* walkDirAsync(fullPath)
         }
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase()
         if (TARGET_EXTENSIONS.has(ext)) yield fullPath
       }
     }
-  } catch { /* skip */ }
+  } catch { /* skip (permissions, etc.) */ }
 }
 
 // Yields to the event loop so the renderer can receive progress events.
@@ -128,8 +139,7 @@ function* walkDir(dirPath: string): Generator<string> {
 // queues up and the renderer only sees the final 'done' event.
 async function sendProgress(win: BrowserWindow | null, data: ScanProgress) {
   win?.webContents.send('scan-progress', data)
-  // Yield control back to the event loop so the IPC message actually gets delivered
-  await new Promise(resolve => setImmediate(resolve))
+  await yieldToEventLoop()
 }
 
 function execCmd(cmd: string, psCmd: string, opts = {}): string {
@@ -192,7 +202,7 @@ function matchKnownCheat(name: string): string[] {
 
 async function scanFile(filePath: string): Promise<ScanResult | null> {
   try {
-    const stat = fs.statSync(filePath)
+    const stat = await fsp.stat(filePath)
     if (!stat.isFile() || stat.size > 5 * 1024 * 1024) return null
 
     const fileName = path.basename(filePath)
@@ -212,7 +222,7 @@ async function scanFile(filePath: string): Promise<ScanResult | null> {
     const textExts = new Set(['.txt', '.log', '.json', '.xml', '.cfg', '.ini', '.js', '.lua', '.py', '.cs', '.bat', '.ps1', '.vbs', '.ahk', '.luac'])
     if (textExts.has(ext) && stat.size < 512 * 1024) {
       try {
-        const content = fs.readFileSync(filePath, 'utf-8').toLowerCase()
+        const content = (await fsp.readFile(filePath, 'utf-8')).toLowerCase()
         for (const keyword of ALL_CHEAT_KEYWORDS) {
           if (content.includes(keyword)) matches.push(`content:${keyword}`)
         }
@@ -223,7 +233,7 @@ async function scanFile(filePath: string): Promise<ScanResult | null> {
     const binaryExts = new Set(['.exe', '.dll', '.sys', '.drv', '.asi', '.luac'])
     if (binaryExts.has(ext) && stat.size >= 1024 && stat.size < 50 * 1024 * 1024) {
       try {
-        const buffer = fs.readFileSync(filePath)
+        const buffer = await fsp.readFile(filePath)
         for (const sig of KNOWN_BINARY_SIGNATURES) {
           if (buffer.includes(sig)) matches.push(`binary-sig:${sig.toString('utf-8').slice(0, 30)}`)
         }
@@ -245,11 +255,11 @@ async function scanBrowserHistory(keywords?: string[]): Promise<ScanResult[]> {
 
   for (const historyPath of BROWSER_DIRS) {
     try {
-      if (!fs.existsSync(historyPath)) continue
-      const stat = fs.statSync(historyPath)
+      await fsp.access(historyPath)
+      const stat = await fsp.stat(historyPath)
       if (stat.size > 10 * 1024 * 1024) continue
 
-      const content = fs.readFileSync(historyPath, 'utf-8').toLowerCase()
+      const content = (await fsp.readFile(historyPath, 'utf-8')).toLowerCase()
       const found: string[] = []
 
       for (const keyword of kw) {
@@ -265,6 +275,7 @@ async function scanBrowserHistory(keywords?: string[]): Promise<ScanResult[]> {
         })
       }
     } catch { /* skip */ }
+    await yieldToEventLoop()
   }
 
   return results
@@ -277,22 +288,23 @@ async function runFileScan(win: BrowserWindow | null): Promise<{ results: ScanRe
 
   for (let i = 0; i < scanDirs.length; i++) {
     const dir = scanDirs[i]
-    if (!fs.existsSync(dir)) {
-      // Still count non-existing dirs as 'done' so progress shows something
+    try {
+      await fsp.access(dir)
+    } catch {
       await sendProgress(win, { phase: 'scanning', currentDir: `${dir} (skipped)`, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
       continue
     }
 
     await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
 
-    const files: string[] = []
-    for (const filePath of walkDir(dir)) files.push(filePath)
-
-    for (const filePath of files) {
+    // Walk directory ASYNCHRONOUSLY — yields to event loop after each subdirectory
+    for await (const filePath of walkDirAsync(dir)) {
       filesScanned++
       const r = await scanFile(filePath)
       if (r) results.push(r)
-      if (filesScanned % 15 === 0) {
+      // Yield to event loop after EVERY file so the UI never freezes
+      await yieldToEventLoop()
+      if (filesScanned % 10 === 0) {
         await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
       }
     }
