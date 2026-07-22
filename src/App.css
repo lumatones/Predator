@@ -581,6 +581,33 @@ body {
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
 }
 
+/* Update indicator dot in footer */
+.update-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: updateDotPulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 6px var(--accent-red);
+  cursor: help;
+}
+
+@keyframes updateDotPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+    box-shadow: 0 0 4px var(--accent-red);
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 1;
+    box-shadow: 0 0 14px var(--accent-red);
+  }
+}
+
 /* ═══ Onboarding Screens ═══ */
 
 .onb-label {

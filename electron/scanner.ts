@@ -23,7 +23,7 @@ const yieldToEventLoop = () => new Promise(resolve => setImmediate(resolve))
 
 // ── Types ──────────────────────────────────────
 
-export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma'
+export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma' | 'extended'
 
 export interface ScanResult {
   path: string
@@ -661,6 +661,121 @@ async function runDmaScan(win: BrowserWindow | null): Promise<{ results: ScanRes
 }
 
 // ═══════════════════════════════════════════════
+// MODE 5: EXTENDED — FULL SYSTEM SCAN
+// Combines ALL checks: files, processes, registry,
+// prefetch, browser history, DMA, binary signatures,
+// and GTA-specific cheat paths.
+// ═══════════════════════════════════════════════
+
+// Additional GTA/FiveM cheat software keywords for extended mode
+const EXTENDED_CHEAT_KEYWORDS: string[] = [
+  // GTA 5 cheat menus
+  'eulen', 'redengine', 'skript.gg', 'impulse.one',
+  'luna', 'paragon', 'ozark', 'cherax', 'stand.gg',
+  '2take1.menu', 'modest', 'kiddions', 'majesty.rp',
+  'menyoo', 'simpletrainer', 'nativeui',
+  // Injectors / bypass
+  'xenos', 'extremeinjector', 'manualmap',
+  'fivem bypass', 'rockstar bypass', 'ac bypass',
+  // Spoofers
+  'rpchanger', 'hwid spoofer', 'mac spoofer',
+  // DMA
+  'dma', 'fpga', 'pcileech', 'fuser', 'screamer',
+  'leechcore', 'memprocfs', 'vmm', 'kmem', 'winpmem',
+  // Debuggers
+  'process hacker', 'dnspy', 'ollydbg', 'x64dbg', 'ida',
+  // Common hack terms
+  'aimbot', 'wallhack', 'esp', 'triggerbot',
+  'norecoil', 'godmode', 'teleport', 'moneydrop',
+  'recovery', 'unlock all', 'mod menu',
+]
+
+// GTA / FiveM / Majestic specific scan paths (extra)
+const EXTENDED_SCAN_PATHS: string[] = getScanPaths()
+
+async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+  const results: ScanResult[] = []
+  let filesScanned = 0
+
+  // ── Phase 1: Running processes ──
+  await sendProgress(win, {
+    phase: 'scanning', currentDir: 'Этап 1/6: Проверка процессов...',
+    filesFound: 0, filesScanned: 0, totalDirs: 6, dirsDone: 1,
+  })
+  const processes = scanRunningProcesses()
+  results.push(...processes)
+  filesScanned += processes.length
+  await yieldToEventLoop()
+
+  // ── Phase 2: Comprehensive file scan ──
+  await sendProgress(win, {
+    phase: 'scanning',
+    currentDir: 'Этап 2/6: Сканирование файловой системы (все директории)...',
+    filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 2,
+  })
+
+  for (let i = 0; i < EXTENDED_SCAN_PATHS.length; i++) {
+    const dir = EXTENDED_SCAN_PATHS[i]
+    try {
+      await fsp.access(dir)
+    } catch {
+      continue
+    }
+
+    for await (const filePath of walkDirAsync(dir)) {
+      filesScanned++
+      const r = await scanFile(filePath)
+      if (r) results.push(r)
+      await yieldToEventLoop()
+      if (filesScanned % 20 === 0) {
+        await sendProgress(win, {
+          phase: 'scanning',
+          currentDir: `Этап 2/6: ${path.basename(dir)} (${filesScanned} файлов)...`,
+          filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 2,
+        })
+      }
+    }
+  }
+
+  // ── Phase 3: Registry scan ──
+  await sendProgress(win, {
+    phase: 'scanning', currentDir: 'Этап 3/6: Проверка реестра...',
+    filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 3,
+  })
+  const registryResults = scanRegistryForCheats()
+  results.push(...registryResults)
+  await yieldToEventLoop()
+
+  // ── Phase 4: Prefetch analysis ──
+  await sendProgress(win, {
+    phase: 'scanning', currentDir: 'Этап 4/6: Анализ Prefetch...',
+    filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 4,
+  })
+  const prefetchResults = scanPrefetchFiles()
+  results.push(...prefetchResults)
+  await yieldToEventLoop()
+
+  // ── Phase 5: DMA detection ──
+  await sendProgress(win, {
+    phase: 'scanning', currentDir: 'Этап 5/6: Обнаружение DMA-устройств...',
+    filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 5,
+  })
+  const dmaResults = scanDmaDevices()
+  results.push(...dmaResults)
+  await yieldToEventLoop()
+
+  // ── Phase 6: Browser history ──
+  await sendProgress(win, {
+    phase: 'scanning', currentDir: 'Этап 6/6: Проверка истории браузера...',
+    filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 6,
+  })
+  const browserResults = await scanBrowserHistory(EXTENDED_CHEAT_KEYWORDS)
+  results.push(...browserResults)
+
+  return { results, filesScanned }
+}
+
+// ═══════════════════════════════════════════════
 // MAIN IPC HANDLER
 // ═══════════════════════════════════════════════
 
@@ -676,6 +791,7 @@ export function registerScanHandlers() {
       case 'processes': ({ results, filesScanned } = await runProcessScan(win)); break
       case 'cheats':    ({ results, filesScanned } = await runCheatScan(win)); break
       case 'dma':       ({ results, filesScanned } = await runDmaScan(win)); break
+      case 'extended':  ({ results, filesScanned } = await runExtendedScan(win)); break
     }
 
     const highRiskCount = results.filter(r => r.risk === 'high').length

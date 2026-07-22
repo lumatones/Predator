@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
 
 interface CheckerProps {
@@ -28,12 +28,14 @@ const T: Record<string, Record<string, string>> = {
     tabProcesses: 'Процессы', tabProcessesDesc: 'Запущенные и недавние процессы',
     tabCheats: 'Читы', tabCheatsDesc: 'Поиск Nightfall, DMA, 0Xcheat и других',
     tabDma: 'DMA', tabDmaDesc: 'Обнаружение DMA-карт и FPGA-устройств',
+    tabExtended: 'Расширенный', tabExtendedDesc: 'Полное сканирование системы — файлы, процессы, реестр, Prefetch, DMA',
     riskHigh: 'Высокий риск', riskMedium: 'Средний риск', riskLow: 'Низкий риск',
     processRunning: 'Запущен', processRecent: 'Недавние', processPrefetch: 'Prefetch', processMem: 'Память',
     cheatFiles: 'Файлы', cheatBrowser: 'История', cheatRegistry: 'Реестр',
     dmaPci: 'PCI-устройства', dmaSoftware: 'ПО', dmaDriver: 'Драйверы', dmaRegistry: 'Реестр',
     typeFile: 'Файл', typeBrowser: 'Браузер', typeProcess: 'Процесс', typeRegistry: 'Реестр',
     typeHardware: 'Оборудование', typeSoftware: 'ПО',
+    typeSystem: 'Система',
     noData: 'Нет данных для отображения',
     dmaDetected: 'Обнаружено DMA-устройств',
     cheatsFound: 'Найдено следов читов',
@@ -65,12 +67,14 @@ const T: Record<string, Record<string, string>> = {
     tabProcesses: 'Processes', tabProcessesDesc: 'Running and recent processes',
     tabCheats: 'Cheats', tabCheatsDesc: 'Search Nightfall, DMA, 0Xcheat & more',
     tabDma: 'DMA', tabDmaDesc: 'Detect DMA cards & FPGA devices',
+    tabExtended: 'Extended', tabExtendedDesc: 'Full system scan — files, processes, registry, Prefetch, DMA',
     riskHigh: 'High risk', riskMedium: 'Medium risk', riskLow: 'Low risk',
     processRunning: 'Running', processRecent: 'Recent', processPrefetch: 'Prefetch', processMem: 'Memory',
     cheatFiles: 'Files', cheatBrowser: 'History', cheatRegistry: 'Registry',
     dmaPci: 'PCI devices', dmaSoftware: 'Software', dmaDriver: 'Drivers', dmaRegistry: 'Registry',
     typeFile: 'File', typeBrowser: 'Browser', typeProcess: 'Process', typeRegistry: 'Registry',
     typeHardware: 'Hardware', typeSoftware: 'Software',
+    typeSystem: 'System',
     noData: 'No data to display',
     dmaDetected: 'DMA devices detected',
     cheatsFound: 'Cheat traces found',
@@ -96,6 +100,7 @@ const TABS: TabConfig[] = [
   { id: 'processes', icon: '⚙️', label: 'tabProcesses', desc: 'tabProcessesDesc', color: '#3B82F6' },
   { id: 'cheats',    icon: '🎯', label: 'tabCheats',    desc: 'tabCheatsDesc',    color: '#F59E0B' },
   { id: 'dma',       icon: '🔌', label: 'tabDma',       desc: 'tabDmaDesc',       color: '#8B5CF6' },
+  { id: 'extended',  icon: '🛡️', label: 'tabExtended',  desc: 'tabExtendedDesc',  color: '#22c55e' },
 ]
 
 // ── Realistic mock data per mode ──
@@ -136,6 +141,20 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
       ],
       scanned: 8,
     },
+    extended: {
+      results: [
+        { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine', 'suspicious debugger'], size: 0, modifiedAt: now },
+        { path: '~/Downloads/cheat_loader.js', fileName: 'cheat_loader.js', type: 'file', risk: 'high', matches: ['filename:cheat', 'content:inject'], size: 15234, modifiedAt: now },
+        { path: '~/AppData/Local/FiveM/mods/', fileName: 'eulen.asi', type: 'file', risk: 'high', matches: ['file:eulen', 'gta cheat menu'], size: 245760, modifiedAt: now },
+        { path: 'HKCU\\...\\Uninstall\\Nightfall', fileName: 'Registry: Nightfall', type: 'registry', risk: 'high', matches: ['registry:nightfall installed'], size: 0, modifiedAt: now },
+        { path: '~/Documents/Cheats/', fileName: 'mod_menu.lua', type: 'file', risk: 'medium', matches: ['lua:mod menu', 'script hook'], size: 8912, modifiedAt: now },
+        { path: 'C:\\Windows\\Prefetch\\DMA_TOOL.EXE-*.pf', fileName: 'DMA_TOOL.EXE-*.pf', type: 'file', risk: 'medium', matches: ['prefetch:dma last run', 'process:dma'], size: 0, modifiedAt: now },
+        { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx (VEN_10ee)', 'FPGA device detected'], size: 0, modifiedAt: now },
+        { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma', 'browser:cheat'], size: 4096, modifiedAt: now },
+        { path: '~/Downloads/pcileech/', fileName: 'pcileech.exe', type: 'software', risk: 'high', matches: ['dma-software:pcileech.exe', 'DMA memory tool'], size: 0, modifiedAt: now },
+      ],
+      scanned: 1847,
+    },
   }
 
   const data = mockSets[mode]
@@ -168,6 +187,17 @@ export default function Checker({ lang, onBack }: CheckerProps) {
   const [showAllGroups, setShowAllGroups] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const scanRef = useRef<boolean>(false)
+
+  // Filtered results (client-side search, memoised)
+  const filteredResults = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return results
+    return results.filter(r =>
+      r.fileName.toLowerCase().includes(q) ||
+      r.path.toLowerCase().includes(q) ||
+      r.matches.some(m => m.toLowerCase().includes(q))
+    )
+  }, [results, searchQuery])
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const currentTab = TABS.find(t => t.id === activeTab)!
@@ -303,6 +333,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
       case 'registry': return '📋'
       case 'hardware': return '🔌'
       case 'software': return '💻'
+      case 'system': return '🖥️'
       default: return '📄'
     }
   }
@@ -315,6 +346,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
       case 'registry': return t('typeRegistry')
       case 'hardware': return t('typeHardware')
       case 'software': return t('typeSoftware')
+      case 'system': return t('typeSystem')
       default: return type
     }
   }
@@ -483,23 +515,9 @@ export default function Checker({ lang, onBack }: CheckerProps) {
 
           {results.length > 0 && (
             <div className="checker-groups">
-              {/* Compute filtered results */}
-              {(() => {
-                const q = searchQuery.toLowerCase().trim()
-                const filtered = q
-                  ? results.filter(r =>
-                      r.fileName.toLowerCase().includes(q) ||
-                      r.path.toLowerCase().includes(q) ||
-                      r.matches.some(m => m.toLowerCase().includes(q))
-                    )
-                  : results
-
-                if (q && filtered.length === 0) {
-                  return <div className="search-no-results">{t('searchNoResults')}</div>
-                }
-
-                return (['high', 'medium', 'low'] as const).map(riskLevel => {
-                const group = filtered.filter(r => r.risk === riskLevel)
+              {filteredResults.length > 0 ? (
+                (['high', 'medium', 'low'] as const).map(riskLevel => {
+                const group = filteredResults.filter(r => r.risk === riskLevel)
                 if (group.length === 0) return null
                 const isExpanded = expandedGroups.has(riskLevel)
                 const isShowAll = showAllGroups.has(riskLevel)
@@ -612,7 +630,9 @@ export default function Checker({ lang, onBack }: CheckerProps) {
                   </div>
                 )
               })
-              })()}
+              ) : (
+                searchQuery && <div className="search-no-results">{t('searchNoResults')}</div>
+              )}
             </div>
           )}
 

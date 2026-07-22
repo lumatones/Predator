@@ -1,4 +1,4 @@
-export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma'
+export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma' | 'extended'
 
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>

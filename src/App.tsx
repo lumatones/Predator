@@ -80,6 +80,9 @@ const App: React.FC = () => {
   const [requestStatus, setRequestStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
+  // Update indicator (footer dot)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+
   // Update modal state (separate from phase — overlay)
   const [updateModal, setUpdateModal] = useState<{
     show: boolean
@@ -141,6 +144,7 @@ const App: React.FC = () => {
 
     api.getAppVersion().then(setVersion)
     api.onUpdateAvailable((info) => {
+      setUpdateAvailable(true)
       setUpdateModal(prev => ({ ...prev, show: true, version: info.version, state: 'available' }))
       setPhase('onboarding-lang')
       if (fallbackTimer) clearTimeout(fallbackTimer)
@@ -296,7 +300,10 @@ const App: React.FC = () => {
 
   const Footer = () => (
     <div className="footer">
-      <span className="version">v{version || '0.0.3'}</span>
+      <span className="version">
+        v{version || '0.0.3'}
+        {updateAvailable && <span className="update-indicator" title="Update Available" />}
+      </span>
       <span className="dot">•</span>
       <span className="secure">Secure Connection</span>
     </div>
