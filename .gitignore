@@ -38,3 +38,16 @@ installer/release/
 
 # ── TypeScript output (from tsconfig.node.json) ──
 ts-out/
+
+# ── Temporary files ──
+release_info.json
+nul
+*.tmp
+
+# ── Git credentials ──
+.git-credentials
+.gitconfig.local
+RULES.md
+CHANGELOG.md
+notes.md
+.notes.md

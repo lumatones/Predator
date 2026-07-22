@@ -5,8 +5,7 @@ import Checker from './pages/Checker'
 // ── Types ──────────────────────────────────────
 
 type AppPhase =
-  | 'loading' | 'checking' | 'update-available' | 'downloading'
-  | 'downloaded' | 'update-error' | 'onboarding-lang'
+  | 'loading' | 'onboarding-lang'
   | 'onboarding-theme' | 'onboarding-auth' | 'requesting-access'
   | 'main' | 'checker'
 
@@ -28,10 +27,10 @@ type Lang = 'ru' | 'en'
 
 const T: Record<Lang, Record<string, string>> = {
   ru: {
-    title: 'Система проверки безопасности', checking: 'Проверка обновлений...',
-    updateAvailable: 'Доступно обновление', download: 'Загрузить', skip: 'Пропустить',
+    title: 'Система проверки безопасности',
+    close: 'Закрыть', updateAvailable: 'Доступно обновление', download: 'Скачать',
     downloading: 'Загрузка обновления...', downloaded: 'Обновление готово!',
-    installRestart: 'Установить и перезапустить', later: 'Позже',
+    installRestart: 'Установить и перезапустить',
     ready: 'Система готова', startCheck: 'Начать проверку', continue: 'Продолжить',
     langTitle: 'Выберите язык', langDesc: 'Язык интерфейса приложения',
     langRu: 'Русский', langEn: 'English', next: 'Далее',
@@ -46,10 +45,10 @@ const T: Record<Lang, Record<string, string>> = {
     requestId: 'ID запроса', requesting: 'Отправка запроса...', cancel: 'Отмена',
   },
   en: {
-    title: 'Security Check System', checking: 'Checking for updates...',
-    updateAvailable: 'Update Available', download: 'Download', skip: 'Skip',
+    title: 'Security Check System',
+    close: 'Close', updateAvailable: 'Update Available', download: 'Download',
     downloading: 'Downloading update...', downloaded: 'Update Ready!',
-    installRestart: 'Install & Restart', later: 'Later',
+    installRestart: 'Install & Restart',
     ready: 'System Ready', startCheck: 'Start Check', continue: 'Continue',
     langTitle: 'Choose Language', langDesc: 'Application interface language',
     langRu: 'Русский', langEn: 'English', next: 'Next',
@@ -81,12 +80,24 @@ const App: React.FC = () => {
   const [requestStatus, setRequestStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
-  // Download progress state
-  const [dlPercent, setDlPercent] = useState(0)
-  const [dlSpeed, setDlSpeed] = useState('')
-  const [dlSize, setDlSize] = useState('')
-  const [updateVersion, setUpdateVersion] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
+  // Update modal state (separate from phase — overlay)
+  const [updateModal, setUpdateModal] = useState<{
+    show: boolean
+    version: string
+    state: 'available' | 'downloading' | 'done' | 'error'
+    percent: number
+    speed: string
+    size: string
+    errorMsg: string
+  }>({
+    show: false,
+    version: '',
+    state: 'available',
+    percent: 0,
+    speed: '',
+    size: '',
+    errorMsg: '',
+  })
 
   const t = (key: string) => T[lang][key] || key
 
@@ -129,13 +140,9 @@ const App: React.FC = () => {
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null
 
     api.getAppVersion().then(setVersion)
-    api.onCheckingForUpdate(() => {
-      setPhase('checking')
-      if (fallbackTimer) clearTimeout(fallbackTimer)
-    })
     api.onUpdateAvailable((info) => {
-      setUpdateVersion(info.version)
-      setPhase('update-available')
+      setUpdateModal(prev => ({ ...prev, show: true, version: info.version, state: 'available' }))
+      setPhase('onboarding-lang')
       if (fallbackTimer) clearTimeout(fallbackTimer)
     })
     api.onUpdateNotAvailable(() => {
@@ -143,19 +150,22 @@ const App: React.FC = () => {
       if (fallbackTimer) clearTimeout(fallbackTimer)
     })
     api.onDownloadProgress((data) => {
-      setDlPercent(data.percent)
-      setDlSpeed(data.bytesPerSecond > 0 ? `${(data.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : '')
-      setDlSize(`${(data.transferred / 1024 / 1024).toFixed(1)} / ${(data.total / 1024 / 1024).toFixed(1)} MB`)
-      setPhase('downloading')
+      setUpdateModal(prev => ({
+        ...prev,
+        show: true,
+        state: 'downloading',
+        percent: data.percent,
+        speed: data.bytesPerSecond > 0 ? `${(data.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : '',
+        size: `${(data.transferred / 1024 / 1024).toFixed(1)} / ${(data.total / 1024 / 1024).toFixed(1)} MB`,
+      }))
       if (fallbackTimer) clearTimeout(fallbackTimer)
     })
     api.onUpdateDownloaded(() => {
-      setPhase('downloaded')
+      setUpdateModal(prev => ({ ...prev, show: true, state: 'done' }))
       if (fallbackTimer) clearTimeout(fallbackTimer)
     })
     api.onUpdateError((msg) => {
-      setErrorMsg(msg)
-      setPhase('update-error')
+      setUpdateModal(prev => ({ ...prev, state: 'error', errorMsg: msg }))
       if (fallbackTimer) clearTimeout(fallbackTimer)
     })
 
@@ -170,15 +180,12 @@ const App: React.FC = () => {
   }, [])
 
   // ── Handlers ──
-  const hInstall = useCallback(() => window.electronAPI?.startDownload(), [])
-  const hRestart = useCallback(() => window.electronAPI?.restartApp(), [])
-  const hSkip = useCallback(() => setPhase('onboarding-lang'), [])
-  const hCheckAgain = useCallback(async () => {
-    setPhase('checking')
-    const r = await window.electronAPI?.startUpdateCheck()
-    if (r?.updateAvailable) { setUpdateVersion(r.version || ''); setPhase('update-available') }
-    else setPhase('onboarding-lang')
+  const hInstallUpdate = useCallback(() => {
+    setUpdateModal(prev => ({ ...prev, state: 'downloading', percent: 0 }))
+    window.electronAPI?.startDownload()
   }, [])
+  const hRestart = useCallback(() => window.electronAPI?.restartApp(), [])
+  const hCloseModal = useCallback(() => setUpdateModal(prev => ({ ...prev, show: false })), [])
 
   const hStartChecker = useCallback(() => setPhase('checker'), [])
 
@@ -322,63 +329,11 @@ const App: React.FC = () => {
             <div className="progress-bar indeterminate"><div className="progress-fill" /></div></>
         )}
 
-        {/* Checking updates */}
-        {phase === 'checking' && renderCard(
+        {/* Loading */}
+        {phase === 'loading' && renderCard(
           <><div className="spinner"><div className="spinner-ring" /></div>
-            <p className="status-text">{t('checking')}</p>
+            <p className="status-text">Загрузка...</p>
             <div className="progress-bar indeterminate"><div className="progress-fill" /></div></>
-        )}
-
-        {/* Update available */}
-        {phase === 'update-available' && renderCard(
-          <><div className="update-icon">
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="22" stroke={THEMES[theme].light} strokeWidth="2" />
-              <path d="M24 14V34M14 24H34" stroke={THEMES[theme].light} strokeWidth="3" strokeLinecap="round" />
-            </svg></div>
-            <p className="status-title">{t('updateAvailable')}</p>
-            <p className="status-text">{updateVersion}</p>
-            <button className="start-button" onClick={hInstall}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>{t('download')}</button>
-            <button className="skip-button" onClick={hSkip}>{t('skip')}</button></>
-        )}
-
-        {/* Downloading */}
-        {phase === 'downloading' && renderCard(
-          <><div className="progress-header-dl">
-              <span className="progress-label-dl">{t('downloading')}</span>
-              <span className="progress-percent-dl">{dlPercent}%</span>
-            </div>
-            <div className="update-progress-bar">
-              <div className="update-progress-fill" style={{ width: `${dlPercent}%` }} />
-            </div>
-            <div className="progress-info"><span>{dlSpeed}</span><span>{dlSize}</span></div></>
-        )}
-
-        {/* Downloaded */}
-        {phase === 'downloaded' && renderCard(
-          <><div className="ready-icon">
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" />
-              <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg></div>
-            <p className="ready-text">{t('downloaded')}</p>
-            <button className="start-button" onClick={hRestart}>{t('installRestart')}</button>
-            <button className="skip-button" onClick={hSkip}>{t('later')}</button></>
-        )}
-
-        {/* Update error */}
-        {phase === 'update-error' && renderCard(
-          <><div className="error-icon-dl">
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" />
-              <line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
-              <line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
-            </svg></div>
-            <p className="status-text" style={{ color: '#EF4444', animation: 'none' }}>{errorMsg}</p>
-            <button className="start-button" onClick={hSkip}>{t('continue')}</button></>
         )}
 
         {/* ── ONBOARDING: Language ── */}
@@ -523,6 +478,105 @@ const App: React.FC = () => {
         {/* ── CHECKER ── */}
         {phase === 'checker' && (
           <Checker lang={lang} onBack={() => setPhase('main')} />
+        )}
+
+        {/* ═══ UPDATE MODAL (overlay) ═══ */}
+        {updateModal.show && (
+          <div className="update-modal-overlay" onClick={hCloseModal}>
+            <div className="update-modal" onClick={e => e.stopPropagation()}>
+              {/* Available */}
+              {updateModal.state === 'available' && (
+                <>
+                  <div className="update-modal-icon">
+                    <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+                      <circle cx="24" cy="24" r="22" stroke={THEMES[theme].light} strokeWidth="2" />
+                      <path d="M24 14V34M14 24H34" stroke={THEMES[theme].light} strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <p className="update-modal-title">{t('updateAvailable')}</p>
+                  <p className="update-modal-version">{updateModal.version}</p>
+                  <div className="update-modal-actions">
+                    <button className="update-modal-btn secondary" onClick={hCloseModal}>
+                      {t('close')}
+                    </button>
+                    <button className="update-modal-btn primary" onClick={hInstallUpdate}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      {t('download')}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Downloading */}
+              {updateModal.state === 'downloading' && (
+                <>
+                  <div className="update-modal-icon">
+                    <div className="spinner" style={{ width: 36, height: 36 }}>
+                      <div className="spinner-ring" style={{ borderWidth: 2 }} />
+                    </div>
+                  </div>
+                  <p className="update-modal-title">{t('downloading')}</p>
+                  <div className="update-modal-actions" style={{ flexDirection: 'column', gap: 8 }}>
+                    <div className="update-progress-bar">
+                      <div className="update-progress-fill" style={{ width: `${updateModal.percent}%` }} />
+                    </div>
+                    <div className="progress-info">
+                      <span>{updateModal.speed}</span>
+                      <span>{updateModal.percent}%</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{updateModal.size}</span>
+                  </div>
+                </>
+              )}
+
+              {/* Done */}
+              {updateModal.state === 'done' && (
+                <>
+                  <div className="update-modal-icon">
+                    <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+                      <circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" />
+                      <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <p className="update-modal-title">{t('downloaded')}</p>
+                  <p className="update-modal-version">{updateModal.version}</p>
+                  <div className="update-modal-actions">
+                    <button className="update-modal-btn secondary" onClick={hCloseModal}>
+                      {t('close')}
+                    </button>
+                    <button className="update-modal-btn primary restart" onClick={hRestart}>
+                      {t('installRestart')}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Error */}
+              {updateModal.state === 'error' && (
+                <>
+                  <div className="update-modal-icon error">
+                    <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+                      <circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" />
+                      <line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
+                      <line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <p className="update-modal-title" style={{ color: '#EF4444' }}>{t('updateAvailable')}</p>
+                  <p className="update-modal-version" style={{ color: 'rgba(255,68,68,0.6)' }}>{updateModal.errorMsg}</p>
+                  <div className="update-modal-actions">
+                    <button className="update-modal-btn secondary" onClick={hCloseModal}>
+                      {t('close')}
+                    </button>
+                    <button className="update-modal-btn primary" onClick={hInstallUpdate}>
+                      {t('download')}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
 
         <Footer />

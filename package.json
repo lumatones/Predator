@@ -62,13 +62,8 @@
       "releaseType": "release"
     }
   },
-  "keywords": [
-    "anticheat",
-    "gta5",
-    "majestic",
-    "rp"
-  ],
-  "license": "MIT",
+  "private": true,
+  "license": "UNLICENSED",
   "dependencies": {
     "electron-updater": "^6.8.9",
     "react": "^19.0.0",

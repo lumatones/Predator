@@ -395,7 +395,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
           </div>
 
           <div className="checker-progress-info">
-            <span>{t('found')}: {progress?.filesFound || 0}</span>
+            <span>{t('found')}: <span key={progress?.filesFound ?? 0} className="found-num">{progress?.filesFound || 0}</span></span>
             <span>{progress?.filesScanned || 0} {t('filesScanned')}</span>
           </div>
 
