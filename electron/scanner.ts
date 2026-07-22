@@ -123,8 +123,13 @@ function* walkDir(dirPath: string): Generator<string> {
   } catch { /* skip */ }
 }
 
-function sendProgress(win: BrowserWindow | null, data: ScanProgress) {
+// Yields to the event loop so the renderer can receive progress events.
+// Without this, all synchronous work (readdirSync, statSync, execSync)
+// queues up and the renderer only sees the final 'done' event.
+async function sendProgress(win: BrowserWindow | null, data: ScanProgress) {
   win?.webContents.send('scan-progress', data)
+  // Yield control back to the event loop so the IPC message actually gets delivered
+  await new Promise(resolve => setImmediate(resolve))
 }
 
 function execCmd(cmd: string, psCmd: string, opts = {}): string {
@@ -272,9 +277,13 @@ async function runFileScan(win: BrowserWindow | null): Promise<{ results: ScanRe
 
   for (let i = 0; i < scanDirs.length; i++) {
     const dir = scanDirs[i]
-    if (!fs.existsSync(dir)) continue
+    if (!fs.existsSync(dir)) {
+      // Still count non-existing dirs as 'done' so progress shows something
+      await sendProgress(win, { phase: 'scanning', currentDir: `${dir} (skipped)`, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
+      continue
+    }
 
-    sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i })
+    await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
 
     const files: string[] = []
     for (const filePath of walkDir(dir)) files.push(filePath)
@@ -283,10 +292,13 @@ async function runFileScan(win: BrowserWindow | null): Promise<{ results: ScanRe
       filesScanned++
       const r = await scanFile(filePath)
       if (r) results.push(r)
-      if (filesScanned % 20 === 0) {
-        sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i })
+      if (filesScanned % 15 === 0) {
+        await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
       }
     }
+
+    // Update after finishing this directory
+    await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
   }
 
   return { results, filesScanned }
@@ -371,16 +383,16 @@ function scanPrefetchFiles(): ScanResult[] {
 async function runProcessScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
 
-  sendProgress(win, { phase: 'scanning', currentDir: 'Running processes...', filesFound: 0, filesScanned: 0, totalDirs: 4, dirsDone: 0 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Running processes...', filesFound: 0, filesScanned: 0, totalDirs: 5, dirsDone: 1 })
   results.push(...scanRunningProcesses())
 
-  sendProgress(win, { phase: 'scanning', currentDir: 'Recent items...', filesFound: results.length, filesScanned: results.length, totalDirs: 4, dirsDone: 1 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Recent items...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 2 })
   results.push(...scanRecentItems())
 
-  sendProgress(win, { phase: 'scanning', currentDir: 'Prefetch files...', filesFound: results.length, filesScanned: results.length, totalDirs: 4, dirsDone: 2 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Prefetch files...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 3 })
   results.push(...scanPrefetchFiles())
 
-  sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history...', filesFound: results.length, filesScanned: results.length, totalDirs: 4, dirsDone: 3 })
+  await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 4 })
 
   const browserResults = await scanBrowserHistory()
   results.push(...browserResults)
@@ -503,7 +515,7 @@ async function runCheatScan(win: BrowserWindow | null): Promise<{ results: ScanR
     const cheatName = cheatNames[i]
     const keywords = CHEAT_SOFTWARE_NAMES[cheatName]
 
-    sendProgress(win, { phase: 'scanning', currentDir: `Searching for ${cheatName}...`, filesFound: results.length, filesScanned, totalDirs: cheatNames.length + 2, dirsDone: i })
+    await sendProgress(win, { phase: 'scanning', currentDir: `Searching for ${cheatName}...`, filesFound: results.length, filesScanned, totalDirs: cheatNames.length + 2, dirsDone: i + 1 })
 
     const fileResults = scanForCheatFiles(cheatName, keywords)
     results.push(...fileResults)
@@ -514,7 +526,7 @@ async function runCheatScan(win: BrowserWindow | null): Promise<{ results: ScanR
   const browserResults = await scanBrowserHistory(cheatKw)
   results.push(...browserResults)
 
-  sendProgress(win, { phase: 'analyzing', currentDir: 'Checking registry...', filesFound: results.length, filesScanned, totalDirs: cheatNames.length + 2, dirsDone: cheatNames.length })
+  await sendProgress(win, { phase: 'analyzing', currentDir: 'Checking registry...', filesFound: results.length, filesScanned, totalDirs: cheatNames.length + 2, dirsDone: cheatNames.length + 1 })
   const registryResults = scanRegistryForCheats()
   results.push(...registryResults)
 
@@ -616,19 +628,19 @@ function scanDmaRegistry(): ScanResult[] {
 async function runDmaScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
 
-  sendProgress(win, { phase: 'scanning', currentDir: 'Checking PCI devices...', filesFound: 0, filesScanned: 0, totalDirs: 4, dirsDone: 0 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking PCI devices...', filesFound: 0, filesScanned: 0, totalDirs: 5, dirsDone: 1 })
   results.push(...scanDmaDevices())
 
-  sendProgress(win, { phase: 'scanning', currentDir: 'Checking USB devices...', filesFound: results.length, filesScanned: results.length, totalDirs: 4, dirsDone: 1 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking USB devices...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 2 })
   const usbOut = queryPnpDevices("PNPClass='USB'")
   if (usbOut && (usbOut.toLowerCase().includes('ftdi') || usbOut.toLowerCase().includes('ftd3'))) {
     results.push({ path: 'USB Devices', fileName: 'USB Device: Possible DMA interface', type: 'hardware', risk: 'medium', matches: ['usb:FTDI device (common DMA interface)'], size: 0, modifiedAt: new Date().toISOString() })
   }
 
-  sendProgress(win, { phase: 'scanning', currentDir: 'Checking registry...', filesFound: results.length, filesScanned: results.length, totalDirs: 4, dirsDone: 2 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking registry...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 3 })
   results.push(...scanDmaRegistry())
 
-  sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history for DMA...', filesFound: results.length, filesScanned: results.length, totalDirs: 4, dirsDone: 3 })
+  await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history for DMA...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 4 })
   const dmaKw = ['dma', 'fpga', 'pcileech', 'fuser', 'screamer', 'kmem']
   const browserResults = await scanBrowserHistory(dmaKw)
   results.push(...browserResults)
