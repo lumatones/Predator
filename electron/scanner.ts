@@ -423,8 +423,12 @@ function heuristicFileScan(filepath: string): HeuristicResult | null {
       }
 
       // v3.0: PE analysis
+      // peInfo and sigValid are hoisted here so they're accessible in the fuzzy + sig blocks below
+      const peInfo = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? analyzePeHeaders(filepath) : null
+      const sigValid = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? checkDigitalSignature(filepath) : false
+      // NOTE: checkDigitalSignature() MUST be called before the fuzzy block to populate _sigCache
+
       if (ext === '.exe' || ext === '.dll' || ext === '.sys') {
-        const peInfo = analyzePeHeaders(filepath)
         if (peInfo && peInfo.isValidPe && peInfo.isSuspicious) {
           if (peInfo.suspiciousSections.length > 0) {
             suspicions.push(`PE: Unusual sections: ${peInfo.suspiciousSections.join(', ')}`)
@@ -439,12 +443,6 @@ function heuristicFileScan(filepath: string): HeuristicResult | null {
             riskScore += 15
           }
         }
-
-        // ── v0.0.12: Fuzzy cheat loader detection ──
-        // Matches structural profile of known cheat loaders even when hash doesn't match.
-        // Profile dimension: size, entropy, section count, subsystem, missing signature
-        // NOTE: checkDigitalSignature() MUST be called before this block to populate _sigCache
-        const sigValid = checkDigitalSignature(filepath)
 
         // ── v0.0.15: Section Entropy — per-section analysis ──
         if (ext === '.exe' || ext === '.dll' || ext === '.sys') {
