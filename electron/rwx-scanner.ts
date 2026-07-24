@@ -36,9 +36,23 @@ export interface RwxScanResult {
   details: string[]
 }
 
-// ── PowerShell C# VirtualQueryEx ───────────────
+// ── Main scanning functions ────────────────────
 
-const CORE_PS = `
+// NOTE: The PowerShell C# code for VirtualQueryEx was originally a module-level
+// template literal with ${pid}. This caused `ReferenceError: pid is not defined`
+// because `pid` is only available inside the scanning functions, not at module scope.
+// Fix: template is defined INSIDE each function where `pid` is in scope.
+
+/**
+ * Scan a process memory for RWX regions using VirtualQueryEx via PowerShell C#.
+ * Returns array of suspicious RWX regions.
+ */
+export function scanRwxRegions(pid: number): RwxRegion[] {
+  const regions: RwxRegion[] = []
+
+  try {
+    const rwxPs = `
+if (-not ([System.Management.Automation.PSTypeName]'RwxScan').Type) {
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -135,36 +149,11 @@ public class RwxScan {
   }
 }
 "@
-[RwxScan.Scan(__PID__)]
+}
+[RwxScan.Scan(${pid})]
 `.trim()
 
-function getRwxPs(pid: number): string {
-  return CORE_PS.replace('__PID__', String(pid))
-}
-
-// ── PowerShell Thread Enumeration ──────────────
-
-const THREAD_PS = `
-Get-Process -Id __PID__ -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Threads |
-  Select-Object Id, @{N='StartAddr';E={'0x' + $_.StartAddress.ToString('X16')}} |
-  ConvertTo-Json -Compress
-`.trim()
-
-function getThreadPs(pid: number): string {
-  return THREAD_PS.replace('__PID__', String(pid))
-}
-
-// ── Main scanning functions ────────────────────
-
-/**
- * Scan a process memory for RWX regions using VirtualQueryEx via PowerShell C#.
- * Returns array of suspicious RWX regions.
- */
-export function scanRwxRegions(pid: number): RwxRegion[] {
-  const regions: RwxRegion[] = []
-
-  try {
-    const out = execSync(`powershell -Command "${getRwxPs(pid).replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
+    const out = execSync(`powershell -Command "${rwxPs.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
       encoding: 'utf-8',
       timeout: 15000, // 15 seconds per process
       windowsHide: true,
@@ -232,7 +221,13 @@ export function scanThreadStartAddresses(pid: number, _processName: string, rwxR
   }))
 
   try {
-    const out = execSync(`powershell -Command "${getThreadPs(pid)}"`, {
+    const threadPs = `
+Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Threads |
+  Select-Object Id, @{N='StartAddr';E={'0x' + $_.StartAddress.ToString('X16')}} |
+  ConvertTo-Json -Compress
+`.trim()
+
+    const out = execSync(`powershell -Command "${threadPs}"`, {
       encoding: 'utf-8',
       timeout: 5000,
       windowsHide: true,
