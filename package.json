@@ -1,6 +1,6 @@
 {
   "name": "predator",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Predator — Cheat checker for GTA 5 RP (Majestic)",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -65,9 +65,11 @@
   "private": true,
   "license": "UNLICENSED",
   "dependencies": {
+    "@types/sql.js": "^1.4.11",
     "electron-updater": "^6.8.9",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

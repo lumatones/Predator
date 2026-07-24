@@ -62,6 +62,16 @@ router.post('/approve/:id', async (req, res) => {
       ['approved', req.admin.id, req.params.id]
     )
 
+    // Emit WebSocket event
+    const io = req.app.get('io')
+    io?.to('admin').emit('request-update', {
+      type: 'approved',
+      requestId: parseInt(req.params.id),
+      pcUsername: rows[0].pc_username,
+      admin: req.admin.username,
+      timestamp: new Date().toISOString(),
+    })
+
     return res.json({ success: true, message: 'Запрос одобрен' })
   } catch (err) {
     console.error('Approve error:', err)
@@ -81,6 +91,16 @@ router.post('/reject/:id', async (req, res) => {
       'UPDATE requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?',
       ['rejected', req.admin.id, req.params.id]
     )
+
+    // Emit WebSocket event
+    const io = req.app.get('io')
+    io?.to('admin').emit('request-update', {
+      type: 'rejected',
+      requestId: parseInt(req.params.id),
+      pcUsername: rows[0].pc_username,
+      admin: req.admin.username,
+      timestamp: new Date().toISOString(),
+    })
 
     return res.json({ success: true, message: 'Запрос отклонён' })
   } catch (err) {
@@ -107,6 +127,14 @@ router.post('/tokens/generate', async (req, res) => {
       const formatted = code.match(/.{1,8}/g).join('-')
       tokens.push(formatted)
     }
+
+    // Emit WebSocket event
+    const io = req.app.get('io')
+    io?.to('admin').emit('token-generated', {
+      count: tokens.length,
+      admin: req.admin.username,
+      timestamp: new Date().toISOString(),
+    })
 
     return res.json({ success: true, tokens })
   } catch (err) {
@@ -238,6 +266,53 @@ router.get('/history', async (req, res) => {
     })
   } catch (err) {
     console.error('History error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// ── GET /api/admin/scan-stats ──────────────────
+// Статистика всех сканирований
+router.get('/scan-stats', async (req, res) => {
+  try {
+    const totalScans = await query('SELECT COUNT(*) AS cnt FROM scan_results')
+    const totalScanned = await query('SELECT SUM(total_scanned) AS cnt FROM scan_results')
+    const totalSuspicious = await query('SELECT SUM(suspicious_files) AS cnt FROM scan_results')
+
+    // Scan count by mode
+    const byMode = await query(`
+      SELECT mode, COUNT(*) AS cnt, SUM(suspicious_files) AS threats
+      FROM scan_results
+      GROUP BY mode
+      ORDER BY cnt DESC
+    `)
+
+    // Scan count by day (last 14 days)
+    const byDay = await query(`
+      SELECT DATE(created_at) AS day, COUNT(*) AS cnt, SUM(suspicious_files) AS threats
+      FROM scan_results
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+      GROUP BY DATE(created_at)
+      ORDER BY day ASC
+    `)
+
+    // Recent scans
+    const recent = await query(`
+      SELECT id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, created_at
+      FROM scan_results
+      ORDER BY created_at DESC
+      LIMIT 20
+    `)
+
+    return res.json({
+      totalScans: totalScans[0]?.cnt || 0,
+      totalScanned: totalScanned[0]?.cnt || 0,
+      totalSuspicious: totalSuspicious[0]?.cnt || 0,
+      byMode: byMode || [],
+      byDay: byDay || [],
+      recent: recent || [],
+    })
+  } catch (err) {
+    console.error('Scan stats error:', err)
     return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
   }
 })

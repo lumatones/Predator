@@ -22,6 +22,13 @@ import {
   analyzePeHeaders,
 } from './cheat-rules'
 
+import {
+  scanAllBrowsers,
+  getBrowserCount,
+  type BrowserHistoryResult,
+  type HistoryEntry,
+} from './browser-history'
+
 // ── Event-loop yield ──
 const yieldToEventLoop = () => new Promise(resolve => setImmediate(resolve))
 
@@ -195,11 +202,7 @@ const SUSPICIOUS_PATTERNS = [
   /[Pp][Cc][Ii]\s*[Ll]eech/i,
 ]
 
-const BROWSER_DIRS = [
-  path.join(_HOME, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'History'),
-  path.join(_HOME, 'AppData', 'Local', 'Yandex', 'YandexBrowser', 'User Data', 'Default', 'History'),
-  path.join(_HOME, 'AppData', 'Roaming', 'Opera Software', 'Opera Stable', 'History'),
-]
+// Browser history scanning now uses sql.js-based parser (./browser-history.ts)
 
 // ── v2 Helpers ─────────────────────────────────
 
@@ -569,31 +572,72 @@ async function scanBrowserHistory(keywords?: string[]): Promise<ScanResult[]> {
   const kw = keywords || ALL_CHEAT_KEYWORDS
   const results: ScanResult[] = []
 
-  for (const historyPath of BROWSER_DIRS) {
-    try {
-      await fsp.access(historyPath)
-      const stat = await fsp.stat(historyPath)
-      if (stat.size > 10 * 1024 * 1024) continue
+  try {
+    // Use sql.js-based structured browser history parser
+    const browserResults = await scanAllBrowsers(kw)
 
-      const content = (await fsp.readFile(historyPath, 'utf-8')).toLowerCase()
-      const found: string[] = []
+    for (const br of browserResults) {
+      if (br.entries.length === 0) continue
 
-      for (const keyword of kw) {
-        if (content.includes(keyword.toLowerCase())) found.push(`browser:${keyword}`)
+      // Group entries by keyword match for the ScanResult.matches format
+      const matchSet = new Set<string>()
+      let maxRisk: 'low' | 'medium' | 'high' = 'low'
+      let matchCount = 0
+
+      for (const entry of br.entries) {
+        const url = entry.url.toLowerCase()
+        const title = entry.title.toLowerCase()
+        for (const keyword of kw) {
+          if (url.includes(keyword.toLowerCase()) || title.includes(keyword.toLowerCase())) {
+            matchSet.add(`browser:${keyword}`)
+            matchCount++
+          }
+        }
       }
 
-      if (found.length > 0) {
-        const browserName = path.basename(path.dirname(path.dirname(path.dirname(historyPath))))
+      if (matchSet.size > 0) {
+        if (matchCount >= 5) maxRisk = 'high'
+        else if (matchCount >= 3) maxRisk = 'medium'
+
         results.push({
-          path: historyPath, fileName: `History (${browserName})`, type: 'browser',
-          risk: found.length >= 3 ? 'high' : found.length >= 2 ? 'medium' : 'low',
-          matches: found, size: stat.size, modifiedAt: stat.mtime.toISOString(),
+          path: br.path,
+          fileName: `История (${br.browser})`,
+          type: 'browser',
+          risk: maxRisk,
+          matches: Array.from(matchSet).slice(0, 15),
+          size: br.entries.length,
+          modifiedAt: br.entries[0]?.lastVisitTime || new Date().toISOString(),
         })
+
+        // Add detail entries for high-value findings (URLs)
+        const suspiciousEntries = br.entries.filter(e => {
+          const url = e.url.toLowerCase()
+          const title = e.title.toLowerCase()
+          return kw.some(k => url.includes(k.toLowerCase()) || title.includes(k.toLowerCase()))
+        })
+
+        for (const entry of suspiciousEntries.slice(0, 8)) {
+          const urlMatch = kw.find(k =>
+            entry.url.toLowerCase().includes(k.toLowerCase()) ||
+            entry.title.toLowerCase().includes(k.toLowerCase())
+          )
+          results.push({
+            path: entry.url,
+            fileName: `[${br.browser}] ${entry.title.slice(0, 60)}`,
+            type: 'browser',
+            risk: maxRisk,
+            matches: [`browser:${urlMatch || 'suspicious'}`, `visited:${entry.lastVisitTime.slice(0, 10)}`, `count:${entry.visitCount}`],
+            size: entry.url.length,
+            modifiedAt: entry.lastVisitTime,
+          })
+        }
       }
-    } catch { /* skip */ }
-    await yieldToEventLoop()
+    }
+  } catch (err) {
+    console.error('Browser history scan error:', err)
   }
 
+  await yieldToEventLoop()
   return results
 }
 

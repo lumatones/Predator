@@ -152,3 +152,26 @@ export interface HistoryResponse {
 export function getHistory(token: string, limit: number = 100) {
   return request<HistoryResponse>(`/admin/history?limit=${limit}`, { token })
 }
+
+// ── Scan Stats ──
+
+export interface ScanStats {
+  totalScans: number
+  totalScanned: number
+  totalSuspicious: number
+  byMode: { mode: string; cnt: number; threats: number }[]
+  byDay: { day: string; cnt: number; threats: number }[]
+  recent: {
+    id: number
+    pc_username: string
+    mode: string
+    total_scanned: number
+    suspicious_files: number
+    high_risk_count: number
+    created_at: string
+  }[]
+}
+
+export function getScanStats(token: string) {
+  return request<ScanStats>('/admin/scan-stats', { token })
+}

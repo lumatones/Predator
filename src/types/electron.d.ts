@@ -21,6 +21,11 @@ export interface ElectronAPI {
 
   // System info dashboard
   getSystemSnapshot: () => Promise<SystemInfoSnapshot>
+
+  // System info streaming (replaces polling)
+  startSystemStream: (intervalMs?: number) => void
+  stopSystemStream: () => void
+  onSystemUpdate: (callback: (data: SystemInfoSnapshot) => void) => void
 }
 
 export interface ScanResult {

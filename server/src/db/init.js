@@ -49,6 +49,21 @@ async function init() {
     ) ENGINE=InnoDB
   `)
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS scan_results (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      token_id INT REFERENCES tokens(id),
+      pc_username VARCHAR(100) NOT NULL,
+      mode VARCHAR(20) NOT NULL,
+      total_scanned INT DEFAULT 0,
+      suspicious_files INT DEFAULT 0,
+      high_risk_count INT DEFAULT 0,
+      scan_time_ms INT DEFAULT 0,
+      results_json MEDIUMTEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `)
+
   console.log('  ✓ Tables created\n')
 
   // ── Create default admin ──

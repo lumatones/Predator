@@ -77,3 +77,25 @@ export async function requestAccess(pc_username: string): Promise<RequestAccessR
 export async function checkRequestStatus(id: number): Promise<RequestStatusResponse> {
   return fetchGet<RequestStatusResponse>(`/api/auth/status/${id}`)
 }
+
+// ── Scan Submission API ──
+
+export interface SubmitScanRequest {
+  token_id?: number
+  pc_username: string
+  mode: string
+  total_scanned: number
+  suspicious_files: number
+  high_risk_count: number
+  scan_time_ms: number
+  results: Array<{ path: string; fileName: string; type: string; risk: string; matches: string[] }>
+}
+
+export interface SubmitScanResponse {
+  success: boolean
+  message: string
+}
+
+export async function submitScan(data: SubmitScanRequest): Promise<SubmitScanResponse> {
+  return fetchApi<SubmitScanResponse>('/api/auth/submit-scan', data)
+}

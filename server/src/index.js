@@ -2,7 +2,8 @@ const envResult = require('dotenv').config()
 
 const express = require('express')
 const cors = require('cors')
-const path = require('path')
+const http = require('http')
+const { Server } = require('socket.io')
 
 const { testConnection } = require('./config/database')
 const authRoutes = require('./routes/auth')
@@ -12,10 +13,26 @@ const app = express()
 // PORT из .env имеет приоритет над системной переменной окружения
 const PORT = (envResult.parsed && envResult.parsed.PORT) || process.env.PORT || 3001
 
+// ── HTTP + Socket.IO ──────────────────────────
+
+const server = http.createServer(app)
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+  // Для работы через Vite proxy — ping каждые 25 секунд
+  pingInterval: 25000,
+  pingTimeout: 20000,
+})
+
 // ── Middleware ─────────────────────────────────
 
 app.use(cors())
 app.use(express.json())
+
+// Attach io to request context for routes to emit events
+app.set('io', io)
 
 // ── Routes ────────────────────────────────────
 
@@ -28,10 +45,26 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: '1.0.0', timestamp: new Date().toISOString() })
 })
 
+// ── Socket.IO Connection ──────────────────────
+
+io.on('connection', (socket) => {
+  console.log(`  ⚡  WebSocket connected: ${socket.id}`)
+
+  // Join admin room for authenticated admin clients
+  socket.on('join-admin', () => {
+    socket.join('admin')
+    console.log(`  ⚡  ${socket.id} joined admin room`)
+  })
+
+  socket.on('disconnect', (reason) => {
+    console.log(`  ⚡  WebSocket disconnected: ${socket.id} (${reason})`)
+  })
+})
+
 // ── Start ─────────────────────────────────────
 
 async function start() {
-  console.log('\n  🦅 Predator API Server\n')
+  console.log('\n  🦅 Predator API Server (WebSocket ready)\n')
 
   const dbOk = await testConnection()
   if (!dbOk) {
@@ -40,7 +73,7 @@ async function start() {
       + '  Запустите WAMP и выполните: npm run db:init\n')
   }
 
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`  ✓ Server: http://localhost:${PORT}\n`)
     console.log('  ── Endpoints ──')
     console.log(`  POST /api/auth/token         Проверить токен`)
@@ -54,7 +87,12 @@ async function start() {
     console.log(`  POST /api/admin/reject/:id   Отклонить`)
     console.log(`  POST /api/admin/tokens/generate  Создать токены`)
     console.log(`  GET  /api/admin/tokens       Список токенов`)
-    console.log(`  POST /api/admin/tokens/revoke/:id  Отозвать токен\n`)
+    console.log(`  POST /api/admin/tokens/revoke/:id  Отозвать токен`)
+    console.log(`  ── Сканирования ────`)
+    console.log(`  POST /api/auth/submit-scan      Сохранить результаты сканирования`)
+    console.log(`  GET  /api/admin/scan-stats       Статистика всех сканирований`)
+    console.log(`  ── WebSocket ────`)
+    console.log(`  Socket.IO on same port          Real-time admin updates\n`)
   })
 }
 

@@ -74,6 +74,7 @@ const App: React.FC = () => {
   const [lang, setLang] = useState<Lang>('ru')
   const [theme, setTheme] = useState<ThemeId>('predator')
   const [token, setToken] = useState('')
+  const [tokenId, setTokenId] = useState<number | null>(null) // from successful token use
   const [tokenError, setTokenError] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
   const [authError, setAuthError] = useState('')
@@ -228,6 +229,11 @@ const App: React.FC = () => {
         setAuthError(useResult.error || 'Не удалось активировать токен')
         setAuthLoading(false)
         return
+      }
+
+      // Save token_id for scan submission auth
+      if (useResult.token_id) {
+        setTokenId(useResult.token_id)
       }
 
       setPhase('main')
@@ -502,7 +508,7 @@ const App: React.FC = () => {
 
         {/* ── CHECKER ── */}
         {phase === 'checker' && (
-          <Checker lang={lang} onBack={() => setPhase('main')} />
+          <Checker lang={lang} tokenId={tokenId} onBack={() => setPhase('main')} />
         )}
 
         {/* ── DASHBOARD ── */}

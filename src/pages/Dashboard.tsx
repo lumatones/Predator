@@ -119,22 +119,10 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
   const t = (key: string) => T[lang][key] || key
   const [snapshot, setSnapshot] = useState<SystemInfoSnapshot | null>(null)
   const [processFilter, setProcessFilter] = useState('')
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [streamActive, setStreamActive] = useState(false)
 
   useEffect(() => {
-    async function fetchSnapshot() {
-      try {
-        if (!window.electronAPI?.getSystemSnapshot) {
-          // Dev mode — use mock data
-          mockSnapshot()
-          return
-        }
-        const data = await window.electronAPI.getSystemSnapshot()
-        if (data) setSnapshot(data)
-      } catch { /* ignore */ }
-    }
-
-    // Mock data for dev mode (no Electron)
+    // Dev mode — use mock data with periodic updates
     function mockSnapshot() {
       const totalMem = 16
       const usedMem = 5.2 + Math.random() * 2
@@ -160,13 +148,28 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
       })
     }
 
-    // Fetch immediately, then every 2 seconds
-    fetchSnapshot()
-    pollRef.current = setInterval(fetchSnapshot, 2000)
+    // Check if IPC streaming is available (Electron main process)
+    const api = window.electronAPI
+    const hasStream = typeof api?.startSystemStream === 'function' && typeof api?.onSystemUpdate === 'function'
 
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+    if (hasStream && api) {
+      // Use IPC streaming from Electron main process
+      api.onSystemUpdate((data) => {
+        setSnapshot(data)
+      })
+      api.startSystemStream(2000)
+      setStreamActive(true)
+
+      return () => {
+        api.stopSystemStream()
+        setStreamActive(false)
+      }
     }
+
+    // Dev mode fallback — mock polling
+    mockSnapshot()
+    const pollTimer = setInterval(mockSnapshot, 2000)
+    return () => clearInterval(pollTimer)
   }, [])
 
   const filteredProcesses = snapshot

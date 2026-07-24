@@ -105,6 +105,16 @@ router.post('/request', async (req, res) => {
       [pc_username.trim(), expiresAt]
     )
 
+    // Emit WebSocket event to admin panel
+    try {
+      const io = req.app.get('io')
+      io?.to('admin').emit('new-request', {
+        requestId: result.insertId,
+        pcUsername: pc_username.trim(),
+        timestamp: new Date().toISOString(),
+      })
+    } catch { /* ws event optional */ }
+
     return res.json({
       success: true,
       request_id: result.insertId,
@@ -132,6 +142,80 @@ router.get('/status/:id', async (req, res) => {
     return res.json(rows[0])
   } catch (err) {
     console.error('Status error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// ── POST /api/auth/submit-scan ─────────────────
+// Сохранить результаты сканирования на сервере
+// Требует: token_id — ID использованного токена (JWT-защита через БД)
+router.post('/submit-scan', async (req, res) => {
+  try {
+    const { token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, results } = req.body
+
+    if (!token_id && !pc_username) {
+      return res.status(400).json({ error: 'token_id или pc_username обязателен' })
+    }
+
+    // Token-based защита: проверяем token_id в БД
+    if (token_id !== undefined) {
+      if (!Number.isInteger(token_id) || token_id <= 0) {
+        return res.status(400).json({ error: 'Неверный формат token_id' })
+      }
+
+      const tokRows = await query(
+        'SELECT id, code, is_active, used_by FROM tokens WHERE id = ?',
+        [token_id]
+      )
+
+      if (tokRows.length === 0) {
+        return res.status(403).json({ error: 'Токен не найден' })
+      }
+
+      const tok = tokRows[0]
+
+      // Токен должен быть отозван (использован) — is_active = FALSE, used_by IS NOT NULL
+      if (tok.is_active) {
+        return res.status(403).json({ error: 'Токен не был активирован. Используйте токен через экран авторизации.' })
+      }
+
+      if (!tok.used_by) {
+        return res.status(403).json({ error: 'Токен не был использован' })
+      }
+    }
+
+    const result = await query(
+      `INSERT INTO scan_results (token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, results_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        token_id || null,
+        pc_username || 'unknown',
+        mode || 'unknown',
+        total_scanned || 0,
+        suspicious_files || 0,
+        high_risk_count || 0,
+        scan_time_ms || 0,
+        results ? JSON.stringify(results.slice(0, 100)) : '[]',
+      ]
+    )
+
+    // Emit WebSocket event to admin panel
+    try {
+      const io = req.app.get('io')
+      io?.to('admin').emit('scan-result', {
+        id: result.insertId,
+        pc_username,
+        mode,
+        total_scanned,
+        suspicious_files,
+        high_risk_count,
+        timestamp: new Date().toISOString(),
+      })
+    } catch { /* ws event optional */ }
+
+    return res.json({ success: true, message: 'Результаты сохранены' })
+  } catch (err) {
+    console.error('Submit scan error:', err)
     return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
   }
 })

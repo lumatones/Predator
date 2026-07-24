@@ -2,9 +2,11 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
 import { saveScan } from '../utils/stats-store'
 import { exportHtml, exportJson } from '../utils/export-report'
+import { submitScan } from '../api'
 
 interface CheckerProps {
   lang: 'ru' | 'en'
+  tokenId: number | null
   onBack: () => void
 }
 
@@ -220,7 +222,7 @@ const INITIAL_SHOW = 5
 
 // ── Component ──
 
-export default function Checker({ lang, onBack }: CheckerProps) {
+export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const t = (key: string) => T[lang][key] || key
   const [activeTab, setActiveTab] = useState<ScanMode>('files')
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>('idle')
@@ -234,6 +236,7 @@ export default function Checker({ lang, onBack }: CheckerProps) {
   const [showAllGroups, setShowAllGroups] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [exportMsg, setExportMsg] = useState('')
+  const [serverMsg, setServerMsg] = useState('')
   const scanRef = useRef<boolean>(false)
 
   // Filtered results (client-side search, memoised)
@@ -295,6 +298,9 @@ export default function Checker({ lang, onBack }: CheckerProps) {
       scanRef.current = false
       // Save scan to stats
       saveScan(activeTab, mock.summary.totalScanned, mock.summary.suspiciousFiles, mock.summary.highRiskCount, mock.summary.scanTimeMs, mock.results)
+
+      // Submit to server (fire-and-forget)
+      submitToServer(activeTab, mock.summary, mock.results)
       return
     }
 
@@ -312,6 +318,9 @@ export default function Checker({ lang, onBack }: CheckerProps) {
         setPhase('done')
         // Save scan to stats
         saveScan(activeTab, response.summary.totalScanned, response.summary.suspiciousFiles, response.summary.highRiskCount, response.summary.scanTimeMs, response.results)
+
+        // Submit to server (fire-and-forget)
+        submitToServer(activeTab, response.summary, response.results)
       }
     } catch (err) {
       if (scanRef.current) {
@@ -374,6 +383,39 @@ export default function Checker({ lang, onBack }: CheckerProps) {
       setTimeout(() => setTabTransition('idle'), 200)
     }, 150)
   }, [activeTab])
+
+  const submitToServer = useCallback(async (mode: string, summary: ScanResponse['summary'], results: ScanResult[]) => {
+    try {
+      // Get PC name from Electron API if available
+      let pcName = 'unknown'
+      try {
+        if (window.electronAPI?.getPCName) {
+          pcName = await window.electronAPI.getPCName()
+        }
+      } catch { /* ignore */ }
+
+      await submitScan({
+        token_id: tokenId ?? undefined,
+        pc_username: pcName,
+        mode,
+        total_scanned: summary.totalScanned,
+        suspicious_files: summary.suspiciousFiles,
+        high_risk_count: summary.highRiskCount,
+        scan_time_ms: summary.scanTimeMs,
+        results: results.slice(0, 50).map(r => ({
+          path: r.path,
+          fileName: r.fileName,
+          type: r.type,
+          risk: r.risk,
+          matches: r.matches.slice(0, 5),
+        })),
+      })
+      setServerMsg('✓')
+      setTimeout(() => setServerMsg(''), 3000)
+    } catch {
+      // Server submission is optional — don't show errors to user
+    }
+  }, [])
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`
@@ -719,6 +761,15 @@ export default function Checker({ lang, onBack }: CheckerProps) {
                 {t('exportJson')}
               </button>
               <span className="checker-export-msg">{exportMsg}</span>
+              <span className="checker-server-msg" style={{
+                display: serverMsg ? 'inline-flex' : 'none',
+                fontSize: 11, color: '#22c55e', marginLeft: 4, alignItems: 'center', gap: 4
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Server
+              </span>
             </div>
             <button className="checker-action-btn primary" onClick={handleStartScan}>{t('scanAgain')}</button>
           </div>

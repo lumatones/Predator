@@ -37,4 +37,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // System info dashboard
   getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
+
+  // System info streaming (replaces polling)
+  startSystemStream: (intervalMs: number) => {
+    ipcRenderer.send('start-system-stream', intervalMs)
+  },
+  stopSystemStream: () => {
+    ipcRenderer.send('stop-system-stream')
+  },
+  onSystemUpdate: (callback: (data: import('./system-info').SystemInfoSnapshot) => void) => {
+    ipcRenderer.on('system-snapshot', (_event, data) => callback(data))
+  },
 })

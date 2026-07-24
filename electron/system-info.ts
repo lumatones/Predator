@@ -4,7 +4,7 @@
  * and other system metrics for the live dashboard.
  */
 
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import os from 'os'
 import { execSync } from 'child_process'
 
@@ -211,10 +211,49 @@ export function getSystemSnapshot(): SystemInfoSnapshot {
   }
 }
 
+// ── Streaming: push system data every N ms ──
+
+let _streamInterval: ReturnType<typeof setInterval> | null = null
+
+function startStream(win: BrowserWindow, intervalMs: number) {
+  // Clear existing stream if any
+  stopStream()
+
+  // Push immediately, then repeat
+  const push = () => {
+    try {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('system-snapshot', getSystemSnapshot())
+      }
+    } catch { /* window gone */ }
+  }
+
+  push()
+  _streamInterval = setInterval(push, intervalMs)
+}
+
+function stopStream() {
+  if (_streamInterval !== null) {
+    clearInterval(_streamInterval)
+    _streamInterval = null
+  }
+}
+
 // ── Register IPC handlers ──
 
 export function registerSystemInfoHandlers() {
   ipcMain.handle('get-system-snapshot', () => {
     return getSystemSnapshot()
+  })
+
+  ipcMain.on('start-system-stream', (event, intervalMs: number = 2000) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      startStream(win, intervalMs)
+    }
+  })
+
+  ipcMain.on('stop-system-stream', () => {
+    stopStream()
   })
 }
