@@ -99,3 +99,45 @@ export interface SubmitScanResponse {
 export async function submitScan(data: SubmitScanRequest): Promise<SubmitScanResponse> {
   return fetchApi<SubmitScanResponse>('/api/auth/submit-scan', data)
 }
+
+// ── Cloud Hash Submission API ──
+
+export interface SuspectHash {
+  sha256: string
+  file_name?: string
+  file_size?: number
+  risk_score?: number
+}
+
+export interface SubmitHashesResponse {
+  success: boolean
+  inserted: number
+  total: number
+}
+
+/** Submit SHA256 hashes of suspicious files to the cloud database */
+export async function submitHashes(hashes: SuspectHash[], pc_username?: string, token_id?: number): Promise<SubmitHashesResponse> {
+  return fetchApi<SubmitHashesResponse>('/api/auth/submit-hashes', {
+    hashes,
+    pc_username,
+    token_id,
+  })
+}
+
+export interface CloudHash {
+  sha256: string
+  file_name: string
+  file_size: number
+  added_at: string
+}
+
+export interface FetchHashesResponse {
+  count: number
+  hashes: CloudHash[]
+}
+
+/** Fetch confirmed cheat hashes from the cloud database (for auto-update) */
+export async function fetchCheatHashes(after?: string): Promise<FetchHashesResponse> {
+  const q = after ? `?after=${after}` : ''
+  return fetchGet<FetchHashesResponse>(`/api/auth/fetch-hashes${q}`)
+}

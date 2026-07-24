@@ -175,3 +175,67 @@ export interface ScanStats {
 export function getScanStats(token: string) {
   return request<ScanStats>('/admin/scan-stats', { token })
 }
+
+// ── Cloud Signature Database (Suspicious Hashes) ──
+
+export interface SuspiciousHash {
+  id: number
+  sha256: string
+  file_name: string
+  pc_username: string
+  file_size: number
+  risk_score: number
+  status: 'pending' | 'confirmed' | 'false_positive'
+  reviewed_by: number | null
+  reviewed_by_name: string
+  reviewed_at: string | null
+  created_at: string
+}
+
+export function getSuspiciousHashes(token: string, status: string = 'pending') {
+  return request<SuspiciousHash[]>(`/admin/suspicious-hashes?status=${status}`, { token })
+}
+
+export function approveHash(token: string, id: number) {
+  return request<{ success: boolean; message: string }>(`/admin/hashes/approve/${id}`, {
+    method: 'POST',
+    token,
+  })
+}
+
+export function rejectHash(token: string, id: number) {
+  return request<{ success: boolean; message: string }>(`/admin/hashes/reject/${id}`, {
+    method: 'POST',
+    token,
+  })
+}
+
+// ── Scan Result Hashes (extracted from scan_results) ──
+
+export interface ScanResultHash {
+  sha256: string
+  file_name: string
+  file_size: number
+  pc_usernames: string[]
+  first_seen: string
+  last_seen: string
+  occurrences: number
+  status: 'new' | 'pending' | 'confirmed' | 'false_positive'
+}
+
+export interface ScanResultHashesResponse {
+  total: number
+  hashes: ScanResultHash[]
+}
+
+export function getScanResultHashes(token: string, limit: number = 100) {
+  return request<ScanResultHashesResponse>(`/admin/scan-result-hashes?limit=${limit}`, { token })
+}
+
+export function confirmHashFromScan(token: string, sha256: string, file_name?: string, file_size?: number) {
+  return request<{ success: boolean; message: string }>('/admin/hashes/confirm-from-scan', {
+    method: 'POST',
+    body: { sha256, file_name, file_size },
+    token,
+  })
+}

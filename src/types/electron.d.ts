@@ -16,7 +16,7 @@ export interface ElectronAPI {
   getPCName: () => Promise<string>
 
   // Scanner
-  startScan: (mode?: ScanMode) => Promise<ScanResponse>
+  startScan: (mode?: ScanMode, tokenId?: number) => Promise<ScanResponse>
   onScanProgress: (callback: (data: ScanProgress) => void) => void
 
   // System info dashboard

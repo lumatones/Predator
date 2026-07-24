@@ -1,5 +1,12 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
+
+// ── Per-tab cache ──
+interface TabCacheEntry {
+  results: ScanResult[]
+  summary: ScanResponse['summary']
+}
+const tabCache = new Map<ScanMode, TabCacheEntry>()
 import { saveScan } from '../utils/stats-store'
 import { exportHtml, exportJson } from '../utils/export-report'
 import { submitScan } from '../api'
@@ -118,6 +125,27 @@ const TABS: TabConfig[] = [
   { id: 'network',   icon: '🌐', label: 'tabNetwork',   desc: 'tabNetworkDesc',   color: '#06b6d4' },
 ]
 
+// ── Red Eye Component ──
+
+function RedEye({ phase }: { phase: 'opening' | 'scanning' | 'closing' }) {
+  return (
+    <div className={`red-eye-overlay red-eye-phase-${phase}`}>
+      <div className="red-eye-container">
+        <div className="red-eye-socket" />
+        <div className="red-eye-ball">
+          <div className="red-eye-iris">
+            <div className="red-eye-pupil" />
+          </div>
+        </div>
+        <div className="red-eye-highlight" />
+      </div>
+      <div className="red-eye-text">
+        {phase === 'opening' ? 'ACQUIRING TARGET' : phase === 'scanning' ? 'SCANNING SYSTEM' : 'ANALYZING'}
+      </div>
+    </div>
+  )
+}
+
 // ── Realistic mock data per mode ──
 
 function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: ScanResponse['summary'] } {
@@ -158,38 +186,23 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
     },
     extended: {
       results: [
-        // Phase 1: Advanced process scan (v2)
         { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine', 'suspicious debugger', 'module:CreateRemoteThread (injector)'], size: 0, modifiedAt: now },
         { path: 'process:Injector Helper (PID: 0)', fileName: 'Module: injector.dll', type: 'process', risk: 'high', matches: ['module:inject (injector)', 'process:cheat loader'], size: 0, modifiedAt: now },
-
-        // Phase 2: Heuristic file scan (v2 — entropy, signatures, digital signature)
         { path: '~/Downloads/cheat_loader.js', fileName: '[Score:95] cheat_loader.js', type: 'file', risk: 'high', matches: ['Name → [injector]: DLL injector', 'Extension .js: JavaScript', 'Signatures [menu]: ImGui, Direct3D'], size: 15234, modifiedAt: now },
         { path: '~/Desktop/menu.dll', fileName: '[Score:87] menu.dll', type: 'file', risk: 'high', matches: ['Extension .dll: Dynamic library', 'Name → [menu]: Game menu / overlay', 'High entropy (7.82) — possibly packed'], size: 245760, modifiedAt: now },
         { path: '~/AppData/Local/FiveM/mods/', fileName: '[Score:80] eulen.asi', type: 'file', risk: 'high', matches: ['Extension .asi: ASI mod GTA', 'File in protected folder', 'No digital signature'], size: 320512, modifiedAt: now },
         { path: '~/AppData/Roaming/redengine/', fileName: '[Score:75] redengine.dll', type: 'file', risk: 'high', matches: ['Extension .dll: Dynamic library', 'Name → [debugger]: Debugger', 'Signatures [hook]: SetWindowsHookEx'], size: 180224, modifiedAt: now },
         { path: '~/.config/script_hook.lua', fileName: '[Score:60] script_hook.lua', type: 'file', risk: 'medium', matches: ['Name → [hook]: System function hooking', 'Extension .lua: Lua script'], size: 8912, modifiedAt: now },
         { path: '~/Documents/bypass_tool.exe', fileName: '[Score:70] bypass_tool.exe', type: 'file', risk: 'medium', matches: ['Name → [bypass]: Security bypass', 'Recently modified (2 days ago)', 'No digital signature'], size: 45056, modifiedAt: now },
-
-        // Phase 3: Deep registry scan (v2)
         { path: 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', fileName: 'Registry [injector]: inject', type: 'registry', risk: 'high', matches: ['registry-deep:inject (injector)', 'risk:CRITICAL'], size: 0, modifiedAt: now },
         { path: 'HKCU\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run', fileName: 'Registry [bypass]: bypass', type: 'registry', risk: 'high', matches: ['registry-deep:bypass (bypass)', 'risk:CRITICAL'], size: 0, modifiedAt: now },
-
-        // Phase 4: Prefetch analysis (v2)
         { path: 'C:\\Windows\\Prefetch\\DMA_TOOL.EXE-*.pf', fileName: 'Prefetch [dma]: DMA_TOOL.EXE-*.pf', type: 'file', risk: 'high', matches: ['prefetch:dma (dma)', 'last-run:2026-07-20'], size: 0, modifiedAt: now },
         { path: 'C:\\Windows\\Prefetch\\CHEAT_ENGINE.EXE-*.pf', fileName: 'Prefetch [debugger]: CHEAT_ENGINE.EXE-*.pf', type: 'file', risk: 'high', matches: ['prefetch:cheatengine (debugger)', 'last-run:2026-07-21'], size: 0, modifiedAt: now },
         { path: 'C:\\Windows\\Prefetch\\INJECTOR.EXE-*.pf', fileName: 'Prefetch [injector]: INJECTOR.EXE-*.pf', type: 'file', risk: 'medium', matches: ['prefetch:injector (injector)', 'last-run:2026-07-19'], size: 0, modifiedAt: now },
-
-        // Phase 5: Network connections (v2 — proxy/VPN ports)
         { path: 'Network Connections', fileName: 'Suspicious connections: 2', type: 'software', risk: 'high', matches: ['netstat:1080 (PID: 4821)', 'netstat:remote:185.123.45.67 (PID: 5678)'], size: 0, modifiedAt: now },
-
-        // Phase 6: DMA detection
         { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx (VEN_10ee)', 'FPGA device detected'], size: 0, modifiedAt: now },
         { path: 'System32/drivers/', fileName: 'Driver: leeched.sys', type: 'software', risk: 'high', matches: ['dma-keyword:leechcore', 'DMA kernel driver'], size: 0, modifiedAt: now },
-
-        // Phase 7: Registry (standard cheat scan)
         { path: 'HKLM\\...\\Uninstall', fileName: 'Registry: nightfall', type: 'registry', risk: 'high', matches: ['registry:nightfall installed'], size: 0, modifiedAt: now },
-
-        // Phase 8: Browser history
         { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma', 'browser:injector', 'browser:bypass'], size: 4096, modifiedAt: now },
       ],
       scanned: 2487,
@@ -225,10 +238,12 @@ const INITIAL_SHOW = 5
 export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const t = (key: string) => T[lang][key] || key
   const [activeTab, setActiveTab] = useState<ScanMode>('files')
-  const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>('idle')
+  const cachedEntry = tabCache.get(activeTab)
+  const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>(cachedEntry ? 'done' : 'idle')
   const [progress, setProgress] = useState<ScanProgress | null>(null)
-  const [results, setResults] = useState<ScanResult[]>([])
-  const [summary, setSummary] = useState<ScanResponse['summary'] | null>(null)
+
+  const [results, setResults] = useState<ScanResult[]>(cachedEntry?.results ?? [])
+  const [summary, setSummary] = useState<ScanResponse['summary'] | null>(cachedEntry?.summary ?? null)
   const [selectedResult, setSelectedResult] = useState<ScanResult | null>(null)
   const [error, setError] = useState('')
   const [tabTransition, setTabTransition] = useState<'enter' | 'idle' | 'exit'>('idle')
@@ -237,9 +252,10 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [exportMsg, setExportMsg] = useState('')
   const [serverMsg, setServerMsg] = useState('')
+  const [copiedPath, setCopiedPath] = useState('')
+  const [redEyePhase, setRedEyePhase] = useState<'hidden' | 'opening' | 'scanning' | 'closing'>('hidden')
   const scanRef = useRef<boolean>(false)
 
-  // Filtered results (client-side search, memoised)
   const filteredResults = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
     if (!q) return results
@@ -254,7 +270,6 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const currentTab = TABS.find(t => t.id === activeTab)!
   const activeTabIndex = TABS.findIndex(t => t.id === activeTab)
 
-  // Cleanup scan + transition timer on unmount
   useEffect(() => {
     return () => {
       scanRef.current = false
@@ -264,10 +279,10 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
 
   const handleStartScan = useCallback(async () => {
     const api = window.electronAPI
-
-    // Prevent double-start
     if (scanRef.current) return
     scanRef.current = true
+
+    tabCache.delete(activeTab)
 
     setPhase('scanning')
     setError('')
@@ -276,9 +291,22 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
     setSelectedResult(null)
     setProgress(null)
 
+    // ── Red Eye signature sequence (2.5s total) ──
+    const eyeTimer = (ms: number) => new Promise(r => setTimeout(r, ms))
+    setRedEyePhase('opening')
+    await eyeTimer(700)
+    if (!scanRef.current) return
+    setRedEyePhase('scanning')
+    await eyeTimer(1200)
+    if (!scanRef.current) return
+    setRedEyePhase('closing')
+    await eyeTimer(600)
+    if (!scanRef.current) return
+    setRedEyePhase('hidden')
+
     if (!api?.startScan) {
       for (let i = 0; i <= 100; i += 10) {
-        if (!scanRef.current) return // aborted by tab switch
+        if (!scanRef.current) return
         await new Promise(r => setTimeout(r, 150))
         setProgress({
           phase: i < 80 ? 'scanning' : i < 100 ? 'analyzing' : 'done',
@@ -294,32 +322,27 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       const mock = generateMockData(activeTab)
       setResults(mock.results)
       setSummary(mock.summary)
+      tabCache.set(activeTab, { results: mock.results, summary: mock.summary })
       setPhase('done')
       scanRef.current = false
-      // Save scan to stats
       saveScan(activeTab, mock.summary.totalScanned, mock.summary.suspiciousFiles, mock.summary.highRiskCount, mock.summary.scanTimeMs, mock.results)
-
-      // Submit to server (fire-and-forget)
       submitToServer(activeTab, mock.summary, mock.results)
       return
     }
 
-    // Real scan
     const progressHandler = (data: ScanProgress) => {
       if (scanRef.current) setProgress({ ...data })
     }
     api.onScanProgress(progressHandler)
 
     try {
-      const response = await api.startScan(activeTab)
+      const response = await api.startScan(activeTab, tokenId !== null ? tokenId : undefined)
       if (scanRef.current) {
         setResults(response.results)
         setSummary(response.summary)
+        tabCache.set(activeTab, { results: response.results, summary: response.summary })
         setPhase('done')
-        // Save scan to stats
         saveScan(activeTab, response.summary.totalScanned, response.summary.suspiciousFiles, response.summary.highRiskCount, response.summary.scanTimeMs, response.results)
-
-        // Submit to server (fire-and-forget)
         submitToServer(activeTab, response.summary, response.results)
       }
     } catch (err) {
@@ -333,6 +356,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   }, [activeTab, currentTab])
 
   const handleClear = useCallback(() => {
+    tabCache.clear()
     setResults([])
     setSummary(null)
     setProgress(null)
@@ -361,32 +385,41 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
 
   const handleTabChange = useCallback((tab: ScanMode) => {
     if (tab === activeTab) return
-    // Abort any running scan
     scanRef.current = false
 
-    // Start exit animation
+    if (phase === 'done' && summary) {
+      tabCache.set(activeTab, { results, summary })
+    }
+
     setTabTransition('exit')
     if (transitionTimer.current) clearTimeout(transitionTimer.current)
 
+    setRedEyePhase('hidden')
+
     transitionTimer.current = setTimeout(() => {
       setActiveTab(tab)
-      setPhase('idle')
-      setResults([])
-      setSummary(null)
+      const cached = tabCache.get(tab)
+      if (cached) {
+        setResults(cached.results)
+        setSummary(cached.summary)
+        setPhase('done')
+      } else {
+        setPhase('idle')
+        setResults([])
+        setSummary(null)
+      }
       setProgress(null)
       setSelectedResult(null)
       setError('')
       setSearchQuery('')
 
-      // Start enter animation after state is updated
       setTabTransition('enter')
       setTimeout(() => setTabTransition('idle'), 200)
     }, 150)
-  }, [activeTab])
+  }, [activeTab, phase, results, summary])
 
   const submitToServer = useCallback(async (mode: string, summary: ScanResponse['summary'], results: ScanResult[]) => {
     try {
-      // Get PC name from Electron API if available
       let pcName = 'unknown'
       try {
         if (window.electronAPI?.getPCName) {
@@ -412,9 +445,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       })
       setServerMsg('✓')
       setTimeout(() => setServerMsg(''), 3000)
-    } catch {
-      // Server submission is optional — don't show errors to user
-    }
+    } catch { /* ignore */ }
   }, [])
 
   const formatSize = (bytes: number) => {
@@ -463,20 +494,15 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const calcPercent = () => {
     if (!progress) return 0
     if (progress.phase === 'done') return 100
-    // Анализ: 85-99% (зависит от количества найденного)
     if (progress.phase === 'analyzing') return 85 + Math.min(progress.filesFound * 2, 14)
-
-    // Сканирование: 0-84% — монотонно, без сбросов
-    // dirsDone/totalDirs — вклад пройденных директорий (0-70%)
-    // filesScanned — плавный вклад внутри и между директориями (0-14%)
     const dirWeight = progress.totalDirs > 0
       ? Math.min(progress.dirsDone / progress.totalDirs, 1)
       : 0
-    // filesScanned монотонно растёт, не сбрасывается каждые 100
     const fileWeight = Math.min(progress.filesScanned / 300, 1)
-
     return Math.min(dirWeight * 70 + fileWeight * 14, 84)
   }
+
+  const showEye = redEyePhase !== 'hidden'
 
   return (
     <div className="checker-wrapper">
@@ -515,6 +541,24 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
 
       <p className="checker-desc" style={{ marginBottom: 16 }}>{t(currentTab.desc)}</p>
 
+      {/* Tab count badges */}
+      {phase === 'done' && (
+        <div className="checker-badge-row" style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+          {TABS.map(tab => {
+            const count = activeTab === tab.id ? results.length : 0
+            if (count === 0) return null
+            return (
+              <span key={tab.id} style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                background: tab.color + '22', color: tab.color,
+              }}>
+                {tab.icon} {count}
+              </span>
+            )
+          })}
+        </div>
+      )}
+
       {/* Tab content with transitions */}
       <div className={`tab-content${tabTransition === 'exit' ? ' exit' : ''}${tabTransition === 'enter' ? ' enter' : ''}`}>
 
@@ -531,36 +575,45 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
         </div>
       )}
 
-      {/* Scanning */}
+      {/* Scanning: Red Eye signature first, then normal scanning UI */}
       {phase === 'scanning' && (
-        <div className="checker-scanning">
-          <div className="checker-radar">
-            <div className="radar-ring" />
-            <div className="radar-ring" />
-            <div className="radar-ring" />
-            <div className="radar-dot" />
-          </div>
+        <div style={{ position: 'relative', minHeight: 300 }}>
+          {/* Red Eye signature overlay */}
+          {redEyePhase !== 'hidden' && (
+            <RedEye phase={redEyePhase} />
+          )}
 
-          <div className="checker-progress-header">
-            <span className="checker-progress-label">
-              <span key={progress?.phase || 'scanning'} className="progress-label-text">
-                {progress?.phase === 'analyzing' ? t('analyzing') : t('scanning')}
-              </span>
-            </span>
-            <span className="checker-progress-pct"><span key={Math.round(calcPercent())} className="pct-num">{Math.round(calcPercent())}</span>%</span>
-          </div>
+          {/* Normal scanning UI (only after eye closes) */}
+          {!showEye && (
+            <div className="checker-scanning show-after-eye">
+              <div className="checker-radar">
+                <div className="radar-ring" />
+                <div className="radar-ring" />
+                <div className="radar-ring" />
+                <div className="radar-dot" />
+              </div>
 
-          <div className="checker-progress-bar">
-            <div className="checker-progress-fill" style={{ width: `${calcPercent()}%` }} />
-          </div>
+              <div className="checker-scanning-phase" key={progress?.phase || 'scanning'}>
+                {progress?.phase === 'analyzing' ? '🔬 Анализ результатов' : '🛡️ Сканирование'}
+              </div>
+              <div className="checker-scanning-sub" key={progress?.currentDir}>
+                {progress?.currentDir || 'Поиск подозрительных файлов...'}
+              </div>
 
-          <div className="checker-progress-info">
-            <span>{t('found')}: <span key={progress?.filesFound ?? 0} className="found-num">{progress?.filesFound || 0}</span></span>
-            <span>{progress?.filesScanned || 0} {t('filesScanned')}</span>
-          </div>
+              <div className="checker-progress-header">
+                <span className="checker-progress-label">{t('scanning')}</span>
+                <span className="checker-progress-pct"><span key={Math.round(calcPercent())} className="pct-num">{Math.round(calcPercent())}</span>%</span>
+              </div>
 
-          {progress?.currentDir && (
-            <div className="checker-current-dir">{progress.currentDir}</div>
+              <div className="checker-progress-bar">
+                <div className="checker-progress-fill" style={{ width: `${calcPercent()}%` }} />
+              </div>
+
+              <div className="checker-progress-info">
+                <span>{t('found')}: <span key={progress?.filesFound ?? 0} className="found-num">{progress?.filesFound || 0}</span></span>
+                <span>{progress?.filesScanned || 0} {t('filesScanned')}</span>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -586,11 +639,32 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                   </svg>
                 )}
               </div>
-              <div className="checker-summary-text">
-                {summary.suspiciousFiles > 0
-                  ? `${summary.suspiciousFiles} ${t('threatsFound')}`
-                  : t('noThreats')}
-              </div>
+              {summary.suspiciousFiles > 0 ? (
+                <div className="checker-summary-text" style={{ marginBottom: 8 }}>
+                  {`${summary.suspiciousFiles} ${t('threatsFound')}`}
+                </div>
+              ) : (
+                <div className="checker-empty-state">
+                  <div className="checker-empty-check">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                  <div className="checker-empty-title">Система чиста</div>
+                  <div className="checker-empty-desc">Проверены следующие модули:</div>
+                  <div className="checker-empty-modules">
+                    <span className="checker-empty-module">📁 Файловая система</span>
+                    <span className="checker-empty-module">⚙️ Процессы</span>
+                    <span className="checker-empty-module">📋 Реестр</span>
+                    <span className="checker-empty-module">🔌 DMA-устройства</span>
+                    <span className="checker-empty-module">🌐 Сеть</span>
+                    <span className="checker-empty-module">🔐 Цифровые подписи</span>
+                    <span className="checker-empty-module">🧬 Поведенческий анализ</span>
+                    <span className="checker-empty-module">🌍 История браузера</span>
+                    <span className="checker-empty-module">📊 Энтропия файлов</span>
+                  </div>
+                </div>
+              )}
               <div className="checker-summary-stats">
                 <span>{summary.totalScanned} {t('filesScanned')}</span>
                 <span className="checker-summary-dot">•</span>
@@ -599,7 +673,6 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
             </div>
           )}
 
-          {/* Search input — only show when there are results */}
           {results.length > 0 && (
             <div className="checker-search">
               <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -623,125 +696,151 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
           )}
 
           {results.length > 0 && (
-            <div className="checker-groups">
-              {filteredResults.length > 0 ? (
-                (['high', 'medium', 'low'] as const).map(riskLevel => {
-                const group = filteredResults.filter(r => r.risk === riskLevel)
-                if (group.length === 0) return null
-                const isExpanded = expandedGroups.has(riskLevel)
-                const isShowAll = showAllGroups.has(riskLevel)
-                const visible = isShowAll ? group : group.slice(0, INITIAL_SHOW)
-                const hidden = group.length - INITIAL_SHOW
+            <div className="checker-results-split">
+              <div className="checker-results-list">
+                <div className="checker-groups">
+                  {filteredResults.length > 0 ? (
+                    (['high', 'medium', 'low'] as const).map(riskLevel => {
+                    const group = filteredResults.filter(r => r.risk === riskLevel)
+                    if (group.length === 0) return null
+                    const isExpanded = expandedGroups.has(riskLevel)
+                    const isShowAll = showAllGroups.has(riskLevel)
+                    const visible = isShowAll ? group : group.slice(0, INITIAL_SHOW)
+                    const hidden = group.length - INITIAL_SHOW
 
-                const toggleGroup = () => {
-                  setExpandedGroups(prev => {
-                    const next = new Set(prev)
-                    if (next.has(riskLevel)) next.delete(riskLevel)
-                    else next.add(riskLevel)
-                    return next
-                  })
-                }
-                const toggleShowAll = () => {
-                  setShowAllGroups(prev => {
-                    const next = new Set(prev)
-                    if (next.has(riskLevel)) next.delete(riskLevel)
-                    else next.add(riskLevel)
-                    return next
-                  })
-                }
+                    const toggleGroup = () => {
+                      setExpandedGroups(prev => {
+                        const next = new Set(prev)
+                        if (next.has(riskLevel)) next.delete(riskLevel)
+                        else next.add(riskLevel)
+                        return next
+                      })
+                    }
+                    const toggleShowAll = () => {
+                      setShowAllGroups(prev => {
+                        const next = new Set(prev)
+                        if (next.has(riskLevel)) next.delete(riskLevel)
+                        else next.add(riskLevel)
+                        return next
+                      })
+                    }
 
-                return (
-                  <div key={riskLevel} className={`result-group group-${riskLevel}`}>
-                    {/* Group header */}
-                    <button className="group-header" onClick={toggleGroup}>
-                      <div className="group-header-left">
-                        <span className={`group-risk-dot dot-${riskLevel}`} />
-                        <span className="group-title">{
-                          riskLevel === 'high' ? t('groupHigh') :
-                          riskLevel === 'medium' ? t('groupMedium') : t('groupLow')
-                        }</span>
-                      </div>
-                      <div className="group-header-right">
-                        <span className="group-count">{group.length}</span>
-                        <span className={`group-chevron ${isExpanded ? 'open' : ''}`}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                        </span>
-                      </div>
-                    </button>
+                    return (
+                      <div key={riskLevel} className={`result-group group-${riskLevel}`}>
+                        <button className="group-header" onClick={toggleGroup}>
+                          <div className="group-header-left">
+                            <span className={`group-risk-dot dot-${riskLevel}`} />
+                            <span className="group-title">{
+                              riskLevel === 'high' ? t('groupHigh') :
+                              riskLevel === 'medium' ? t('groupMedium') : t('groupLow')
+                            }</span>
+                          </div>
+                          <div className="group-header-right">
+                            <span className="group-count">{group.length}</span>
+                            <span className={`group-chevron ${isExpanded ? 'open' : ''}`}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </span>
+                          </div>
+                        </button>
 
-                    {/* Collapsible body */}
-                    {isExpanded && (
-                      <div className="group-body">
-                        {visible.map((r, i) => (
-                          <div key={`${r.path}-${i}`}
-                            className={`result-row`}
-                            style={{ animationDelay: `${i * 0.06}s` }}
-                            onClick={() => setSelectedResult(
-                              selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? null : r
-                            )}
-                          >
-                            <div className="result-row-main">
-                              <span className="result-icon" title={typeName(r.type)}>{typeIcon(r.type)}</span>
-                              <div className="result-info">
-                                <span className="result-name">{r.fileName}</span>
-                                <span className="result-path">{r.path.length > 55 ? r.path.slice(0, 52) + '...' : r.path}</span>
-                              </div>
-                              <div className="result-matches">
-                                {r.matches.slice(0, 1).map((m, j) => (
-                                  <span key={j} className="match-tag">{m.includes(':') ? m.split(':').slice(1).join(':') : m}</span>
-                                ))}
-                                {r.matches.length > 1 && <span className="match-more">+{r.matches.length - 1}</span>}
-                              </div>
-                              <span className="result-expand">{selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? '▲' : '▼'}</span>
-                            </div>
-
-                            {/* Detail panel */}
-                            {selectedResult?.path === r.path && selectedResult?.fileName === r.fileName && (
-                              <div className="result-detail">
-                                <div className="result-detail-row">
-                                  <span className="detail-label">{t('path')}</span>
-                                  <span className="detail-value path">{r.path}</span>
-                                </div>
-                                {r.size > 0 && (
-                                  <div className="result-detail-row">
-                                    <span className="detail-label">Size</span>
-                                    <span className="detail-value">{formatSize(r.size)}</span>
-                                  </div>
+                        {isExpanded && (
+                          <div className="group-body">
+                            {visible.map((r, i) => (
+                              <div key={`${r.path}-${i}`}
+                                className={`result-row${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? ' selected' : ''}`}
+                                data-risk={r.risk}
+                                style={{ animationDelay: `${i * 0.06}s` }}
+                                onClick={() => setSelectedResult(
+                                  selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? null : r
                                 )}
-                                <div className="result-detail-row">
-                                  <span className="detail-label">{t('matches')}</span>
-                                  <div className="detail-tags">
-                                    {r.matches.map((m, j) => (
-                                      <span key={j} className="match-tag">{m}</span>
+                              >
+                                <div className="result-row-main">
+                                  <div className="result-info">
+                                    <span className="result-name">{r.fileName}</span>
+                                    <span className="result-path">{r.path.length > 55 ? r.path.slice(0, 52) + '...' : r.path}</span>
+                                  </div>
+                                  <div className="result-matches">
+                                    {r.matches.slice(0, 1).map((m, j) => (
+                                      <span key={j} className="match-tag">{m.includes(':') ? m.split(':').slice(1).join(':') : m}</span>
                                     ))}
+                                    {r.matches.length > 1 && <span className="match-more">+{r.matches.length - 1}</span>}
                                   </div>
                                 </div>
                               </div>
+                            ))}
+
+                            {hidden > 0 && !isShowAll && (
+                              <button className="group-show-btn" onClick={toggleShowAll}>
+                                {t('showAll')} {group.length} ({hidden} {t('groupHidden')})
+                              </button>
+                            )}
+                            {isShowAll && group.length > INITIAL_SHOW && (
+                              <button className="group-show-btn collapse" onClick={toggleShowAll}>
+                                {t('collapse')}
+                              </button>
                             )}
                           </div>
-                        ))}
-
-                        {/* Show more / collapse */}
-                        {hidden > 0 && !isShowAll && (
-                          <button className="group-show-btn" onClick={toggleShowAll}>
-                            {t('showAll')} {group.length} ({hidden} {t('groupHidden')})
-                          </button>
-                        )}
-                        {isShowAll && group.length > INITIAL_SHOW && (
-                          <button className="group-show-btn collapse" onClick={toggleShowAll}>
-                            {t('collapse')}
-                          </button>
                         )}
                       </div>
-                    )}
+                    )
+                  })
+                  ) : (
+                    searchQuery && <div className="search-no-results">{t('searchNoResults')}</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="checker-results-detail">
+                {selectedResult ? (
+                  <>
+                    <div className="checker-detail-title-row">
+                      <span className="checker-type-icon-large">{typeIcon(selectedResult.type)}</span>
+                      <div>
+                        <div className="checker-detail-filename">{selectedResult.fileName}</div>
+                        <div className="checker-detail-type">{typeName(selectedResult.type)} · {riskLabel(selectedResult.risk)}</div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div className="checker-detail-section">
+                        <span className="checker-detail-label">{t('path')}</span>
+                        <span className="checker-detail-value" style={{ wordBreak: 'break-all', fontSize: 11 }}>{selectedResult.path}</span>
+                        <button
+                          className={`checker-copy-btn${copiedPath === selectedResult.path ? ' copied' : ''}`}
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedResult.path).catch(() => {})
+                            setCopiedPath(selectedResult.path)
+                            setTimeout(() => setCopiedPath(''), 2000)
+                          }}
+                        >
+                          {copiedPath === selectedResult.path ? '✓' : '📋'}
+                        </button>
+                      </div>
+                      {selectedResult.size > 0 && (
+                        <div className="checker-detail-section">
+                          <span className="checker-detail-label">Size</span>
+                          <span className="checker-detail-value">{formatSize(selectedResult.size)}</span>
+                        </div>
+                      )}
+                      <div className="checker-detail-section">
+                        <span className="checker-detail-label">{t('matches')}</span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {selectedResult.matches.map((m, j) => (
+                            <span key={j} className="match-tag">{m}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="checker-detail-empty">
+                    <span style={{ fontSize: 32, opacity: 0.3 }}>👆</span>
+                    <span>Выберите элемент из списка</span>
+                    <span style={{ fontSize: 11, opacity: 0.5 }}>Нажмите на строку для просмотра деталей</span>
                   </div>
-                )
-              })
-              ) : (
-                searchQuery && <div className="search-no-results">{t('searchNoResults')}</div>
-              )}
+                )}
+              </div>
             </div>
           )}
 
@@ -761,15 +860,6 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                 {t('exportJson')}
               </button>
               <span className="checker-export-msg">{exportMsg}</span>
-              <span className="checker-server-msg" style={{
-                display: serverMsg ? 'inline-flex' : 'none',
-                fontSize: 11, color: '#22c55e', marginLeft: 4, alignItems: 'center', gap: 4
-              }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                Server
-              </span>
             </div>
             <button className="checker-action-btn primary" onClick={handleStartScan}>{t('scanAgain')}</button>
           </div>

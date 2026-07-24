@@ -353,6 +353,26 @@ const App: React.FC = () => {
             <div className="progress-bar indeterminate"><div className="progress-fill" /></div></>
         )}
 
+        {/* ── Onboarding progress steps ── */}
+        {(phase.startsWith('onboarding-') || phase === 'requesting-access') && (
+          <div className="onb-steps">
+            <div className={`onb-step${phase === 'onboarding-lang' ? ' active' : ' done'}`}>
+              <span className="onb-step-dot" />
+              <span className="onb-step-label">{t('langTitle')}</span>
+            </div>
+            <div className="onb-step-line" />
+            <div className={`onb-step${phase === 'onboarding-theme' ? ' active' : phase === 'onboarding-auth' || phase === 'requesting-access' ? ' done' : ''}`}>
+              <span className="onb-step-dot" />
+              <span className="onb-step-label">{t('themeTitle')}</span>
+            </div>
+            <div className="onb-step-line" />
+            <div className={`onb-step${phase === 'onboarding-auth' || phase === 'requesting-access' ? ' active' : ''}`}>
+              <span className="onb-step-dot" />
+              <span className="onb-step-label">{t('authTitle')}</span>
+            </div>
+          </div>
+        )}
+
         {/* ── ONBOARDING: Language ── */}
         {phase === 'onboarding-lang' && renderCard(
           <><p className="onb-label">{t('langTitle')}</p>
@@ -367,7 +387,9 @@ const App: React.FC = () => {
                 <span className="lang-name">{t('langEn')}</span>
               </button>
             </div>
-            <button className="start-button" onClick={hNextLang} style={{ marginTop: 12 }}>{t('next')}</button></>
+            <div className="onb-step-actions">
+              <button className="start-button" onClick={hNextLang}>{t('next')}</button>
+            </div></>
         )}
 
         {/* ── ONBOARDING: Theme ── */}
@@ -384,7 +406,9 @@ const App: React.FC = () => {
                 </button>
               ))}
             </div>
-            <button className="start-button" onClick={hNextTheme} style={{ marginTop: 12 }}>{t('next')}</button></>
+            <div className="onb-step-actions">
+              <button className="start-button" onClick={hNextTheme}>{t('next')}</button>
+            </div></>
         )}
 
         {/* ── ONBOARDING: Auth ── */}
@@ -489,19 +513,30 @@ const App: React.FC = () => {
               <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             </svg></div>
             <p className="ready-text">{t('ready')}</p>
-            <div className="main-actions">
-              <button className="start-button" onClick={hStartChecker}>{t('startCheck')}</button>
-              <button className="start-button secondary" onClick={hStartDashboard}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
-                </svg>
-                {t('dashboard')}
+            <div className="main-cards">
+              <button className="main-card" onClick={hStartChecker}>
+                <div className="main-card-icon" style={{ background: 'rgba(255,68,68,0.08)' }}>🛡️</div>
+                <div className="main-card-body">
+                  <span className="main-card-title">{t('startCheck')}</span>
+                  <span className="main-card-desc">Сканирование файлов, процессов, реестра и сети на наличие читов</span>
+                </div>
+                <span className="main-card-arrow">→</span>
               </button>
-              <button className="start-button secondary" onClick={hStartStatistics}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 20V10M12 20V4M6 20v-6" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                {t('statistics')}
+              <button className="main-card" onClick={hStartDashboard}>
+                <div className="main-card-icon" style={{ background: 'rgba(59,130,246,0.08)' }}>📊</div>
+                <div className="main-card-body">
+                  <span className="main-card-title">{t('dashboard')}</span>
+                  <span className="main-card-desc">Мониторинг CPU, памяти, температуры и запущенных процессов</span>
+                </div>
+                <span className="main-card-arrow">→</span>
+              </button>
+              <button className="main-card" onClick={hStartStatistics}>
+                <div className="main-card-icon" style={{ background: 'rgba(139,92,246,0.08)' }}>📈</div>
+                <div className="main-card-body">
+                  <span className="main-card-title">{t('statistics')}</span>
+                  <span className="main-card-desc">Агрегированная статистика по всем проверкам и типам угроз</span>
+                </div>
+                <span className="main-card-arrow">→</span>
               </button>
             </div></>
         )}

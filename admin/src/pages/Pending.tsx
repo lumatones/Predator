@@ -2,6 +2,42 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../App'
 import { getPending, approveRequest, rejectRequest, PendingRequest } from '../api'
 
+// ── Countdown component (outside Pending — stable, won't re-create on re-render) ──
+function CountdownItem({ expiresAt }: { expiresAt: string }) {
+  const calcDisplay = () => {
+    const now = new Date()
+    const exp = new Date(expiresAt)
+    const diffMs = exp.getTime() - now.getTime()
+    if (diffMs <= 0) return { text: 'Истёк', isUrgent: false, isExpired: true }
+    const mins = Math.floor(diffMs / 60000)
+    const secs = Math.floor((diffMs % 60000) / 1000)
+    if (mins > 60) {
+      const hours = Math.floor(mins / 60)
+      return { text: `${hours}ч ${mins % 60}м ${secs}с`, isUrgent: diffMs < 5 * 60 * 1000, isExpired: false }
+    }
+    return { text: `${mins}м ${secs}с`, isUrgent: diffMs < 5 * 60 * 1000, isExpired: false }
+  }
+
+  const [state, setState] = useState(calcDisplay)
+
+  useEffect(() => {
+    const timer = setInterval(() => setState(calcDisplay()), 1000)
+    return () => clearInterval(timer)
+  }, [expiresAt])
+
+  return (
+    <span style={{
+      fontFamily: 'SF Mono, Fira Code, monospace',
+      fontSize: 13,
+      fontWeight: 600,
+      color: state.isExpired ? '#ff6b6b' : state.isUrgent ? '#F59E0B' : '#22c55e',
+      animation: state.isUrgent && !state.isExpired ? 'pulse 1.5s ease-in-out infinite' : 'none',
+    }}>
+      {state.text}
+    </span>
+  )
+}
+
 export default function Pending() {
   const { auth } = useAuth()
   const [requests, setRequests] = useState<PendingRequest[]>([])
@@ -127,9 +163,9 @@ export default function Pending() {
                   <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
                     {new Date(r.created_at).toLocaleString('ru-RU')}
                   </td>
-                  <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                  <td style={{ fontSize: 12 }}>
                     {r.expires_at
-                      ? new Date(r.expires_at).toLocaleString('ru-RU')
+                      ? <CountdownItem expiresAt={r.expires_at} />
                       : '—'}
                   </td>
                   <td>

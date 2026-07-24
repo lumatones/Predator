@@ -64,6 +64,24 @@ async function init() {
     ) ENGINE=InnoDB
   `)
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS suspicious_hashes (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      sha256        CHAR(64) NOT NULL,
+      file_name     VARCHAR(255),
+      pc_username   VARCHAR(100),
+      file_size     INT DEFAULT 0,
+      risk_score    INT DEFAULT 0,
+      status        ENUM('pending', 'confirmed', 'false_positive') DEFAULT 'pending',
+      reviewed_by   INT REFERENCES admins(id),
+      reviewed_at   DATETIME,
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_sha256 (sha256)
+    ) ENGINE=InnoDB
+  `)
+  await query('CREATE INDEX IF NOT EXISTS idx_sh_status ON suspicious_hashes(status)')
+  await query('CREATE INDEX IF NOT EXISTS idx_sh_created ON suspicious_hashes(created_at)')
+
   console.log('  ✓ Tables created\n')
 
   // ── Create default admin ──

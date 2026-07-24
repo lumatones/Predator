@@ -317,4 +317,228 @@ router.get('/scan-stats', async (req, res) => {
   }
 })
 
+// ── GET /api/admin/suspicious-hashes ──────────
+// Список подозрительных хешей от пользователей
+router.get('/suspicious-hashes', async (req, res) => {
+  try {
+    const status = req.query.status || 'pending'
+    const rows = await query(`
+      SELECT sh.*, a.username AS reviewed_by_name
+      FROM suspicious_hashes sh
+      LEFT JOIN admins a ON sh.reviewed_by = a.id
+      WHERE sh.status = ?
+      ORDER BY sh.created_at DESC
+      LIMIT 100
+    `, [status])
+    return res.json(rows)
+  } catch (err) {
+    console.error('Suspicious hashes error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// ── POST /api/admin/hashes/approve/:id ────────
+// Подтвердить хеш как чит → попадёт в KNOWN_CHEAT_HASHES
+router.post('/hashes/approve/:id', async (req, res) => {
+  try {
+    await query(
+      'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND status = ?',
+      ['confirmed', req.admin.id, req.params.id, 'pending']
+    )
+
+    const io = req.app.get('io')
+    io?.to('admin').emit('hash-update', {
+      type: 'confirmed',
+      hashId: parseInt(req.params.id),
+      admin: req.admin.username,
+      timestamp: new Date().toISOString(),
+    })
+
+    return res.json({ success: true, message: 'Хеш подтверждён' })
+  } catch (err) {
+    console.error('Hash approve error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// ── POST /api/admin/hashes/reject/:id ─────────
+// Отметить как ложное срабатывание
+router.post('/hashes/reject/:id', async (req, res) => {
+  try {
+    await query(
+      'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND status = ?',
+      ['false_positive', req.admin.id, req.params.id, 'pending']
+    )
+
+    const io = req.app.get('io')
+    io?.to('admin').emit('hash-update', {
+      type: 'false_positive',
+      hashId: parseInt(req.params.id),
+      admin: req.admin.username,
+      timestamp: new Date().toISOString(),
+    })
+
+    return res.json({ success: true, message: 'Хеш отклонён' })
+  } catch (err) {
+    console.error('Hash reject error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// ── GET /api/admin/scan-result-hashes ──────────
+// Извлечь все уникальные SHA256 хеши из результатов сканирований
+// Анализирует results_json из таблицы scan_results
+router.get('/scan-result-hashes', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500)
+
+    // Get recent scan results with their JSON
+    const rows = await query(`
+      SELECT sr.id, sr.pc_username, sr.mode, sr.results_json, sr.created_at
+      FROM scan_results sr
+      WHERE sr.results_json IS NOT NULL
+        AND sr.results_json != '[]'
+        AND sr.results_json != ''
+      ORDER BY sr.created_at DESC
+      LIMIT ?
+    `, [limit])
+
+    // Extract unique hashes from results_json
+    const hashMap = new Map()
+
+    for (const row of rows) {
+      try {
+        const parsed = typeof row.results_json === 'string'
+          ? JSON.parse(row.results_json)
+          : row.results_json
+
+        if (!Array.isArray(parsed)) continue
+
+        for (const item of parsed) {
+          // Look for hash fields: 'hash', 'sha256', or extract from matches
+          let sha256 = ''
+          let fileName = item.file_name || item.fileName || 'unknown'
+          let fileSize = item.size || item.file_size || 0
+
+          if (item.hash && typeof item.hash === 'string' && item.hash.length === 64) {
+            sha256 = item.hash.toLowerCase()
+          } else if (item.sha256 && typeof item.sha256 === 'string' && item.sha256.length === 64) {
+            sha256 = item.sha256.toLowerCase()
+          } else if (Array.isArray(item.matches)) {
+            // Try to extract SHA256 from matches like "sha256:abc..." or "hash:abc..."
+            for (const m of item.matches) {
+              const mStr = String(m)
+              // Match both sha256: and hash: prefixes with full 64-char hex
+              const hashMatch = mStr.match(/(?:sha256|hash):([a-f0-9]{64})/i)
+              if (hashMatch) {
+                sha256 = hashMatch[1].toLowerCase()
+                break
+              }
+            }
+          }
+
+          if (!sha256 || sha256.length !== 64) continue
+
+          const existing = hashMap.get(sha256) || {
+            sha256,
+            file_name: fileName,
+            file_size: fileSize,
+            pc_usernames: new Set(),
+            first_seen: row.created_at,
+            last_seen: row.created_at,
+            occurrences: 0,
+          }
+
+          existing.pc_usernames.add(row.pc_username || 'unknown')
+          existing.occurrences++
+          if (row.created_at < existing.first_seen) existing.first_seen = row.created_at
+          if (row.created_at > existing.last_seen) existing.last_seen = row.created_at
+          // Update file name if we see a better one
+          if (fileName !== 'unknown') existing.file_name = fileName
+          if (fileSize > 0) existing.file_size = fileSize
+
+          hashMap.set(sha256, existing)
+        }
+      } catch { /* skip malformed JSON */ }
+    }
+
+    // Check which hashes are already in suspicious_hashes
+    const allHashes = Array.from(hashMap.keys())
+    const existingStatuses = new Map()
+
+    if (allHashes.length > 0) {
+      const placeholders = allHashes.map(() => '?').join(',')
+      const existingRows = await query(
+        `SELECT sha256, status FROM suspicious_hashes WHERE sha256 IN (${placeholders})`,
+        allHashes
+      )
+      for (const r of existingRows) {
+        existingStatuses.set(r.sha256, r.status)
+      }
+    }
+
+    // Build response
+    const result = Array.from(hashMap.values()).map(h => ({
+      sha256: h.sha256,
+      file_name: h.file_name,
+      file_size: h.file_size,
+      pc_usernames: Array.from(h.pc_usernames),
+      first_seen: h.first_seen,
+      last_seen: h.last_seen,
+      occurrences: h.occurrences,
+      status: existingStatuses.get(h.sha256) || 'new',
+    }))
+
+    // Sort by occurrences desc, then by last_seen desc
+    result.sort((a, b) => b.occurrences - a.occurrences || new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime())
+
+    return res.json({
+      total: result.length,
+      hashes: result.slice(0, 100),
+    })
+  } catch (err) {
+    console.error('Scan result hashes error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// ── POST /api/admin/hashes/confirm-from-scan ───
+// Отметить хеш из результатов сканирования как подтверждённый чит
+// Создаёт запись в suspicious_hashes со статусом 'confirmed'
+router.post('/hashes/confirm-from-scan', async (req, res) => {
+  try {
+    const { sha256, file_name, file_size } = req.body
+
+    if (!sha256 || typeof sha256 !== 'string' || sha256.length !== 64) {
+      return res.status(400).json({ error: 'Неверный формат SHA256' })
+    }
+
+    // Try to insert as confirmed (ignore if already exists)
+    await query(
+      `INSERT IGNORE INTO suspicious_hashes (sha256, file_name, file_size, risk_score, status, reviewed_by, reviewed_at)
+       VALUES (?, ?, ?, ?, 'confirmed', ?, NOW())`,
+      [sha256.toLowerCase(), file_name || 'unknown', file_size || 0, 80, req.admin.id]
+    )
+
+    // If already existed as pending, update to confirmed
+    await query(
+      'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE sha256 = ? AND status = ?',
+      ['confirmed', req.admin.id, sha256.toLowerCase(), 'pending']
+    )
+
+    const io = req.app.get('io')
+    io?.to('admin').emit('hash-update', {
+      type: 'confirmed',
+      sha256: sha256.toLowerCase().slice(0, 16),
+      admin: req.admin.username,
+      timestamp: new Date().toISOString(),
+    })
+
+    return res.json({ success: true, message: 'Хеш подтверждён как чит и добавлен в базу' })
+  } catch (err) {
+    console.error('Confirm from scan error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
 module.exports = router

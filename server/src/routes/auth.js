@@ -220,4 +220,94 @@ router.post('/submit-scan', async (req, res) => {
   }
 })
 
+// ── POST /api/auth/submit-hashes ──────────────
+// Отправить SHA256 подозрительных файлов в облачную базу
+// Требуется: hashes + token_id (для валидации авторизации)
+router.post('/submit-hashes', async (req, res) => {
+  try {
+    const { token_id, pc_username, hashes } = req.body
+
+    if (!hashes || !Array.isArray(hashes) || hashes.length === 0) {
+      return res.status(400).json({ error: 'Не указаны хеши' })
+    }
+
+    // Token-based защита: проверяем token_id в БД
+    if (token_id !== undefined && token_id !== null) {
+      if (!Number.isInteger(token_id) || token_id <= 0) {
+        return res.status(400).json({ error: 'Неверный формат token_id' })
+      }
+
+      const tokRows = await query(
+        'SELECT id, is_active, used_by FROM tokens WHERE id = ?',
+        [token_id]
+      )
+
+      if (tokRows.length === 0) {
+        return res.status(403).json({ error: 'Токен не найден' })
+      }
+
+      const tok = tokRows[0]
+      // Токен должен быть отозван (использован) — is_active = FALSE, used_by IS NOT NULL
+      if (tok.is_active) {
+        return res.status(403).json({ error: 'Токен не был активирован. Используйте токен через экран авторизации.' })
+      }
+      if (!tok.used_by) {
+        return res.status(403).json({ error: 'Токен не был использован' })
+      }
+    }
+
+    let inserted = 0
+    for (const h of hashes) {
+      if (!h.sha256 || typeof h.sha256 !== 'string' || h.sha256.length !== 64) continue
+      try {
+        await query(
+          `INSERT IGNORE INTO suspicious_hashes (sha256, file_name, pc_username, token_id, file_size, risk_score)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [h.sha256.toLowerCase(), h.file_name || 'unknown', pc_username || 'unknown', token_id || null, h.file_size || 0, h.risk_score || 0]
+        )
+        inserted++
+      } catch { /* duplicate — skip */ }
+    }
+
+    // Emit WebSocket event to admin panel
+    try {
+      const io = req.app.get('io')
+      io?.to('admin').emit('new-hashes', {
+        count: inserted,
+        pc_username: pc_username || 'unknown',
+        timestamp: new Date().toISOString(),
+      })
+    } catch { /* ws event optional */ }
+
+    return res.json({ success: true, inserted, total: hashes.length })
+  } catch (err) {
+    console.error('Submit hashes error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// ── GET /api/auth/fetch-hashes ────────────────
+// Получить список подтверждённых хешей читов (для автообновления)
+router.get('/fetch-hashes', async (req, res) => {
+  try {
+    const after = req.query.after || '2000-01-01'
+    const rows = await query(
+      'SELECT sha256, file_name, file_size, created_at FROM suspicious_hashes WHERE status = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500',
+      ['confirmed', after]
+    )
+    return res.json({
+      count: rows.length,
+      hashes: rows.map(r => ({
+        sha256: r.sha256,
+        file_name: r.file_name,
+        file_size: r.file_size,
+        added_at: r.created_at,
+      })),
+    })
+  } catch (err) {
+    console.error('Fetch hashes error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
 module.exports = router

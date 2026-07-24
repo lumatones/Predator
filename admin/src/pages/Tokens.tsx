@@ -103,12 +103,26 @@ export default function Tokens() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Health gauge + Stats */}
       <div className="stats-grid">
-        <div className="stat-card">
+        <div className="stat-card" style={{ position: 'relative', overflow: 'hidden' }}>
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0, height: 3,
+            background: 'rgba(255,255,255,0.06)',
+          }}>
+            <div style={{
+              height: '100%',
+              width: `${tokens.length > 0 ? (activeTokens.length / Math.max(tokens.length, 10)) * 100 : 0}%`,
+              background: activeTokens.length === 0 ? '#ff6b6b' :
+                activeTokens.length <= 2 ? '#F59E0B' :
+                activeTokens.length <= 5 ? '#3B82F6' : '#22c55e',
+              borderRadius: 2,
+              transition: 'width 0.6s ease',
+            }} />
+          </div>
           <div className="stat-card-icon green">✓</div>
           <div className="stat-card-value">{activeTokens.length}</div>
-          <div className="stat-card-label">Активных</div>
+          <div className="stat-card-label">Активных / {tokens.length}</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon red">👤</div>

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu } from 'electron'
 import path from 'path'
 import os from 'os'
 import { autoUpdater } from 'electron-updater'
-import { registerScanHandlers } from './scanner'
+import { registerScanHandlers, startCloudSync } from './scanner'
 import { registerSystemInfoHandlers } from './system-info'
 
 let mainWindow: BrowserWindow | null = null
@@ -167,6 +167,7 @@ ipcMain.handle('get-pc-name', () => {
 // ── Scanner ──────────────────────────────────────
 
 registerScanHandlers()
+startCloudSync()
 
 // ── System Info Dashboard ────────────────────────
 

@@ -61,3 +61,22 @@ CREATE TABLE IF NOT EXISTS scan_results (
 CREATE INDEX idx_scan_results_created ON scan_results(created_at);
 CREATE INDEX idx_scan_results_mode ON scan_results(mode);
 CREATE INDEX idx_scan_results_pc ON scan_results(pc_username);
+
+-- ── Cloud Signature Database ────────────────────────
+
+CREATE TABLE IF NOT EXISTS suspicious_hashes (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  sha256        CHAR(64) NOT NULL,
+  file_name     VARCHAR(255),
+  pc_username   VARCHAR(100),
+  file_size     INT DEFAULT 0,
+  risk_score    INT DEFAULT 0,
+  status        ENUM('pending', 'confirmed', 'false_positive') DEFAULT 'pending',
+  reviewed_by   INT REFERENCES admins(id),
+  reviewed_at   DATETIME,
+  created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_sha256 (sha256)
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_sh_status ON suspicious_hashes(status);
+CREATE INDEX idx_sh_created ON suspicious_hashes(created_at);
