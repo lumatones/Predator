@@ -131,8 +131,12 @@ autoUpdater.on('error', (err) => {
 
 // ── IPC Handlers ──────────────────────────────────
 
-ipcMain.handle('get-app-version', () => {
-  return app.getVersion()
+ipcMain.handle('get-app-version', async () => {
+  try {
+    return app.getVersion()
+  } catch {
+    return 'unknown'
+  }
 })
 
 ipcMain.handle('start-update-check', async () => {
@@ -157,11 +161,19 @@ ipcMain.handle('start-download', async () => {
 })
 
 ipcMain.handle('restart-app', async () => {
-  autoUpdater.quitAndInstall()
+  try {
+    autoUpdater.quitAndInstall()
+  } catch (err: any) {
+    console.error('Restart failed:', err.message)
+  }
 })
 
-ipcMain.handle('get-pc-name', () => {
-  return os.userInfo().username || process.env.USERNAME || 'unknown'
+ipcMain.handle('get-pc-name', async () => {
+  try {
+    return os.userInfo().username || process.env.USERNAME || 'unknown'
+  } catch {
+    return process.env.USERNAME || 'unknown'
+  }
 })
 
 // ── Scanner ──────────────────────────────────────

@@ -138,7 +138,7 @@ interface DbRow {
  */
 function queryDb(db: Database, sql: string, params: unknown[] = []): DbRow[] {
   const stmt = db.prepare(sql)
-  if (params.length > 0) stmt.bind(params)
+  if (params.length > 0) stmt.bind(params as any)
 
   const rows: DbRow[] = []
   while (stmt.step()) {

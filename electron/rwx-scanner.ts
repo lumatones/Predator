@@ -135,16 +135,24 @@ public class RwxScan {
   }
 }
 "@
-[RwxScan.Scan(${pid})]
+[RwxScan.Scan(__PID__)]
 `.trim()
+
+function getRwxPs(pid: number): string {
+  return CORE_PS.replace('__PID__', String(pid))
+}
 
 // ── PowerShell Thread Enumeration ──────────────
 
 const THREAD_PS = `
-Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Threads |
+Get-Process -Id __PID__ -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Threads |
   Select-Object Id, @{N='StartAddr';E={'0x' + $_.StartAddress.ToString('X16')}} |
   ConvertTo-Json -Compress
 `.trim()
+
+function getThreadPs(pid: number): string {
+  return THREAD_PS.replace('__PID__', String(pid))
+}
 
 // ── Main scanning functions ────────────────────
 
@@ -156,7 +164,7 @@ export function scanRwxRegions(pid: number): RwxRegion[] {
   const regions: RwxRegion[] = []
 
   try {
-    const out = execSync(`powershell -Command "${CORE_PS.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
+    const out = execSync(`powershell -Command "${getRwxPs(pid).replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
       encoding: 'utf-8',
       timeout: 15000, // 15 seconds per process
       windowsHide: true,
@@ -224,7 +232,7 @@ export function scanThreadStartAddresses(pid: number, _processName: string, rwxR
   }))
 
   try {
-    const out = execSync(`powershell -Command "${THREAD_PS}"`, {
+    const out = execSync(`powershell -Command "${getThreadPs(pid)}"`, {
       encoding: 'utf-8',
       timeout: 5000,
       windowsHide: true,

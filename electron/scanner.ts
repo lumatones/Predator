@@ -1526,11 +1526,10 @@ function scanRunningProcessesV2(): ScanResult[] {
       // 2c. Disk vs Memory — compare .text section of loaded DLLs (inline hooks)
       if (proc.Id) {
         try {
-          const dvmResults = scanDiskVsMemory(proc.Id, procName)
-          for (const dvmItem of dvmResults) {
-            if (addFindingDedup(`dvm:${dvmItem.fileName}`)) {
-              results.push(dvmItem)
-            }
+          const dvmResult = scanDiskVsMemory(proc.Id, procName)
+          const dvmItem = dvmResultToScanResult(dvmResult)
+          if (dvmItem && addFindingDedup(`dvm:${dvmItem.fileName}`)) {
+            results.push(dvmItem)
           }
         } catch (_e) { /* DVM scan optional */ }
       }
