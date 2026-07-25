@@ -255,6 +255,13 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const [copiedPath, setCopiedPath] = useState('')
   const [redEyePhase, setRedEyePhase] = useState<'hidden' | 'opening' | 'scanning' | 'closing'>('hidden')
   const scanRef = useRef<boolean>(false)
+  const isMounted = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false
+    }
+  }, [])
 
   const filteredResults = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
@@ -331,7 +338,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
     }
 
     const progressHandler = (data: ScanProgress) => {
-      if (scanRef.current) setProgress({ ...data })
+      if (scanRef.current && isMounted.current) setProgress({ ...data })
     }
     api.onScanProgress(progressHandler)
 
@@ -352,8 +359,11 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       }
     } finally {
       scanRef.current = false
+      if (api?.offScanProgress) {
+        api.offScanProgress(progressHandler)
+      }
     }
-  }, [activeTab, currentTab])
+  }, [activeTab, currentTab, t, tokenId])
 
   const handleClear = useCallback(() => {
     tabCache.clear()
@@ -443,10 +453,14 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
           matches: r.matches.slice(0, 5),
         })),
       })
-      setServerMsg('✓')
-      setTimeout(() => setServerMsg(''), 3000)
+      if (isMounted.current) {
+        setServerMsg('✓')
+        setTimeout(() => {
+          if (isMounted.current) setServerMsg('')
+        }, 3000)
+      }
     } catch { /* ignore */ }
-  }, [])
+  }, [tokenId, t])
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`
@@ -602,7 +616,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
 
               <div className="checker-progress-header">
                 <span className="checker-progress-label">{t('scanning')}</span>
-                <span className="checker-progress-pct"><span key={Math.round(calcPercent())} className="pct-num">{Math.round(calcPercent())}</span>%</span>
+                <span className="checker-progress-pct"><span className="pct-num">{Math.round(calcPercent())}</span>%</span>
               </div>
 
               <div className="checker-progress-bar">
@@ -610,7 +624,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
               </div>
 
               <div className="checker-progress-info">
-                <span>{t('found')}: <span key={progress?.filesFound ?? 0} className="found-num">{progress?.filesFound || 0}</span></span>
+                <span>{t('found')}: <span className="found-num">{progress?.filesFound || 0}</span></span>
                 <span>{progress?.filesScanned || 0} {t('filesScanned')}</span>
               </div>
             </div>

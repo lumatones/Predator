@@ -50,7 +50,7 @@ function formatUptime(d: number, h: number, m: number, lang: string): string {
     const parts: string[] = []
     if (d > 0) parts.push(`${d} ${decl(d, ['день', 'дня', 'дней'])}`)
     if (h > 0) parts.push(`${h} ${decl(h, ['час', 'часа', 'часов'])}`)
-    parts.push(`${m} ${decl(m, ['мин', 'мин', 'мин'])}`)
+    parts.push(`${m} ${decl(m, ['минута', 'минуты', 'минут'])}`)
     return parts.join(' ')
   }
   const parts: string[] = []
@@ -120,6 +120,11 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
   const [snapshot, setSnapshot] = useState<SystemInfoSnapshot | null>(null)
   const [processFilter, setProcessFilter] = useState('')
   const [streamActive, setStreamActive] = useState(false)
+  const isMounted = useRef(true)
+
+  useEffect(() => {
+    return () => { isMounted.current = false }
+  }, [])
 
   useEffect(() => {
     // Dev mode — use mock data with periodic updates
@@ -153,16 +158,19 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
     const hasStream = typeof api?.startSystemStream === 'function' && typeof api?.onSystemUpdate === 'function'
 
     if (hasStream && api) {
-      // Use IPC streaming from Electron main process
-      api.onSystemUpdate((data) => {
-        setSnapshot(data)
-      })
+      const handler = (data: SystemInfoSnapshot) => {
+        if (isMounted.current) setSnapshot(data)
+      }
+      api.onSystemUpdate(handler)
       api.startSystemStream(2000)
       setStreamActive(true)
 
       return () => {
         api.stopSystemStream()
         setStreamActive(false)
+        if (api.offSystemUpdate) {
+          api.offSystemUpdate(handler)
+        }
       }
     }
 

@@ -18,6 +18,7 @@ export interface ElectronAPI {
   // Scanner
   startScan: (mode?: ScanMode, tokenId?: number) => Promise<ScanResponse>
   onScanProgress: (callback: (data: ScanProgress) => void) => void
+  offScanProgress?: (callback: (data: ScanProgress) => void) => void
 
   // System info dashboard
   getSystemSnapshot: () => Promise<SystemInfoSnapshot>
@@ -26,6 +27,7 @@ export interface ElectronAPI {
   startSystemStream: (intervalMs?: number) => void
   stopSystemStream: () => void
   onSystemUpdate: (callback: (data: SystemInfoSnapshot) => void) => void
+  offSystemUpdate?: (callback: (data: SystemInfoSnapshot) => void) => void
 }
 
 export interface ScanResult {

@@ -62,7 +62,6 @@ router.post('/approve/:id', async (req, res) => {
       ['approved', req.admin.id, req.params.id]
     )
 
-    // Emit WebSocket event
     const io = req.app.get('io')
     io?.to('admin').emit('request-update', {
       type: 'approved',
@@ -92,7 +91,6 @@ router.post('/reject/:id', async (req, res) => {
       ['rejected', req.admin.id, req.params.id]
     )
 
-    // Emit WebSocket event
     const io = req.app.get('io')
     io?.to('admin').emit('request-update', {
       type: 'rejected',
@@ -123,12 +121,10 @@ router.post('/tokens/generate', async (req, res) => {
         [code, req.admin.id]
       )
 
-      // Format: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
       const formatted = code.match(/.{1,8}/g).join('-')
       tokens.push(formatted)
     }
 
-    // Emit WebSocket event
     const io = req.app.get('io')
     io?.to('admin').emit('token-generated', {
       count: tokens.length,
@@ -154,10 +150,15 @@ router.get('/tokens', async (req, res) => {
       LIMIT 50
     `)
 
-    // Format codes for display
+    // Явно перечисляем поля — НЕ пробрасываем оригинальный code
     const formatted = rows.map(r => ({
-      ...r,
-      code_display: r.code.match(/.{1,8}/g).join('-'),
+      id: r.id,
+      is_active: r.is_active,
+      used_by: r.used_by,
+      used_at: r.used_at,
+      created_at: r.created_at,
+      created_by_name: r.created_by_name,
+      code_display: r.code ? r.code.match(/.{1,8}/g).join('-') : '',
     }))
 
     return res.json(formatted)
@@ -182,12 +183,10 @@ router.post('/tokens/revoke/:id', async (req, res) => {
 })
 
 // ── GET /api/admin/history ────────────────────
-// Полная история: использованные токены + обработанные запросы
 router.get('/history', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 100, 200)
 
-    // Used tokens history
     const usedTokens = await query(`
       SELECT
         t.id,
@@ -205,7 +204,6 @@ router.get('/history', async (req, res) => {
       LIMIT ?
     `, [limit])
 
-    // Processed requests history (approved/rejected)
     const processedRequests = await query(`
       SELECT
         r.id,
@@ -223,13 +221,17 @@ router.get('/history', async (req, res) => {
       LIMIT ?
     `, [limit])
 
-    // Format tokens with display codes
     const formattedTokens = usedTokens.map(t => ({
-      ...t,
+      id: t.id,
+      used_by: t.used_by,
+      used_at: t.used_at,
+      created_at: t.created_at,
+      created_by_name: t.created_by_name,
+      event_type: t.event_type,
+      event_date: t.event_date,
       code_display: t.code?.match(/.{1,8}/g)?.join('-') || '',
     }))
 
-    // Merge and sort by date
     const merged = [
       ...formattedTokens.map(t => ({
         id: `tok-${t.id}`,
@@ -253,7 +255,6 @@ router.get('/history', async (req, res) => {
       })),
     ]
 
-    // Sort by date descending
     merged.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     return res.json({
@@ -271,14 +272,12 @@ router.get('/history', async (req, res) => {
 })
 
 // ── GET /api/admin/scan-stats ──────────────────
-// Статистика всех сканирований
 router.get('/scan-stats', async (req, res) => {
   try {
     const totalScans = await query('SELECT COUNT(*) AS cnt FROM scan_results')
     const totalScanned = await query('SELECT SUM(total_scanned) AS cnt FROM scan_results')
     const totalSuspicious = await query('SELECT SUM(suspicious_files) AS cnt FROM scan_results')
 
-    // Scan count by mode
     const byMode = await query(`
       SELECT mode, COUNT(*) AS cnt, SUM(suspicious_files) AS threats
       FROM scan_results
@@ -286,7 +285,6 @@ router.get('/scan-stats', async (req, res) => {
       ORDER BY cnt DESC
     `)
 
-    // Scan count by day (last 14 days)
     const byDay = await query(`
       SELECT DATE(created_at) AS day, COUNT(*) AS cnt, SUM(suspicious_files) AS threats
       FROM scan_results
@@ -295,7 +293,6 @@ router.get('/scan-stats', async (req, res) => {
       ORDER BY day ASC
     `)
 
-    // Recent scans
     const recent = await query(`
       SELECT id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, created_at
       FROM scan_results
@@ -318,7 +315,6 @@ router.get('/scan-stats', async (req, res) => {
 })
 
 // ── GET /api/admin/suspicious-hashes ──────────
-// Список подозрительных хешей от пользователей
 router.get('/suspicious-hashes', async (req, res) => {
   try {
     const status = req.query.status || 'pending'
@@ -338,7 +334,6 @@ router.get('/suspicious-hashes', async (req, res) => {
 })
 
 // ── POST /api/admin/hashes/approve/:id ────────
-// Подтвердить хеш как чит → попадёт в KNOWN_CHEAT_HASHES
 router.post('/hashes/approve/:id', async (req, res) => {
   try {
     await query(
@@ -362,7 +357,6 @@ router.post('/hashes/approve/:id', async (req, res) => {
 })
 
 // ── POST /api/admin/hashes/reject/:id ─────────
-// Отметить как ложное срабатывание
 router.post('/hashes/reject/:id', async (req, res) => {
   try {
     await query(
@@ -386,13 +380,10 @@ router.post('/hashes/reject/:id', async (req, res) => {
 })
 
 // ── GET /api/admin/scan-result-hashes ──────────
-// Извлечь все уникальные SHA256 хеши из результатов сканирований
-// Анализирует results_json из таблицы scan_results
 router.get('/scan-result-hashes', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 100, 500)
 
-    // Get recent scan results with their JSON
     const rows = await query(`
       SELECT sr.id, sr.pc_username, sr.mode, sr.results_json, sr.created_at
       FROM scan_results sr
@@ -403,7 +394,6 @@ router.get('/scan-result-hashes', async (req, res) => {
       LIMIT ?
     `, [limit])
 
-    // Extract unique hashes from results_json
     const hashMap = new Map()
 
     for (const row of rows) {
@@ -415,7 +405,6 @@ router.get('/scan-result-hashes', async (req, res) => {
         if (!Array.isArray(parsed)) continue
 
         for (const item of parsed) {
-          // Look for hash fields: 'hash', 'sha256', or extract from matches
           let sha256 = ''
           let fileName = item.file_name || item.fileName || 'unknown'
           let fileSize = item.size || item.file_size || 0
@@ -425,10 +414,8 @@ router.get('/scan-result-hashes', async (req, res) => {
           } else if (item.sha256 && typeof item.sha256 === 'string' && item.sha256.length === 64) {
             sha256 = item.sha256.toLowerCase()
           } else if (Array.isArray(item.matches)) {
-            // Try to extract SHA256 from matches like "sha256:abc..." or "hash:abc..."
             for (const m of item.matches) {
               const mStr = String(m)
-              // Match both sha256: and hash: prefixes with full 64-char hex
               const hashMatch = mStr.match(/(?:sha256|hash):([a-f0-9]{64})/i)
               if (hashMatch) {
                 sha256 = hashMatch[1].toLowerCase()
@@ -453,7 +440,6 @@ router.get('/scan-result-hashes', async (req, res) => {
           existing.occurrences++
           if (row.created_at < existing.first_seen) existing.first_seen = row.created_at
           if (row.created_at > existing.last_seen) existing.last_seen = row.created_at
-          // Update file name if we see a better one
           if (fileName !== 'unknown') existing.file_name = fileName
           if (fileSize > 0) existing.file_size = fileSize
 
@@ -462,7 +448,6 @@ router.get('/scan-result-hashes', async (req, res) => {
       } catch { /* skip malformed JSON */ }
     }
 
-    // Check which hashes are already in suspicious_hashes
     const allHashes = Array.from(hashMap.keys())
     const existingStatuses = new Map()
 
@@ -477,7 +462,6 @@ router.get('/scan-result-hashes', async (req, res) => {
       }
     }
 
-    // Build response
     const result = Array.from(hashMap.values()).map(h => ({
       sha256: h.sha256,
       file_name: h.file_name,
@@ -489,7 +473,6 @@ router.get('/scan-result-hashes', async (req, res) => {
       status: existingStatuses.get(h.sha256) || 'new',
     }))
 
-    // Sort by occurrences desc, then by last_seen desc
     result.sort((a, b) => b.occurrences - a.occurrences || new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime())
 
     return res.json({
@@ -503,8 +486,6 @@ router.get('/scan-result-hashes', async (req, res) => {
 })
 
 // ── POST /api/admin/hashes/confirm-from-scan ───
-// Отметить хеш из результатов сканирования как подтверждённый чит
-// Создаёт запись в suspicious_hashes со статусом 'confirmed'
 router.post('/hashes/confirm-from-scan', async (req, res) => {
   try {
     const { sha256, file_name, file_size } = req.body
@@ -513,14 +494,12 @@ router.post('/hashes/confirm-from-scan', async (req, res) => {
       return res.status(400).json({ error: 'Неверный формат SHA256' })
     }
 
-    // Try to insert as confirmed (ignore if already exists)
     await query(
       `INSERT IGNORE INTO suspicious_hashes (sha256, file_name, file_size, risk_score, status, reviewed_by, reviewed_at)
        VALUES (?, ?, ?, ?, 'confirmed', ?, NOW())`,
       [sha256.toLowerCase(), file_name || 'unknown', file_size || 0, 80, req.admin.id]
     )
 
-    // If already existed as pending, update to confirmed
     await query(
       'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE sha256 = ? AND status = ?',
       ['confirmed', req.admin.id, sha256.toLowerCase(), 'pending']

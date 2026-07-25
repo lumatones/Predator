@@ -10,7 +10,6 @@ const authRoutes = require('./routes/auth')
 const adminRoutes = require('./routes/admin')
 
 const app = express()
-// PORT из .env имеет приоритет над системной переменной окружения
 const PORT = (envResult.parsed && envResult.parsed.PORT) || process.env.PORT || 3001
 
 // ── HTTP + Socket.IO ──────────────────────────
@@ -18,10 +17,9 @@ const PORT = (envResult.parsed && envResult.parsed.PORT) || process.env.PORT || 
 const server = http.createServer(app)
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: process.env.CLIENT_URL || '*',
     methods: ['GET', 'POST'],
   },
-  // Для работы через Vite proxy — ping каждые 25 секунд
   pingInterval: 25000,
   pingTimeout: 20000,
 })
@@ -31,7 +29,6 @@ const io = new Server(server, {
 app.use(cors())
 app.use(express.json())
 
-// Attach io to request context for routes to emit events
 app.set('io', io)
 
 // ── Routes ────────────────────────────────────
@@ -50,7 +47,6 @@ app.get('/api/health', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`  ⚡  WebSocket connected: ${socket.id}`)
 
-  // Join admin room for authenticated admin clients
   socket.on('join-admin', () => {
     socket.join('admin')
     console.log(`  ⚡  ${socket.id} joined admin room`)

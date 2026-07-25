@@ -3,7 +3,6 @@ const { query } = require('../config/database')
 const router = express.Router()
 
 // ── POST /api/auth/token ──────────────────────
-// Проверить 32-символьный токен доступа
 router.post('/token', async (req, res) => {
   try {
     const { token } = req.body
@@ -43,7 +42,6 @@ router.post('/token', async (req, res) => {
 })
 
 // ── POST /api/auth/token/use ───────────────────
-// Проверить токен и отметить как использованный
 router.post('/token/use', async (req, res) => {
   try {
     const { token, pc_username } = req.body
@@ -75,7 +73,6 @@ router.post('/token/use', async (req, res) => {
       return res.status(403).json({ valid: false, error: 'Токен уже использован' })
     }
 
-    // Mark as used
     await query(
       'UPDATE tokens SET used_by = ?, used_at = NOW(), is_active = FALSE WHERE id = ?',
       [pc_username || 'unknown', tok.id]
@@ -89,7 +86,6 @@ router.post('/token/use', async (req, res) => {
 })
 
 // ── POST /api/auth/request ────────────────────
-// Создать запрос на доступ (с именем ПК)
 router.post('/request', async (req, res) => {
   try {
     const { pc_username } = req.body
@@ -97,15 +93,14 @@ router.post('/request', async (req, res) => {
       return res.status(400).json({ error: 'Имя ПК не указано' })
     }
 
-    // Set expiry to 5 minutes from now
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
+    const expiryMinutes = parseInt(process.env.REQUEST_EXPIRY_MINUTES) || 30
+    const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000)
 
     const result = await query(
       'INSERT INTO requests (pc_username, expires_at) VALUES (?, ?)',
       [pc_username.trim(), expiresAt]
     )
 
-    // Emit WebSocket event to admin panel
     try {
       const io = req.app.get('io')
       io?.to('admin').emit('new-request', {
@@ -127,7 +122,6 @@ router.post('/request', async (req, res) => {
 })
 
 // ── GET /api/auth/status/:id ──────────────────
-// Получить статус запроса (pending / approved / rejected)
 router.get('/status/:id', async (req, res) => {
   try {
     const rows = await query(
@@ -147,59 +141,49 @@ router.get('/status/:id', async (req, res) => {
 })
 
 // ── POST /api/auth/submit-scan ─────────────────
-// Сохранить результаты сканирования на сервере
-// Требует: token_id — ID использованного токена (JWT-защита через БД)
 router.post('/submit-scan', async (req, res) => {
   try {
     const { token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, results } = req.body
 
-    if (!token_id && !pc_username) {
-      return res.status(400).json({ error: 'token_id или pc_username обязателен' })
+    // token_id обязателен — нельзя обойти авторизацию через pc_username
+    if (!token_id || !Number.isInteger(token_id) || token_id <= 0) {
+      return res.status(400).json({ error: 'token_id обязателен и должен быть положительным числом' })
     }
 
-    // Token-based защита: проверяем token_id в БД
-    if (token_id !== undefined) {
-      if (!Number.isInteger(token_id) || token_id <= 0) {
-        return res.status(400).json({ error: 'Неверный формат token_id' })
-      }
+    const tokRows = await query(
+      'SELECT id, code, is_active, used_by FROM tokens WHERE id = ?',
+      [token_id]
+    )
 
-      const tokRows = await query(
-        'SELECT id, code, is_active, used_by FROM tokens WHERE id = ?',
-        [token_id]
-      )
+    if (tokRows.length === 0) {
+      return res.status(403).json({ error: 'Токен не найден' })
+    }
 
-      if (tokRows.length === 0) {
-        return res.status(403).json({ error: 'Токен не найден' })
-      }
+    const tok = tokRows[0]
 
-      const tok = tokRows[0]
+    if (tok.is_active) {
+      return res.status(403).json({ error: 'Токен не был активирован. Используйте токен через экран авторизации.' })
+    }
 
-      // Токен должен быть отозван (использован) — is_active = FALSE, used_by IS NOT NULL
-      if (tok.is_active) {
-        return res.status(403).json({ error: 'Токен не был активирован. Используйте токен через экран авторизации.' })
-      }
-
-      if (!tok.used_by) {
-        return res.status(403).json({ error: 'Токен не был использован' })
-      }
+    if (!tok.used_by) {
+      return res.status(403).json({ error: 'Токен не был использован' })
     }
 
     const result = await query(
       `INSERT INTO scan_results (token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, results_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        token_id || null,
+        token_id,
         pc_username || 'unknown',
         mode || 'unknown',
         total_scanned || 0,
         suspicious_files || 0,
         high_risk_count || 0,
         scan_time_ms || 0,
-        results ? JSON.stringify(results.slice(0, 100)) : '[]',
+        Array.isArray(results) ? JSON.stringify(results.slice(0, 100)) : '[]',
       ]
     )
 
-    // Emit WebSocket event to admin panel
     try {
       const io = req.app.get('io')
       io?.to('admin').emit('scan-result', {
@@ -221,8 +205,6 @@ router.post('/submit-scan', async (req, res) => {
 })
 
 // ── POST /api/auth/submit-hashes ──────────────
-// Отправить SHA256 подозрительных файлов в облачную базу
-// Требуется: hashes + token_id (для валидации авторизации)
 router.post('/submit-hashes', async (req, res) => {
   try {
     const { token_id, pc_username, hashes } = req.body
@@ -231,29 +213,26 @@ router.post('/submit-hashes', async (req, res) => {
       return res.status(400).json({ error: 'Не указаны хеши' })
     }
 
-    // Token-based защита: проверяем token_id в БД
-    if (token_id !== undefined && token_id !== null) {
-      if (!Number.isInteger(token_id) || token_id <= 0) {
-        return res.status(400).json({ error: 'Неверный формат token_id' })
-      }
+    // token_id обязателен
+    if (!token_id || !Number.isInteger(token_id) || token_id <= 0) {
+      return res.status(400).json({ error: 'token_id обязателен и должен быть положительным числом' })
+    }
 
-      const tokRows = await query(
-        'SELECT id, is_active, used_by FROM tokens WHERE id = ?',
-        [token_id]
-      )
+    const tokRows = await query(
+      'SELECT id, is_active, used_by FROM tokens WHERE id = ?',
+      [token_id]
+    )
 
-      if (tokRows.length === 0) {
-        return res.status(403).json({ error: 'Токен не найден' })
-      }
+    if (tokRows.length === 0) {
+      return res.status(403).json({ error: 'Токен не найден' })
+    }
 
-      const tok = tokRows[0]
-      // Токен должен быть отозван (использован) — is_active = FALSE, used_by IS NOT NULL
-      if (tok.is_active) {
-        return res.status(403).json({ error: 'Токен не был активирован. Используйте токен через экран авторизации.' })
-      }
-      if (!tok.used_by) {
-        return res.status(403).json({ error: 'Токен не был использован' })
-      }
+    const tok = tokRows[0]
+    if (tok.is_active) {
+      return res.status(403).json({ error: 'Токен не был активирован. Используйте токен через экран авторизации.' })
+    }
+    if (!tok.used_by) {
+      return res.status(403).json({ error: 'Токен не был использован' })
     }
 
     let inserted = 0
@@ -263,13 +242,12 @@ router.post('/submit-hashes', async (req, res) => {
         await query(
           `INSERT IGNORE INTO suspicious_hashes (sha256, file_name, pc_username, token_id, file_size, risk_score)
            VALUES (?, ?, ?, ?, ?, ?)`,
-          [h.sha256.toLowerCase(), h.file_name || 'unknown', pc_username || 'unknown', token_id || null, h.file_size || 0, h.risk_score || 0]
+          [h.sha256.toLowerCase(), h.file_name || 'unknown', pc_username || 'unknown', token_id, h.file_size || 0, h.risk_score || 0]
         )
         inserted++
       } catch { /* duplicate — skip */ }
     }
 
-    // Emit WebSocket event to admin panel
     try {
       const io = req.app.get('io')
       io?.to('admin').emit('new-hashes', {
@@ -287,7 +265,6 @@ router.post('/submit-hashes', async (req, res) => {
 })
 
 // ── GET /api/auth/fetch-hashes ────────────────
-// Получить список подтверждённых хешей читов (для автообновления)
 router.get('/fetch-hashes', async (req, res) => {
   try {
     const after = req.query.after || '2000-01-01'

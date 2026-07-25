@@ -1,6 +1,11 @@
 const jwt = require('jsonwebtoken')
 
-const JWT_SECRET = process.env.JWT_SECRET || 'predator-super-secret-key-change-in-production'
+const JWT_SECRET = process.env.JWT_SECRET
+
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET не задан в переменных окружения (.env)')
+  process.exit(1)
+}
 
 function generateToken(admin) {
   return jwt.sign(

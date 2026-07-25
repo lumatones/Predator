@@ -55,10 +55,10 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
       return (order[a.risk] || 0) - (order[b.risk] || 0)
     })
     .map(r => `
-    <div class="finding ${r.risk}">
+    <div class="finding ${escapeHtml(r.risk)}">
       <div class="finding-header">
-        <span><strong>[${r.type}]</strong> ${escapeHtml(r.fileName)}</span>
-        <span class="finding-level level-${r.risk}">${r.risk.toUpperCase()}</span>
+        <span><strong>[${escapeHtml(r.type)}]</strong> ${escapeHtml(r.fileName)}</span>
+        <span class="finding-level level-${escapeHtml(r.risk)}">${escapeHtml(r.risk.toUpperCase())}</span>
       </div>
       <div class="finding-path">${escapeHtml(r.path)}</div>
       <div class="finding-details">

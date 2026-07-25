@@ -23,6 +23,10 @@ release-installer/
 Thumbs.db
 desktop.ini
 *.log
+*.lnk
+
+# ── User artifacts ──
+Code.zip
 
 # ── Environment ──
 .env

@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import crypto from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
@@ -72,6 +73,40 @@ import {
 // ── Event-loop yield ──
 const yieldToEventLoop = () => new Promise(resolve => setImmediate(resolve))
 
+// ── Concurrency-limited batch processor ──
+// Processes items in parallel with a fixed concurrency limit.
+// Useful for CPU-bound tasks like file scanning that benefit from async I/O
+// but should not overwhelm the event loop or disk subsystem.
+const SCAN_CONCURRENCY = 4
+
+async function processBatch<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number = SCAN_CONCURRENCY,
+): Promise<R[]> {
+  const results: R[] = []
+  const executing = new Set<Promise<void>>()
+
+  for (const item of items) {
+    const p = (async () => {
+      const index = results.length
+      results.push(await fn(item))
+      return index
+    })().then(() => {
+      executing.delete(p)
+    }) as Promise<void>
+
+    executing.add(p)
+
+    if (executing.size >= concurrency) {
+      await Promise.race(executing)
+    }
+  }
+
+  await Promise.all(executing)
+  return results
+}
+
 // ── Types ──────────────────────────────────────
 
 export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma' | 'extended' | 'network'
@@ -106,6 +141,10 @@ export interface ScanResponse {
 }
 
 // ── Config ──────────────────────────────────────
+
+// PE header cache — avoids re-reading the same file for analyzePeHeaders, analyzeSectionEntropy, and API-hashing
+const _peHeaderCache = new Map<string, { peInfo: any; secEntropy: any[]; mtime: number; filepath: string }>()
+const PE_CACHE_MAX = 500 // max cache entries to prevent memory leak
 
 const _PF = process.env.ProgramFiles || 'C:\\Program Files'
 const _PF86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'
@@ -422,9 +461,30 @@ function heuristicFileScan(filepath: string): HeuristicResult | null {
         riskScore += yMatch.risk === 'CRITICAL' ? 60 : yMatch.risk === 'HIGH' ? 40 : 20
       }
 
-      // v3.0: PE analysis
-      // peInfo and sigValid are hoisted here so they're accessible in the fuzzy + sig blocks below
-      const peInfo = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? analyzePeHeaders(filepath) : null
+      // v3.0: PE analysis — cached to avoid re-reading headers for entropy + API hashing
+      // Key: filepath + mtime so cache invalidates on file changes
+      const peCacheKey = `${filepath}|${stat.mtimeMs}`
+      let peInfo: any = null
+      let secEntropy: any[] = []
+
+      const cachedPe = _peHeaderCache.get(peCacheKey)
+      if (cachedPe) {
+        peInfo = cachedPe.peInfo
+        secEntropy = cachedPe.secEntropy
+      } else {
+        // Parse PE headers ONCE
+        peInfo = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? analyzePeHeaders(filepath) : null
+        try {
+          secEntropy = analyzeSectionEntropy(filepath)
+        } catch (_e) { /* skip */ }
+        _peHeaderCache.set(peCacheKey, { peInfo, secEntropy, mtime: stat.mtimeMs, filepath })
+        // Trim cache if it grows too large
+        if (_peHeaderCache.size > PE_CACHE_MAX) {
+          const firstKey = _peHeaderCache.keys().next().value
+          if (firstKey) _peHeaderCache.delete(firstKey)
+        }
+      }
+
       const sigValid = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? checkDigitalSignature(filepath) : false
       // NOTE: checkDigitalSignature() MUST be called before the fuzzy block to populate _sigCache
 
@@ -444,24 +504,19 @@ function heuristicFileScan(filepath: string): HeuristicResult | null {
           }
         }
 
-        // ── v0.0.15: Section Entropy — per-section analysis ──
-        if (ext === '.exe' || ext === '.dll' || ext === '.sys') {
-          try {
-            const secEntropy = analyzeSectionEntropy(filepath)
-            if (secEntropy.length > 0) {
-              const suspiciousSections = secEntropy.filter(s => s.isSuspicious)
-              for (const sec of suspiciousSections) {
-                suspicions.push(`📊 Section [${sec.name}]: ${sec.reason}`)
-                riskScore += 30
-              }
-              // .rsrc with very high entropy is especially dangerous
-              const rsrcHigh = secEntropy.find(s => s.name === '.rsrc' && s.entropy > 7.5)
-              if (rsrcHigh) {
-                suspicions.push(`🚩 .rsrc entropy ${rsrcHigh.entropy.toFixed(2)} > 7.5 — shellcode/config likely hidden in resources`)
-                riskScore += 40
-              }
-            }
-          } catch (_e) { /* skip */ }
+        // ── v0.0.15: Section Entropy — per-section analysis (cached) ──
+        if (secEntropy.length > 0) {
+          const suspiciousSections = secEntropy.filter(s => s.isSuspicious)
+          for (const sec of suspiciousSections) {
+            suspicions.push(`📊 Section [${sec.name}]: ${sec.reason}`)
+            riskScore += 30
+          }
+          // .rsrc with very high entropy is especially dangerous
+          const rsrcHigh = secEntropy.find(s => s.name === '.rsrc' && s.entropy > 7.5)
+          if (rsrcHigh) {
+            suspicions.push(`🚩 .rsrc entropy ${rsrcHigh.entropy.toFixed(2)} > 7.5 — shellcode/config likely hidden in resources`)
+            riskScore += 40
+          }
         }
         }
 
@@ -542,7 +597,6 @@ function heuristicFileScan(filepath: string): HeuristicResult | null {
       // Hash check against known cheat database
       if (KNOWN_CHEAT_HASHES.length > 0) {
         try {
-          const crypto = require('crypto')
           const h = crypto.createHash('sha256')
           const fd2 = fs.openSync(filepath, 'r')
           const hashBuf = Buffer.alloc(Math.min(stat.size, 50 * 1024 * 1024))
@@ -607,12 +661,14 @@ function riskScoreToLevel(score: number): 'high' | 'medium' | 'low' {
   return 'low'
 }
 
-/** Deduplication set for findings */
+/** Deduplication set for findings — cleared at start of each scan */
 const _findingDedup = new Set<string>()
 
 function addFindingDedup(key: string): boolean {
   if (_findingDedup.has(key)) return false
   _findingDedup.add(key)
+  // Periodic cleanup: dedup sets grow during a single scan session.
+  // Each scan run clears them explicitly via _findingDedup.clear().
   return true
 }
 
@@ -709,9 +765,8 @@ function matchKnownCheat(name: string): string[] {
 async function checkFileHash(filePath: string): Promise<{ matched: boolean; hash: string }> {
   if (KNOWN_CHEAT_HASHES.length === 0) return { matched: false, hash: '' }
   try {
-    const crypto = require('crypto')
     const hash = crypto.createHash('sha256')
-    const stream = require('fs').createReadStream(filePath)
+    const stream = fs.createReadStream(filePath)
     for await (const chunk of stream) hash.update(chunk as Buffer)
     const hex = hash.digest('hex')
     return { matched: KNOWN_CHEAT_HASHES.includes(hex), hash: hex }
@@ -1263,6 +1318,9 @@ async function scanBrowserHistory(keywords?: string[]): Promise<ScanResult[]> {
 }
 
 async function runFileScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+  // Clear dedup for a fresh scan
+  _findingDedup.clear()
+
   const results: ScanResult[] = []
   let filesScanned = 0
   const scanDirs = getScanPaths()
@@ -1278,14 +1336,26 @@ async function runFileScan(win: BrowserWindow | null): Promise<{ results: ScanRe
 
     await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
 
+    // Collect files first, then scan in parallel with concurrency limit
+    const fileBatch: string[] = []
     for await (const filePath of walkDirAsync(dir)) {
-      filesScanned++
-      const r = await scanFile(filePath)
-      if (r) results.push(r)
-      await yieldToEventLoop()
-      if (filesScanned % 10 === 0) {
-        await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
+      fileBatch.push(filePath)
+    }
+
+    if (fileBatch.length > 0) {
+      const batchResults = await processBatch(fileBatch, async (filePath) => {
+        filesScanned++
+        const r = await scanFile(filePath)
+        return r
+      }, SCAN_CONCURRENCY)
+
+      for (const r of batchResults) {
+        if (r) {
+          results.push(r)
+        }
       }
+
+      await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
     }
 
     await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
@@ -1380,75 +1450,41 @@ function scanRunningProcessesV2(): ScanResult[] {
     if (addFindingDedup(`proc:${r.fileName}`)) results.push(r)
   }
 
-  // Advanced: check process modules for suspicious DLLs
+  // Advanced: get process modules (ONE PowerShell call, shared across all analysis blocks)
+  let processes: any[] = []
   try {
     const psOut = execSync(
       `powershell -Command "Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3"`,
       { encoding: 'utf-8', timeout: 10000 },
     )
 
-    if (!psOut || psOut.trim().length < 5) return results
-
-    const parsed = JSON.parse(psOut)
-    const processes = Array.isArray(parsed) ? parsed : [parsed]
-
-    for (const proc of processes) {
-      const procName = (proc.Name || '').toLowerCase()
-      const modules: string[] = proc.Mods || []
-
-      for (const modName of modules) {
-        if (!modName || typeof modName !== 'string') continue
-        const modLower = modName.toLowerCase()
-
-        for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
-          for (const name of cat.names) {
-            if (modLower.includes(name) && addFindingDedup(`mod:${procName}:${modLower}`)) {
-              results.push({
-                path: `process:${proc.Name} (PID: ${proc.Id})`,
-                fileName: `Module: ${modName}`,
-                type: 'process',
-                risk: cat.risk === 'CRITICAL' || cat.risk === 'HIGH' ? 'high' : 'medium',
-                matches: [`module:${name} (${catName})`, `process:${procName}`],
-                size: 0,
-                modifiedAt: new Date().toISOString(),
-              })
-            }
-          }
-        }
-      }
+    if (psOut && psOut.trim().length >= 5) {
+      const parsed = JSON.parse(psOut)
+      processes = Array.isArray(parsed) ? parsed : [parsed]
     }
   } catch (_e) { /* PowerShell failed */ }
 
-  // ── v0.0.13: Memory dump suspicious processes ──
-  // Declare processes2 here so it's accessible by the v0.0.14 block below (same function scope)
-  let processes2: any[] = []
-  try {
-    const psOut2 = execSync(
-      `powershell -Command "Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3"`,
-      { encoding: 'utf-8', timeout: 10000 },
-    )
+  if (processes.length === 0) return results
 
-    if (psOut2 && psOut2.trim().length >= 5) {
-      const parsed2 = JSON.parse(psOut2)
-      processes2 = Array.isArray(parsed2) ? parsed2 : [parsed2]
+  // ── Phase 1: Module analysis (check process DLLs for suspicious names) ──
+  // Uses the SAME `processes` data as the other phases — no duplicate PowerShell call.
+  for (const proc of processes) {
+    const procName = (proc.Name || '').toLowerCase()
+    const modules: string[] = proc.Mods || []
 
-      for (const proc of processes2) {
-        const procName = (proc.Name || '').toLowerCase()
-        if (!proc.Id) continue
+    for (const modName of modules) {
+      if (!modName || typeof modName !== 'string') continue
+      const modLower = modName.toLowerCase()
 
-        // Dump if process name matches known cheats OR has suspicious modules
-        const nameMatches = matchKnownCheat(procName).length > 0
-        const modMatches = (proc.Mods || []).some((m: string) => matchKnownCheat((m || '').toLowerCase()).length > 0)
-
-        if (nameMatches || modMatches) {
-          const dumpResult = dumpAndAnalyze(proc.Id, ALL_CHEAT_KEYWORDS, procName, undefined)
-          if (dumpResult.success && dumpResult.riskScore > 40) {
+      for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
+        for (const name of cat.names) {
+          if (modLower.includes(name) && addFindingDedup(`mod:${procName}:${modLower}`)) {
             results.push({
-              path: `memory-dump:${proc.Name} (PID: ${proc.Id})`,
-              fileName: `Memory analysis: ${proc.Name}`,
+              path: `process:${proc.Name} (PID: ${proc.Id})`,
+              fileName: `Module: ${modName}`,
               type: 'process',
-              risk: dumpResult.riskScore > 70 ? 'high' : 'medium',
-              matches: dumpResult.cheatMatches.slice(0, 5),
+              risk: cat.risk === 'CRITICAL' || cat.risk === 'HIGH' ? 'high' : 'medium',
+              matches: [`module:${name} (${catName})`, `process:${procName}`],
               size: 0,
               modifiedAt: new Date().toISOString(),
             })
@@ -1456,92 +1492,106 @@ function scanRunningProcessesV2(): ScanResult[] {
         }
       }
     }
-  } catch (_e) { /* memory dump optional */ }
+  }
 
-  // ── v0.0.14: API Hashing + AMSI/ETW + Behavior profiling ──
-  // NOTE: uses the same processes2 from the memory-dump block above (no duplicate PowerShell call)
-  // This try-catch wraps the inner block; both use processes2 data
-  try {
-    // The for-loop below is inside the psOut2 try, so processes2 is accessible when this runs.
-    // We iterate over all processes, not just the dumped ones.
-    for (const proc of processes2) {
-      const procName = (proc.Name || '').toLowerCase()
-      if (!proc.Id) continue
+  // ── Phase 2: Memory dump + string analysis + API Hashing + AMSI/ETW ──
+  // All dump-dependent analysis runs HERE while the dump file is alive.
+  // dumpAndAnalyze() internally deletes the dump file, so reusing it later is NOT possible.
+  for (const proc of processes) {
+    const procName = (proc.Name || '').toLowerCase()
+    if (!proc.Id) continue
 
-      const modules: string[] = proc.Mods || []
+    const nameMatches = matchKnownCheat(procName).length > 0
+    const modMatches = (proc.Mods || []).some((m: string) => matchKnownCheat((m || '').toLowerCase()).length > 0)
 
-      // 1. API Hashing in dump (for suspicious processes)
-      const isSuspicious = matchKnownCheat(procName).length > 0 ||
-        modules.some((m: string) => matchKnownCheat((m || '').toLowerCase()).length > 0)
+    if (nameMatches || modMatches) {
+      // dumpAndAnalyze() does: dump → analyze strings + auto-rules → delete dump → return results
+      const dumpResult = dumpAndAnalyze(proc.Id, ALL_CHEAT_KEYWORDS, procName, undefined)
+      if (dumpResult.success && dumpResult.riskScore > 40) {
+        results.push({
+          path: `memory-dump:${proc.Name} (PID: ${proc.Id})`,
+          fileName: `Memory analysis: ${proc.Name}`,
+          type: 'process',
+          risk: dumpResult.riskScore > 70 ? 'high' : 'medium',
+          matches: dumpResult.cheatMatches.slice(0, 5),
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
 
-      if (isSuspicious && proc.Id) {
-        const dumpPath = dumpProcessMemory(proc.Id, procName)
-        if (dumpPath) {
-          try {
-            const hashRes = analyzeApiHashingInDump(dumpPath)
-            if (hashRes.detected && addFindingDedup(`api-hash:${proc.Id}`)) {
-              results.push({
-                path: `memory:${proc.Name} (PID:${proc.Id})`,
-                fileName: `API Hashing in memory`,
-                type: 'process',
-                risk: hashRes.confidence > 70 ? 'high' : 'medium',
-                matches: hashRes.patterns.slice(0, 5),
-                size: 0,
-                modifiedAt: new Date().toISOString(),
-              })
-            }
-
-            // 2. ETW / AMSI patches (pass existing dump path)
-            const patchRes = scanProcessForAmsiEtw(proc.Id, procName, dumpPath)
-            if ((patchRes.amsiPatched || patchRes.etwPatched) && addFindingDedup(`patch:${proc.Id}`)) {
-              results.push({
-                path: `patch:${proc.Name} (PID:${proc.Id})`,
-                fileName: `AMSI/ETW Patched`,
-                type: 'process',
-                risk: 'high',
-                matches: patchRes.details.slice(0, 8),
-                size: 0,
-                modifiedAt: new Date().toISOString(),
-              })
-            }
-          } finally {
-            try { fs.unlinkSync(dumpPath) } catch (_e) { /* ignore */ }
+      // API Hashing + AMSI/ETW need a separate dump (dumpAndAnalyze already deleted the first one)
+      const dumpPath2 = dumpProcessMemory(proc.Id, `hash_${procName}`)
+      if (dumpPath2) {
+        try {
+          const hashRes = analyzeApiHashingInDump(dumpPath2)
+          if (hashRes.detected && addFindingDedup(`api-hash:${proc.Id}`)) {
+            results.push({
+              path: `memory:${proc.Name} (PID:${proc.Id})`,
+              fileName: `API Hashing in memory`,
+              type: 'process',
+              risk: hashRes.confidence > 70 ? 'high' : 'medium',
+              matches: hashRes.patterns.slice(0, 5),
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+            })
           }
+
+          const patchRes = scanProcessForAmsiEtw(proc.Id, procName, dumpPath2)
+          if ((patchRes.amsiPatched || patchRes.etwPatched) && addFindingDedup(`patch:${proc.Id}`)) {
+            results.push({
+              path: `patch:${proc.Name} (PID:${proc.Id})`,
+              fileName: `AMSI/ETW Patched`,
+              type: 'process',
+              risk: 'high',
+              matches: patchRes.details.slice(0, 8),
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+            })
+          }
+        } finally {
+          try { fs.unlinkSync(dumpPath2) } catch (_e) { /* ignore */ }
         }
       }
-
-      // 2b. RWX Memory Regions + Thread Start Address scan (game processes only — can be slow)
-      const gameKeywords = ['gta5', 'fivem', 'ragemp', 'altv', 'gta', 'fivem_gtaprocess']
-      const isGameProc = gameKeywords.some(k => procName.includes(k))
-      if (isGameProc && proc.Id) {
-        try {
-          const rwxRes = scanRwxAndThreads(proc.Id, procName)
-          const rwxItem = rwxResultToScanResult(rwxRes)
-          if (rwxItem && addFindingDedup(`rwx:${proc.Id}`)) {
-            results.push(rwxItem)
-          }
-        } catch (_e) { /* RWX scan optional */ }
-      }
-
-      // 2c. Disk vs Memory — compare .text section of loaded DLLs (inline hooks)
-      if (proc.Id) {
-        try {
-          const dvmResult = scanDiskVsMemory(proc.Id, procName)
-          const dvmItem = dvmResultToScanResult(dvmResult)
-          if (dvmItem && addFindingDedup(`dvm:${dvmItem.fileName}`)) {
-            results.push(dvmItem)
-          }
-        } catch (_e) { /* DVM scan optional */ }
-      }
-
-      // 3. Behavior profile for ALL processes (no dump needed)
-      const profile = buildBehaviorProfile(proc.Id, procName, modules)
-      const profileResult = profileToScanResult(profile)
-      if (profileResult && addFindingDedup(`behavior:${proc.Id}`)) {
-        results.push(profileResult)
-      }
     }
-  } catch (_e) { /* advanced analysis optional */ }
+  }
+
+  // ── Phase 3: RWX + DVM + Behavior profiling (no dump needed) ──
+  for (const proc of processes) {
+    const procName = (proc.Name || '').toLowerCase()
+    if (!proc.Id) continue
+    const modules: string[] = proc.Mods || []
+
+    // RWX memory regions (game processes only)
+    const gameKeywords = ['gta5', 'fivem', 'ragemp', 'altv', 'gta', 'fivem_gtaprocess']
+    const isGameProc = gameKeywords.some(k => procName.includes(k))
+    if (isGameProc && proc.Id) {
+      try {
+        const rwxRes = scanRwxAndThreads(proc.Id, procName)
+        const rwxItem = rwxResultToScanResult(rwxRes)
+        if (rwxItem && addFindingDedup(`rwx:${proc.Id}`)) {
+          results.push(rwxItem)
+        }
+      } catch (_e) { /* RWX scan optional */ }
+    }
+
+    // Disk vs Memory — inline hook detection
+    if (proc.Id) {
+      try {
+        const dvmResult = scanDiskVsMemory(proc.Id, procName)
+        const dvmItem = dvmResultToScanResult(dvmResult)
+        if (dvmItem && addFindingDedup(`dvm:${dvmItem.fileName}`)) {
+          results.push(dvmItem)
+        }
+      } catch (_e) { /* DVM scan optional */ }
+    }
+
+    // Behavior profile for ALL processes
+    const profile = buildBehaviorProfile(proc.Id, procName, modules)
+    const profileResult = profileToScanResult(profile)
+    if (profileResult && addFindingDedup(`behavior:${proc.Id}`)) {
+      results.push(profileResult)
+    }
+  }
 
   return results
 }
@@ -2630,7 +2680,6 @@ export function registerScanHandlers() {
 
     // ── Cloud hash submission (fire-and-forget) ──
     try {
-      const crypto = require('crypto')
       const topFindings = results
         .filter(r => r.type === 'file' && r.size > 0 && r.size < 100 * 1024 * 1024)
         .sort((a, b) => a.risk === 'high' ? -1 : b.risk === 'high' ? 1 : 0)

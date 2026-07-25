@@ -81,7 +81,7 @@ const App: React.FC = () => {
   const [pcName, setPCName] = useState('')
   const [requestId, setRequestId] = useState<number | null>(null)
   const [requestStatus, setRequestStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined)
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
   // Update indicator (footer dot)
   const [updateAvailable, setUpdateAvailable] = useState(false)
@@ -242,7 +242,7 @@ const App: React.FC = () => {
     } finally {
       setAuthLoading(false)
     }
-  }, [token, lang, pcName])
+  }, [token, lang, pcName, t])
 
   const hRequestAccess = useCallback(async () => {
     setAuthLoading(true)
@@ -285,7 +285,7 @@ const App: React.FC = () => {
     } finally {
       setAuthLoading(false)
     }
-  }, [pcName])
+  }, [pcName, t])
 
   // ── Shared: logo + footer ──
   const Logo = () => (
@@ -338,13 +338,6 @@ const App: React.FC = () => {
 
       <div className="container">
         <Logo />
-
-        {/* Loading */}
-        {phase === 'loading' && renderCard(
-          <><div className="spinner"><div className="spinner-ring" /></div>
-            <p className="status-text">Загрузка...</p>
-            <div className="progress-bar indeterminate"><div className="progress-fill" /></div></>
-        )}
 
         {/* Loading */}
         {phase === 'loading' && renderCard(

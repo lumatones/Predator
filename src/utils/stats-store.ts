@@ -52,7 +52,9 @@ export function loadHistory(): StoredScan[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
-    return JSON.parse(raw) as StoredScan[]
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed as StoredScan[]
   } catch {
     return []
   }
@@ -123,7 +125,8 @@ export function aggregateStats(): AggregatedStats {
   const dirMap = new Map<string, { count: number; risk: string }>()
   for (const scan of history) {
     for (const result of scan.results) {
-      const dir = result.path.substring(0, result.path.lastIndexOf('\\'))
+      const lastSep = Math.max(result.path.lastIndexOf('\\'), result.path.lastIndexOf('/'))
+      const dir = lastSep > 0 ? result.path.substring(0, lastSep) : result.path
       if (dir) {
         const existing = dirMap.get(dir)
         if (existing) {

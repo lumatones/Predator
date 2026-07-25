@@ -11,7 +11,6 @@ async function init() {
     process.exit(1)
   }
 
-  // ── Create tables ──
   console.log('  Creating tables...')
 
   await query(`
@@ -79,12 +78,22 @@ async function init() {
       UNIQUE KEY uk_sha256 (sha256)
     ) ENGINE=InnoDB
   `)
-  await query('CREATE INDEX IF NOT EXISTS idx_sh_status ON suspicious_hashes(status)')
-  await query('CREATE INDEX IF NOT EXISTS idx_sh_created ON suspicious_hashes(created_at)')
+
+  // MySQL < 8.0 не поддерживает IF NOT EXISTS для CREATE INDEX
+  try {
+    await query('CREATE INDEX idx_sh_status ON suspicious_hashes(status)')
+  } catch (err) {
+    if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
+
+  try {
+    await query('CREATE INDEX idx_sh_created ON suspicious_hashes(created_at)')
+  } catch (err) {
+    if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
 
   console.log('  ✓ Tables created\n')
 
-  // ── Create default admin ──
   const username = process.env.ADMIN_USERNAME || 'admin'
   const password = process.env.ADMIN_PASSWORD || 'admin123'
 

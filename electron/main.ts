@@ -1,13 +1,54 @@
 import { app, BrowserWindow, ipcMain, Menu } from 'electron'
 import path from 'path'
+import fs from 'fs'
 import os from 'os'
 import { autoUpdater } from 'electron-updater'
 import { registerScanHandlers, startCloudSync } from './scanner'
 import { registerSystemInfoHandlers } from './system-info'
 
 let mainWindow: BrowserWindow | null = null
+let _updateCheckInterval: ReturnType<typeof setInterval> | null = null
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
+
+// ── Crash Log File ────────────────────────────────
+
+const CRASH_LOG = path.join(app.getPath('userData'), 'crash.log')
+
+function writeCrashLog(level: string, message: string, error?: Error) {
+  try {
+    const ts = new Date().toISOString()
+    const line = `[${ts}] ${level}: ${message}${error ? '\n  ' + error.stack?.replace(/\n/g, '\n  ') || error.message : ''}\n`
+    fs.appendFileSync(CRASH_LOG, line)
+  } catch { /* crash logger must never throw */ }
+}
+
+// ── Global Error Handlers ─────────────────────────
+
+process.on('uncaughtException', (error) => {
+  writeCrashLog('UNCAUGHT_EXCEPTION', error.message, error)
+  console.error('🛑 Uncaught Exception:', error)
+
+  // Notify the renderer so it can show a recovery UI
+  try {
+    mainWindow?.webContents.send('crash-event', {
+      type: 'uncaughtException',
+      message: error.message.slice(0, 200),
+    })
+  } catch { /* window gone */ }
+})
+
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason))
+  writeCrashLog('UNHANDLED_REJECTION', error.message, error)
+  console.error('🛑 Unhandled Rejection:', error)
+})
+
+// Also catch renderer crashes
+app.on('render-process-gone', (_event, _webContents, details) => {
+  writeCrashLog('RENDERER_CRASH', `Reason: ${details.reason} (exitCode: ${details.exitCode})`)
+  console.error('🛑 Renderer process gone:', details)
+})
 
 // ── Auto Updater Config ───────────────────────────
 
@@ -42,6 +83,18 @@ function createWindow() {
     mainWindow?.show()
   })
 
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+
+  // Cleanup streaming intervals when window is destroyed
+  mainWindow.on('closed', () => {
+    if (_updateCheckInterval) {
+      clearInterval(_updateCheckInterval)
+      _updateCheckInterval = null
+    }
+  })
+
   try {
     if (VITE_DEV_SERVER_URL) {
       mainWindow.loadURL(VITE_DEV_SERVER_URL)
@@ -50,18 +103,18 @@ function createWindow() {
       mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
     }
   } catch (err) {
+    writeCrashLog('LOAD_ERROR', `Failed to load app: ${err}`)
     console.error('Failed to load app:', err)
   }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null
-  })
 }
 
 // ── App Ready ──────────────────────────────────────
 
 app.whenReady().then(() => {
   createWindow()
+
+  // Log startup
+  writeCrashLog('INFO', `App started v${app.getVersion()} on ${os.platform()} ${os.release()}`)
 
   // ── Update check helpers ──
 
@@ -79,8 +132,8 @@ app.whenReady().then(() => {
     }
   })
 
-  // Periodic background check every 5 minutes (300 000 ms)
-  setInterval(() => {
+  // Periodic background check every 5 minutes
+  _updateCheckInterval = setInterval(() => {
     if (!VITE_DEV_SERVER_URL && mainWindow && !mainWindow.isDestroyed()) {
       checkForUpdates()
     }
@@ -96,6 +149,14 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+app.on('will-quit', () => {
+  writeCrashLog('INFO', 'App quitting')
+  if (_updateCheckInterval) {
+    clearInterval(_updateCheckInterval)
+    _updateCheckInterval = null
   }
 })
 
@@ -153,7 +214,7 @@ ipcMain.handle('start-update-check', async () => {
 
 ipcMain.handle('start-download', async () => {
   try {
-    autoUpdater.downloadUpdate()
+    await autoUpdater.downloadUpdate()
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message }
@@ -164,6 +225,7 @@ ipcMain.handle('restart-app', async () => {
   try {
     autoUpdater.quitAndInstall()
   } catch (err: any) {
+    writeCrashLog('IPC_ERROR', 'Restart failed: ' + err.message)
     console.error('Restart failed:', err.message)
   }
 })
