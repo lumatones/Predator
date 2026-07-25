@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onScanProgress: (callback: (data: import('./scanner').ScanProgress) => void) => {
     ipcRenderer.on('scan-progress', (_event, data) => callback(data))
   },
+  offScanProgress: () => {
+    ipcRenderer.removeAllListeners('scan-progress')
+  },
 
   // System info dashboard
   getSystemSnapshot: () => ipcRenderer.invoke('get-system-snapshot'),
@@ -47,5 +50,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onSystemUpdate: (callback: (data: import('./system-info').SystemInfoSnapshot) => void) => {
     ipcRenderer.on('system-snapshot', (_event, data) => callback(data))
+  },
+  offSystemUpdate: () => {
+    ipcRenderer.removeAllListeners('system-snapshot')
   },
 })

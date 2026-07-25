@@ -10,6 +10,19 @@ const tabCache = new Map<ScanMode, TabCacheEntry>()
 import { saveScan } from '../utils/stats-store'
 import { exportHtml, exportJson } from '../utils/export-report'
 import { submitScan } from '../api'
+import {
+  IconFolder,
+  IconGear,
+  IconCrosshair,
+  IconUSB,
+  IconShield,
+  IconGlobe,
+  IconRegistry,
+  IconMonitor,
+  IconLock,
+  IconDNA,
+  IconChart,
+} from '../icons'
 
 interface CheckerProps {
   lang: 'ru' | 'en'
@@ -117,12 +130,12 @@ interface TabConfig {
 }
 
 const TABS: TabConfig[] = [
-  { id: 'files',     icon: '📁', label: 'tabFiles',     desc: 'tabFilesDesc',     color: '#ff4444' },
-  { id: 'processes', icon: '⚙️', label: 'tabProcesses', desc: 'tabProcessesDesc', color: '#3B82F6' },
-  { id: 'cheats',    icon: '🎯', label: 'tabCheats',    desc: 'tabCheatsDesc',    color: '#F59E0B' },
-  { id: 'dma',       icon: '🔌', label: 'tabDma',       desc: 'tabDmaDesc',       color: '#8B5CF6' },
-  { id: 'extended',  icon: '🛡️', label: 'tabExtended',  desc: 'tabExtendedDesc',  color: '#22c55e' },
-  { id: 'network',   icon: '🌐', label: 'tabNetwork',   desc: 'tabNetworkDesc',   color: '#06b6d4' },
+  { id: 'files',     icon: 'Folder',     label: 'tabFiles',     desc: 'tabFilesDesc',     color: '#ff4444' },
+  { id: 'processes', icon: 'Gear',       label: 'tabProcesses', desc: 'tabProcessesDesc', color: '#3B82F6' },
+  { id: 'cheats',    icon: 'Crosshair',  label: 'tabCheats',    desc: 'tabCheatsDesc',    color: '#F59E0B' },
+  { id: 'dma',       icon: 'USB',        label: 'tabDma',       desc: 'tabDmaDesc',       color: '#8B5CF6' },
+  { id: 'extended',  icon: 'Shield',     label: 'tabExtended',  desc: 'tabExtendedDesc',  color: '#22c55e' },
+  { id: 'network',   icon: 'Globe',      label: 'tabNetwork',   desc: 'tabNetworkDesc',   color: '#06b6d4' },
 ]
 
 // ── Red Eye Component ──
@@ -253,6 +266,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const [exportMsg, setExportMsg] = useState('')
   const [serverMsg, setServerMsg] = useState('')
   const [copiedPath, setCopiedPath] = useState('')
+  const [tabCounts, setTabCounts] = useState<Map<ScanMode, number>>(new Map())
   const [redEyePhase, setRedEyePhase] = useState<'hidden' | 'opening' | 'scanning' | 'closing'>('hidden')
   const scanRef = useRef<boolean>(false)
   const isMounted = useRef(true)
@@ -332,6 +346,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       tabCache.set(activeTab, { results: mock.results, summary: mock.summary })
       setPhase('done')
       scanRef.current = false
+      setTabCounts(prev => { const next = new Map(prev); next.set(activeTab, mock.results.length); return next; })
       saveScan(activeTab, mock.summary.totalScanned, mock.summary.suspiciousFiles, mock.summary.highRiskCount, mock.summary.scanTimeMs, mock.results)
       submitToServer(activeTab, mock.summary, mock.results)
       return
@@ -348,6 +363,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
         setResults(response.results)
         setSummary(response.summary)
         tabCache.set(activeTab, { results: response.results, summary: response.summary })
+        setTabCounts(prev => { const next = new Map(prev); next.set(activeTab, response.results.length); return next; })
         setPhase('done')
         saveScan(activeTab, response.summary.totalScanned, response.summary.suspiciousFiles, response.summary.highRiskCount, response.summary.scanTimeMs, response.results)
         submitToServer(activeTab, response.summary, response.results)
@@ -479,16 +495,17 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const riskLabel = (risk: string) =>
     risk === 'high' ? t('high') : risk === 'medium' ? t('medium') : t('low')
 
-  const typeIcon = (type: string) => {
+  const typeIcon = (type: string, size = 14) => {
+    const c = 'var(--text-secondary)'
     switch (type) {
-      case 'file': return '📄'
-      case 'browser': return '🌐'
-      case 'process': return '⚙️'
-      case 'registry': return '📋'
-      case 'hardware': return '🔌'
-      case 'software': return '💻'
-      case 'system': return '🖥️'
-      default: return '📄'
+      case 'file': return <IconFolder size={size} color={c} />
+      case 'browser': return <IconGlobe size={size} color={c} />
+      case 'process': return <IconGear size={size} color={c} />
+      case 'registry': return <IconRegistry size={size} color={c} />
+      case 'hardware': return <IconUSB size={size} color={c} />
+      case 'software': return <IconMonitor size={size} color={c} />
+      case 'system': return <IconMonitor size={size} color={c} />
+      default: return <IconFolder size={size} color={c} />
     }
   }
 
@@ -544,34 +561,29 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
             data-color={tab.color}
             style={{ '--tab-accent': tab.color } as React.CSSProperties}
           >
-            <span className="checker-tab-icon">{tab.icon}</span>
+            <span className="checker-tab-icon">
+              {tab.icon === 'Folder' ? <IconFolder size={16} color={tab.color} /> :
+               tab.icon === 'Gear' ? <IconGear size={16} color={tab.color} /> :
+               tab.icon === 'Crosshair' ? <IconCrosshair size={16} color={tab.color} /> :
+               tab.icon === 'USB' ? <IconUSB size={16} color={tab.color} /> :
+               tab.icon === 'Shield' ? <IconShield size={16} color={tab.color} /> :
+               tab.icon === 'Globe' ? <IconGlobe size={16} color={tab.color} /> :
+               tab.icon}
+            </span>
             <div className="checker-tab-text">
               <span className="checker-tab-label">{t(tab.label)}</span>
               <span className="checker-tab-desc">{t(tab.desc)}</span>
             </div>
+            {tabCounts.get(tab.id) && tabCounts.get(tab.id)! > 0 && (
+              <span className="checker-tab-badge" style={{ '--tab-accent': tab.color } as React.CSSProperties}>
+                {tabCounts.get(tab.id)}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       <p className="checker-desc" style={{ marginBottom: 16 }}>{t(currentTab.desc)}</p>
-
-      {/* Tab count badges */}
-      {phase === 'done' && (
-        <div className="checker-badge-row" style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
-          {TABS.map(tab => {
-            const count = activeTab === tab.id ? results.length : 0
-            if (count === 0) return null
-            return (
-              <span key={tab.id} style={{
-                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                background: tab.color + '22', color: tab.color,
-              }}>
-                {tab.icon} {count}
-              </span>
-            )
-          })}
-        </div>
-      )}
 
       {/* Tab content with transitions */}
       <div className={`tab-content${tabTransition === 'exit' ? ' exit' : ''}${tabTransition === 'enter' ? ' enter' : ''}`}>
@@ -579,7 +591,14 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       {/* Idle */}
       {phase === 'idle' && (
         <div className="checker-idle">
-          <div className="checker-idle-icon" style={{ animationDelay: `${activeTabIndex * -0.8}s` }}>{currentTab.icon}</div>
+          <div className="checker-idle-icon" style={{ animationDelay: `${activeTabIndex * -0.8}s` }}>
+            {currentTab.icon === 'Folder' ? <IconFolder size={24} color={currentTab.color} animated /> :
+             currentTab.icon === 'Gear' ? <IconGear size={24} color={currentTab.color} animated /> :
+             currentTab.icon === 'Crosshair' ? <IconCrosshair size={24} color={currentTab.color} animated /> :
+             currentTab.icon === 'USB' ? <IconUSB size={24} color={currentTab.color} animated /> :
+             currentTab.icon === 'Shield' ? <IconShield size={24} color={currentTab.color} animated /> :
+             currentTab.icon === 'Globe' ? <IconGlobe size={24} color={currentTab.color} animated /> : null}
+          </div>
           <button className="checker-start-btn" data-tab={activeTab} onClick={handleStartScan}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
@@ -608,7 +627,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
               </div>
 
               <div className="checker-scanning-phase" key={progress?.phase || 'scanning'}>
-                {progress?.phase === 'analyzing' ? '🔬 Анализ результатов' : '🛡️ Сканирование'}
+                {progress?.phase === 'analyzing' ? 'Анализ результатов' : 'Сканирование'}
               </div>
               <div className="checker-scanning-sub" key={progress?.currentDir}>
                 {progress?.currentDir || 'Поиск подозрительных файлов...'}
@@ -667,15 +686,15 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                   <div className="checker-empty-title">Система чиста</div>
                   <div className="checker-empty-desc">Проверены следующие модули:</div>
                   <div className="checker-empty-modules">
-                    <span className="checker-empty-module">📁 Файловая система</span>
-                    <span className="checker-empty-module">⚙️ Процессы</span>
-                    <span className="checker-empty-module">📋 Реестр</span>
-                    <span className="checker-empty-module">🔌 DMA-устройства</span>
-                    <span className="checker-empty-module">🌐 Сеть</span>
-                    <span className="checker-empty-module">🔐 Цифровые подписи</span>
-                    <span className="checker-empty-module">🧬 Поведенческий анализ</span>
-                    <span className="checker-empty-module">🌍 История браузера</span>
-                    <span className="checker-empty-module">📊 Энтропия файлов</span>
+                    <span className="checker-empty-module"><IconFolder size={12} /> Файловая система</span>
+                    <span className="checker-empty-module"><IconGear size={12} /> Процессы</span>
+                    <span className="checker-empty-module"><IconRegistry size={12} /> Реестр</span>
+                    <span className="checker-empty-module"><IconUSB size={12} /> DMA-устройства</span>
+                    <span className="checker-empty-module"><IconGlobe size={12} /> Сеть</span>
+                    <span className="checker-empty-module"><IconLock size={12} /> Цифровые подписи</span>
+                    <span className="checker-empty-module"><IconDNA size={12} /> Поведенческий анализ</span>
+                    <span className="checker-empty-module"><IconGlobe size={12} /> История браузера</span>
+                    <span className="checker-empty-module"><IconChart size={12} /> Энтропия файлов</span>
                   </div>
                 </div>
               )}
@@ -828,7 +847,14 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                             setTimeout(() => setCopiedPath(''), 2000)
                           }}
                         >
-                          {copiedPath === selectedResult.path ? '✓' : '📋'}
+                          {copiedPath === selectedResult.path ?
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg> :
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                          </svg>}
                         </button>
                       </div>
                       {selectedResult.size > 0 && (
@@ -849,7 +875,9 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                   </>
                 ) : (
                   <div className="checker-detail-empty">
-                    <span style={{ fontSize: 32, opacity: 0.3 }}>👆</span>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" style={{ opacity: 0.3 }}>
+                      <path d="M7 11L12 6l5 5M12 6v12"/>
+                    </svg>
                     <span>Выберите элемент из списка</span>
                     <span style={{ fontSize: 11, opacity: 0.5 }}>Нажмите на строку для просмотра деталей</span>
                   </div>

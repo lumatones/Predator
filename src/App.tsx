@@ -3,6 +3,7 @@ import { validateToken, useToken, requestAccess, checkRequestStatus } from './ap
 import Checker from './pages/Checker'
 import Dashboard from './pages/Dashboard'
 import Statistics from './pages/Statistics'
+import { IconShield, IconDashboard, IconStats } from './icons'
 
 // ── Types ──────────────────────────────────────
 
@@ -15,14 +16,14 @@ type ThemeId = 'predator' | 'ocean' | 'stealth' | 'nebula'
 
 interface ThemeColors {
   accent: string; light: string; dark: string
-  bg: string; card: string; name: string; icon: string
+  bg: string; card: string; name: string
 }
 
 const THEMES: Record<ThemeId, ThemeColors> = {
-  predator: { accent: '#ff4444', light: '#ff6b35', dark: '#cc0000', bg: '#0a0a0f', card: '#12121a', name: 'Predator Red', icon: '🔴' },
-  ocean:    { accent: '#3B82F6', light: '#60A5FA', dark: '#1D4ED8', bg: '#0a0f1a', card: '#121a2a', name: 'Ocean Blue', icon: '🔵' },
-  stealth:  { accent: '#6B7280', light: '#9CA3AF', dark: '#374151', bg: '#0a0a0c', card: '#121214', name: 'Stealth Black', icon: '⚫' },
-  nebula:   { accent: '#8B5CF6', light: '#A78BFA', dark: '#6D28D9', bg: '#0f0a1a', card: '#1a122a', name: 'Nebula Purple', icon: '🟣' },
+  predator: { accent: '#ff4444', light: '#ff6b35', dark: '#cc0000', bg: '#0a0a0f', card: '#12121a', name: 'Predator Red' },
+  ocean:    { accent: '#3B82F6', light: '#60A5FA', dark: '#1D4ED8', bg: '#0a0f1a', card: '#121a2a', name: 'Ocean Blue' },
+  stealth:  { accent: '#6B7280', light: '#9CA3AF', dark: '#374151', bg: '#0a0a0c', card: '#121214', name: 'Stealth Black' },
+  nebula:   { accent: '#8B5CF6', light: '#A78BFA', dark: '#6D28D9', bg: '#0f0a1a', card: '#1a122a', name: 'Nebula Purple' },
 }
 
 type Lang = 'ru' | 'en'
@@ -508,7 +509,9 @@ const App: React.FC = () => {
             <p className="ready-text">{t('ready')}</p>
             <div className="main-cards">
               <button className="main-card" onClick={hStartChecker}>
-                <div className="main-card-icon" style={{ background: 'rgba(255,68,68,0.08)' }}>🛡️</div>
+                <div className="main-card-icon" style={{ background: 'rgba(255,68,68,0.08)' }}>
+                  <IconShield size={24} color="#ff4444" />
+                </div>
                 <div className="main-card-body">
                   <span className="main-card-title">{t('startCheck')}</span>
                   <span className="main-card-desc">Сканирование файлов, процессов, реестра и сети на наличие читов</span>
@@ -516,7 +519,9 @@ const App: React.FC = () => {
                 <span className="main-card-arrow">→</span>
               </button>
               <button className="main-card" onClick={hStartDashboard}>
-                <div className="main-card-icon" style={{ background: 'rgba(59,130,246,0.08)' }}>📊</div>
+                <div className="main-card-icon" style={{ background: 'rgba(59,130,246,0.08)' }}>
+                  <IconDashboard size={24} color="#3B82F6" />
+                </div>
                 <div className="main-card-body">
                   <span className="main-card-title">{t('dashboard')}</span>
                   <span className="main-card-desc">Мониторинг CPU, памяти, температуры и запущенных процессов</span>
@@ -524,7 +529,9 @@ const App: React.FC = () => {
                 <span className="main-card-arrow">→</span>
               </button>
               <button className="main-card" onClick={hStartStatistics}>
-                <div className="main-card-icon" style={{ background: 'rgba(139,92,246,0.08)' }}>📈</div>
+                <div className="main-card-icon" style={{ background: 'rgba(139,92,246,0.08)' }}>
+                  <IconStats size={24} color="#8B5CF6" />
+                </div>
                 <div className="main-card-body">
                   <span className="main-card-title">{t('statistics')}</span>
                   <span className="main-card-desc">Агрегированная статистика по всем проверкам и типам угроз</span>

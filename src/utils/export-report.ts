@@ -139,7 +139,21 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
 <body>
   <div class="container">
     <header>
-      <h1>🛡️ <span>Predator</span> Anti-Cheat</h1>
+      <h1 style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+        <svg width="36" height="36" viewBox="0 0 80 80" fill="none" style="flex-shrink: 0;">
+          <circle cx="40" cy="40" r="38" stroke="url(#predator-grad)" stroke-width="2"/>
+          <path d="M40 10C40 10 25 30 25 45C25 55 31.7 62 40 62C48.3 62 55 55 55 45C55 30 40 10 40 10Z" fill="url(#predator-grad)" opacity="0.9"/>
+          <path d="M28 50L16 68H64L52 50" stroke="url(#predator-grad)" stroke-width="2"/>
+          <circle cx="40" cy="42" r="6" fill="white" opacity="0.3"/>
+          <defs>
+            <linearGradient id="predator-grad" x1="0" y1="0" x2="80" y2="80">
+              <stop offset="0%" stop-color="#ef4444"/>
+              <stop offset="50%" stop-color="#ff6b35"/>
+              <stop offset="100%" stop-color="#cc0000"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span>Predator</span> Anti-Cheat</h1>
       <p class="subtitle">Отчёт сканирования | ${new Date().toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
     </header>
 
@@ -208,8 +222,13 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
     ` : ''}
 
     <div class="findings">
-      <h2>🔍 Найденные угрозы (${results.length})</h2>
-      ${results.length > 0 ? findingsHtml : '<p style="color: #22c55e; font-size: 1.2rem;">✅ Подозрительных элементов не обнаружено</p>'}
+      <h2 style="display: flex; align-items: center; gap: 8px;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" style="flex-shrink: 0;">
+          <circle cx="11" cy="11" r="8"/>
+          <path d="M21 21l-4.35-4.35"/>
+        </svg>
+        Найденные угрозы (${results.length})</h2>
+      ${results.length > 0 ? findingsHtml : '<p style="color: #22c55e; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; justify-content: center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" style="flex-shrink: 0;"><polyline points="20 6 9 17 4 12"/></svg> Подозрительных элементов не обнаружено</p>'}
     </div>
 
     <div class="footer">

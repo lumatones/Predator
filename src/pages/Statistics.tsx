@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { aggregateStats, clearHistory, type AggregatedStats } from '../utils/stats-store'
 
 interface StatisticsProps {
@@ -59,12 +59,20 @@ const T: Record<string, Record<string, string>> = {
   },
 }
 
-const MODE_ICONS: Record<string, string> = {
-  files: '📁',
-  processes: '⚙️',
-  cheats: '🎯',
-  dma: '🔌',
-  extended: '🛡️',
+import {
+  IconFolder,
+  IconGear,
+  IconCrosshair,
+  IconUSB,
+  IconShield,
+} from '../icons'
+
+const MODE_ICONS: Record<string, React.ReactNode> = {
+  files: <IconFolder size={16} color="var(--accent-red)" />,
+  processes: <IconGear size={16} color="#3B82F6" />,
+  cheats: <IconCrosshair size={16} color="#F59E0B" />,
+  dma: <IconUSB size={16} color="#8B5CF6" />,
+  extended: <IconShield size={16} color="#22c55e" />,
 }
 
 function formatDate(dateStr: string, lang: string): string {
@@ -199,7 +207,7 @@ export default function Statistics({ lang, onBack }: StatisticsProps) {
         <div className="stats-mode-list">
           {stats.scanCountByMode.map((m) => (
             <div key={m.mode} className="stats-mode-row">
-              <span className="stats-mode-icon">{MODE_ICONS[m.mode] || '📋'}</span>
+              <span className="stats-mode-icon">{MODE_ICONS[m.mode] || <IconShield size={16} />}</span>
               <span className="stats-mode-name">{t(m.mode) || m.mode}</span>
               <div className="stats-mode-bar-track">
                 <div className="stats-mode-bar-fill" style={{ width: `${(m.count / maxModeCount) * 100}%` }} />
