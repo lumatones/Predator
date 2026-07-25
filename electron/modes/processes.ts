@@ -10,7 +10,7 @@ import fs from 'fs'
 import path from 'path'
 import type { BrowserWindow } from 'electron'
 
-import { sendProgress, yieldToEventLoop, clearFindingDedup, addFindingDedup, _HOME, _WR, type ScanResult } from '../types'
+import { sendProgress, yieldToEventLoop, clearFindingDedup, addFindingDedup, execCmd, _HOME, _WR, type ScanResult } from '../types'
 import { SUSPICIOUS_CATEGORIES, matchKnownCheat, checkDigitalSignature, heuristicFileScan } from '../heuristic'
 import { isTrustedPath } from '../cheat-rules'
 
@@ -142,8 +142,7 @@ export function scanRunningProcessesV2(): ScanResult[] {
 
 export function scanNamedPipes(): ScanResult[] {
   const results: ScanResult[] = []
-  try {
-    const out = execSync('cmd /c "dir \\\\.\\pipe\\ /b 2>nul"', 'powershell -Command "[System.IO.Directory]::GetFiles(\\\"\\\\.\\pipe\\\") | ConvertTo-Json -Compress"', { timeout: 3000 })
+  try {      const out = execCmd('cmd /c "dir \\\\.\\pipe\\ /b 2>nul"', 'powershell -Command "[System.IO.Directory]::GetFiles(\\\"\\\\.\\pipe\\\") | ConvertTo-Json -Compress"', { timeout: 3000 })
     if (!out.trim()) return results
     const pipes = out.trim().split('\n')
     for (const pipe of pipes) {

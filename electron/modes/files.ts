@@ -6,6 +6,7 @@
  */
 
 import path from 'path'
+import fs from 'fs'
 import fsp from 'fs/promises'
 import type { BrowserWindow } from 'electron'
 
@@ -81,6 +82,75 @@ export async function scanFile(filePath: string): Promise<ScanResult | null> {
       matches, size: stat.size, modifiedAt: stat.mtime.toISOString(),
     }
   } catch (_e) { return null }
+}
+
+// ── Walk cache for getDeepWalkEntries ──
+const _walkCache = new Map<string, string[]>()
+
+function getDeepWalkEntries(dirPath: string, maxDepth = 2): string[] {
+  const key = `${dirPath}:${maxDepth}`
+  const cached = _walkCache.get(key)
+  if (cached !== undefined) return cached
+
+  const entries: string[] = []
+  function walk(d: string, depth: number) {
+    if (depth > maxDepth) return
+    try {
+      const dirEntries = fs.readdirSync(d, { withFileTypes: true })
+      for (const entry of dirEntries) {
+        const fullPath = path.join(d, entry.name)
+        entries.push(fullPath)
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+          walk(fullPath, depth + 1)
+        }
+      }
+    } catch (_e) { /* skip */ }
+  }
+  walk(dirPath, 0)
+
+  _walkCache.set(key, entries)
+  return entries
+}
+
+/**
+ * Scan directories for files matching cheat-specific keywords
+ */
+export function scanForCheatFiles(cheatName: string, keywords: string[]): ScanResult[] {
+  const results: ScanResult[] = []
+  const searchDirs = getScanPaths().slice(0, 8)
+
+  const allEntries: string[] = []
+  for (const dir of searchDirs) {
+    if (!fs.existsSync(dir)) continue
+    try {
+      allEntries.push(...getDeepWalkEntries(dir, 2))
+    } catch (_e) { /* skip */ }
+  }
+
+  for (const entryPath of allEntries) {
+    const lower = path.basename(entryPath).toLowerCase()
+    const matches: string[] = []
+    for (const keyword of keywords) {
+      if (lower.includes(keyword)) matches.push(`cheat:${cheatName.toLowerCase()} → ${keyword}`)
+    }
+    const sigMatches = matchKnownCheat(lower)
+    matches.push(...sigMatches)
+
+    if (matches.length > 0) {
+      try {
+        const stat = fs.statSync(entryPath)
+        results.push({
+          path: entryPath,
+          fileName: stat.isDirectory() ? path.basename(entryPath) + '/' : path.basename(entryPath),
+          type: 'file',
+          risk: matches.length >= 2 ? 'high' : 'medium',
+          matches, size: stat.size, modifiedAt: stat.mtime.toISOString(),
+        })
+      } catch (_e) { /* skip */ }
+    }
+  }
+
+  return results
 }
 
 export async function runFileScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {

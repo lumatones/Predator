@@ -4,7 +4,15 @@ import * as fs from 'fs'
 import { BrowserWindow } from 'electron'
 import { ScanResult, addFindingDedup, sendProgress, execCmd, _WR } from '../types'
 import { scanBrowserHistory } from './browser'
-import { KNOWN_DMA_VENDORS, getScanPaths } from '../cheats-db'
+import { getScanPaths } from '../cheats-db'
+
+const KNOWN_DMA_VENDORS = [
+  { name: 'Xilinx', ids: ['10ee'] },
+  { name: 'Altera/Intel FPGA', ids: ['1172'] },
+  { name: 'Lattice Semiconductor', ids: ['1204'] },
+  { name: 'FTDI (USB-FPGA bridge)', ids: ['0403'] },
+  { name: 'Texas Instruments (FPGA)', ids: ['104c'] },
+]
 
 /**
  * Query PnP devices via WMIC or PowerShell

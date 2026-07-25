@@ -12,7 +12,8 @@ import type { BrowserWindow } from 'electron'
 
 import { sendProgress, clearFindingDedup, addFindingDedup, _PF, _PF86, _HOME, _WR, type ScanResult, type GamePid } from '../types'
 import { SUSPICIOUS_CATEGORIES, SYSTEM_PROC_NAMES, matchKnownCheat, checkDigitalSignature, heuristicFileScan } from '../heuristic'
-import { isTrustedPath, isPlatformWhitelisted } from '../cheat-rules'
+import { isTrustedPath } from '../cheat-rules'
+import { isPlatformWhitelisted } from '../cheats-db'
 
 // ═══════════════════════════════════════════════════
 // GAME PROCESS IDs

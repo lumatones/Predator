@@ -8,7 +8,6 @@ import { execSync } from 'child_process'
 import {
   KNOWN_CHEAT_HASHES,
   mergeCheatHashes,
-  CHEAT_SOFTWARE_NAMES,
   getScanPaths,
 } from './cheats-db'
 
@@ -92,6 +91,14 @@ import { runDmaScan, scanDmaDevices, scanDmaRegistry, scanScheduledTasks, queryP
 // CONSTANTS (used by remaining orchestration)
 // ═══════════════════════════════════════════════════
 
+const CHEAT_SOFTWARE_NAMES: Record<string, string[]> = {
+  'Nightfall': ['nightfall', 'nightfall cheat', 'nightfall loader'],
+  'DMA': ['dma', 'dma card', 'dma cheat', 'dma firmware'],
+  '0XCheat': ['0xcheat', '0x cheat', 'oxcheat'],
+  '1337 Cheat': ['1337', '1337 cheat', 'leet cheat'],
+  'NoleetCheats': ['noleet', 'noleetcheats', 'noleet cheat'],
+}
+
 const EXTENDED_CHEAT_KEYWORDS: string[] = [
   'eulen', 'redengine', 'skript.gg', 'impulse.one',
   'luna', 'paragon', 'ozark', 'cherax', 'stand.gg',
@@ -144,7 +151,7 @@ async function runCheatScan(win: BrowserWindow | null): Promise<{ results: ScanR
     filesScanned += fileResults.length
   }
 
-  const cheatKw = Object.values(CHEAT_SOFTWARE_NAMES).flat()
+  const cheatKw = (Object.values(CHEAT_SOFTWARE_NAMES).flat() as string[])
   const browserResults = await scanBrowserHistory(cheatKw)
   results.push(...browserResults)
 
@@ -232,7 +239,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
       const processes = Array.isArray(parsed) ? parsed : [parsed]
       for (const proc of processes) {
         const mods: string[] = proc.Mods || []
-        const skipAmsi = await scanProcessForAmsiEtw(proc.Id as number)
+        const skipAmsi = await scanProcessForAmsiEtw(Number(proc.Id), (proc.Name || '').toLowerCase())
         if (skipAmsi) {
           results.push({
             path: `process:${proc.Name} (PID: ${proc.Id})`,
@@ -252,7 +259,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
         } catch (_e) { /* skip */ }
         // RWX memory scan
         try {
-          const rwxResult = scanRwxAndThreads(Number(proc.Id))
+          const rwxResult = scanRwxAndThreads(Number(proc.Id), (proc.Name || '').toLowerCase())
           if (rwxResult) {
             const rwxResult2 = rwxResultToScanResult(rwxResult)
             if (rwxResult2) results.push(rwxResult2)
@@ -294,7 +301,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
 
 let _syncTimer: ReturnType<typeof setInterval> | null = null
 
-async function fetchCheatHashes() {
+export async function fetchCheatHashes() {
   try {
     const data = await new Promise<string>((resolve, reject) => {
       const req = http.get('http://localhost:3001/api/auth/fetch-hashes?after=2000-01-01', (res) => {
@@ -313,12 +320,12 @@ async function fetchCheatHashes() {
   } catch (_e) { /* cloud sync optional */ }
 }
 
-function startCloudSync() {
+export function startCloudSync() {
   fetchCheatHashes()
   _syncTimer = setInterval(fetchCheatHashes, 5 * 60 * 1000)
 }
 
-function stopCloudSync() {
+export function stopCloudSync() {
   if (_syncTimer) {
     clearInterval(_syncTimer)
     _syncTimer = null
