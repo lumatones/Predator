@@ -66,7 +66,55 @@ const T: Record<Lang, Record<string, string>> = {
   },
 }
 
+// ── Stable components extracted OUTSIDE App (Vercel: rerender-no-inline-components) ──
+
+const Logo = React.memo(function Logo({ accent, light, dark, subtitle }: {
+  accent: string; light: string; dark: string; subtitle: string
+}) {
+  return (
+    <div className="logo-section">
+      <div className="logo-icon">
+        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+          <circle cx="40" cy="40" r="38" stroke="url(#logo-grad)" strokeWidth="2" />
+          <path d="M40 10C40 10 25 30 25 45C25 55 31.7 62 40 62C48.3 62 55 55 55 45C55 30 40 10 40 10Z" fill="url(#logo-grad)" opacity="0.9" />
+          <path d="M28 50L16 68H64L52 50" stroke="url(#logo-grad)" strokeWidth="2" />
+          <circle cx="40" cy="42" r="6" fill="white" opacity="0.3" />
+          <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="80" y2="80">
+            <stop offset="0%" stopColor={accent} />
+            <stop offset="50%" stopColor={light} />
+            <stop offset="100%" stopColor={dark} />
+          </linearGradient></defs>
+        </svg>
+      </div>
+      <h1 className="title">Predator</h1>
+      <p className="subtitle">{subtitle}</p>
+    </div>
+  )
+})
+
+const Footer = React.memo(function Footer({ version, updateAvailable }: {
+  version: string; updateAvailable: boolean
+}) {
+  return (
+    <div className="footer">
+      <span className="version">
+        v{version || '0.0.3'}
+        {updateAvailable && <span className="update-indicator" title="Update Available" />}
+      </span>
+      <span className="dot">•</span>
+      <span className="secure">Secure Connection</span>
+    </div>
+  )
+})
+
+const renderCard = (children: React.ReactNode) => (
+  <div className="status-section">
+    <div className="status-card">{children}</div>
+  </div>
+)
+
 // ── App ────────────────────────────────────────
+
 
 const App: React.FC = () => {
   const [phase, setPhase] = useState<AppPhase>('loading')
@@ -105,7 +153,7 @@ const App: React.FC = () => {
     errorMsg: '',
   })
 
-  const t = (key: string) => T[lang][key] || key
+  const t = React.useMemo(() => (key: string) => T[lang][key] || key, [lang])
 
   // ── Apply theme to CSS variables ──
   useEffect(() => {
@@ -286,44 +334,9 @@ const App: React.FC = () => {
     }
   }, [pcName, t])
 
-  // ── Shared: logo + footer ──
-  const Logo = () => (
-    <div className="logo-section">
-      <div className="logo-icon">
-        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-          <circle cx="40" cy="40" r="38" stroke="url(#logo-grad)" strokeWidth="2" />
-          <path d="M40 10C40 10 25 30 25 45C25 55 31.7 62 40 62C48.3 62 55 55 55 45C55 30 40 10 40 10Z" fill="url(#logo-grad)" opacity="0.9" />
-          <path d="M28 50L16 68H64L52 50" stroke="url(#logo-grad)" strokeWidth="2" />
-          <circle cx="40" cy="42" r="6" fill="white" opacity="0.3" />
-          <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="80" y2="80">
-            <stop offset="0%" stopColor={THEMES[theme].accent} />
-            <stop offset="50%" stopColor={THEMES[theme].light} />
-            <stop offset="100%" stopColor={THEMES[theme].dark} />
-          </linearGradient></defs>
-        </svg>
-      </div>
-      <h1 className="title">Predator</h1>
-      <p className="subtitle">{t('title')}</p>
-    </div>
-  )
-
-  const Footer = () => (
-    <div className="footer">
-      <span className="version">
-        v{version || '0.0.3'}
-        {updateAvailable && <span className="update-indicator" title="Update Available" />}
-      </span>
-      <span className="dot">•</span>
-      <span className="secure">Secure Connection</span>
-    </div>
-  )
-
-  // ── Screens ──
-  const renderCard = (children: React.ReactNode) => (
-    <div className="status-section">
-      <div className="status-card">{children}</div>
-    </div>
-  )
+  const hBackToMain = useCallback(() => setPhase('main'), [])
+  const c = THEMES[theme]
+  const subtitle = t('title')
 
   // ── Render ──
   return (
@@ -336,7 +349,7 @@ const App: React.FC = () => {
       <div className="scan-line" />
 
       <div className="container">
-        <Logo />
+        <Logo accent={c.accent} light={c.light} dark={c.dark} subtitle={subtitle} />
 
         {/* Loading */}
         {phase === 'loading' && renderCard(
@@ -531,12 +544,12 @@ const App: React.FC = () => {
 
         {/* ── CHECKER ── */}
         {phase === 'checker' && (
-          <Checker lang={lang} tokenId={tokenId} onBack={() => setPhase('main')} />
+          <Checker lang={lang} tokenId={tokenId} onBack={hBackToMain} />
         )}
 
         {/* ── DASHBOARD ── */}
         {phase === 'dashboard' && (
-          <Dashboard lang={lang} onBack={() => setPhase('main')} />
+          <Dashboard lang={lang} onBack={hBackToMain} />
         )}
 
         {/* ═══ UPDATE MODAL (overlay) ═══ */}
@@ -638,7 +651,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <Footer />
+        <Footer version={version} updateAvailable={updateAvailable} />
       </div>
     </div>
   )

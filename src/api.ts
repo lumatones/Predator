@@ -1,10 +1,16 @@
 // ── Config ──
 
-// ── Config ──
-// Change this to your public IP if you want friends to connect
-// For local-only development, use http://localhost:3001
+// Priority: 1) VITE_API_URL env var  →  2) localStorage  →  3) localhost fallback
+function resolveApiBase(): string {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL as string
+  try {
+    const stored = localStorage.getItem('predator_api_url')
+    if (stored) return stored
+  } catch { /* localStorage unavailable */ }
+  return 'http://localhost:3001'
+}
 
-const API_BASE = 'http://5.164.42.189:3001'
+const API_BASE = resolveApiBase()
 
 // ── Types ──
 

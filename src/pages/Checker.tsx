@@ -7,7 +7,6 @@ interface TabCacheEntry {
   summary: ScanResponse['summary']
 }
 const tabCache = new Map<ScanMode, TabCacheEntry>()
-import { saveScan } from '../utils/stats-store'
 import { exportHtml, exportJson } from '../utils/export-report'
 import { submitScan } from '../api'
 import {
@@ -246,10 +245,71 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
 
 const INITIAL_SHOW = 5
 
+// ── Pure helpers extracted OUTSIDE component (not recreated on every render) ──
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function formatTime(ms: number, secLabel: string): string {
+  if (ms < 1000) return `${ms} ms`
+  return `${(ms / 1000).toFixed(1)} ${secLabel}`
+}
+
+function riskClass(risk: string): string {
+  return risk === 'high' ? 'risk-high' : risk === 'medium' ? 'risk-medium' : 'risk-low'
+}
+
+function riskLabel(risk: string, lang: 'ru' | 'en'): string {
+  const t = (k: string) => T[lang][k] || k
+  return risk === 'high' ? t('high') : risk === 'medium' ? t('medium') : t('low')
+}
+
+function typeName(type: string, lang: 'ru' | 'en'): string {
+  const t = (k: string) => T[lang][k] || k
+  switch (type) {
+    case 'file': return t('typeFile')
+    case 'browser': return t('typeBrowser')
+    case 'process': return t('typeProcess')
+    case 'registry': return t('typeRegistry')
+    case 'hardware': return t('typeHardware')
+    case 'software': return t('typeSoftware')
+    case 'system': return t('typeSystem')
+    default: return type
+  }
+}
+
+function typeIcon(type: string, size = 14) {
+  const c = 'var(--text-secondary)'
+  switch (type) {
+    case 'file': return <IconFolder size={size} color={c} />
+    case 'browser': return <IconGlobe size={size} color={c} />
+    case 'process': return <IconGear size={size} color={c} />
+    case 'registry': return <IconRegistry size={size} color={c} />
+    case 'hardware': return <IconUSB size={size} color={c} />
+    case 'software': return <IconMonitor size={size} color={c} />
+    case 'system': return <IconMonitor size={size} color={c} />
+    default: return <IconFolder size={size} color={c} />
+  }
+}
+
+function calcScanPercent(progress: ScanProgress | null): number {
+  if (!progress) return 0
+  if (progress.phase === 'done') return 100
+  if (progress.phase === 'analyzing') return 85 + Math.min(progress.filesFound * 2, 14)
+  const dirWeight = progress.totalDirs > 0
+    ? Math.min(progress.dirsDone / progress.totalDirs, 1)
+    : 0
+  const fileWeight = Math.min(progress.filesScanned / 300, 1)
+  return Math.min(dirWeight * 70 + fileWeight * 14, 84)
+}
+
 // ── Component ──
 
 export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
-  const t = (key: string) => T[lang][key] || key
+  const t = useMemo(() => (key: string) => T[lang][key] || key, [lang])
   const [activeTab, setActiveTab] = useState<ScanMode>('files')
   const cachedEntry = tabCache.get(activeTab)
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>(cachedEntry ? 'done' : 'idle')
@@ -347,7 +407,6 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       setPhase('done')
       scanRef.current = false
       setTabCounts(prev => { const next = new Map(prev); next.set(activeTab, mock.results.length); return next; })
-      saveScan(activeTab, mock.summary.totalScanned, mock.summary.suspiciousFiles, mock.summary.highRiskCount, mock.summary.scanTimeMs, mock.results)
       submitToServer(activeTab, mock.summary, mock.results)
       return
     }
@@ -365,7 +424,6 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
         tabCache.set(activeTab, { results: response.results, summary: response.summary })
         setTabCounts(prev => { const next = new Map(prev); next.set(activeTab, response.results.length); return next; })
         setPhase('done')
-        saveScan(activeTab, response.summary.totalScanned, response.summary.suspiciousFiles, response.summary.highRiskCount, response.summary.scanTimeMs, response.results)
         submitToServer(activeTab, response.summary, response.results)
       }
     } catch (err) {
@@ -478,61 +536,6 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
     } catch { /* ignore */ }
   }, [tokenId, t])
 
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const formatTime = (ms: number) => {
-    if (ms < 1000) return `${ms} ms`
-    return `${(ms / 1000).toFixed(1)} ${t('sec')}`
-  }
-
-  const riskClass = (risk: string) =>
-    risk === 'high' ? 'risk-high' : risk === 'medium' ? 'risk-medium' : 'risk-low'
-
-  const riskLabel = (risk: string) =>
-    risk === 'high' ? t('high') : risk === 'medium' ? t('medium') : t('low')
-
-  const typeIcon = (type: string, size = 14) => {
-    const c = 'var(--text-secondary)'
-    switch (type) {
-      case 'file': return <IconFolder size={size} color={c} />
-      case 'browser': return <IconGlobe size={size} color={c} />
-      case 'process': return <IconGear size={size} color={c} />
-      case 'registry': return <IconRegistry size={size} color={c} />
-      case 'hardware': return <IconUSB size={size} color={c} />
-      case 'software': return <IconMonitor size={size} color={c} />
-      case 'system': return <IconMonitor size={size} color={c} />
-      default: return <IconFolder size={size} color={c} />
-    }
-  }
-
-  const typeName = (type: string) => {
-    switch (type) {
-      case 'file': return t('typeFile')
-      case 'browser': return t('typeBrowser')
-      case 'process': return t('typeProcess')
-      case 'registry': return t('typeRegistry')
-      case 'hardware': return t('typeHardware')
-      case 'software': return t('typeSoftware')
-      case 'system': return t('typeSystem')
-      default: return type
-    }
-  }
-
-  const calcPercent = () => {
-    if (!progress) return 0
-    if (progress.phase === 'done') return 100
-    if (progress.phase === 'analyzing') return 85 + Math.min(progress.filesFound * 2, 14)
-    const dirWeight = progress.totalDirs > 0
-      ? Math.min(progress.dirsDone / progress.totalDirs, 1)
-      : 0
-    const fileWeight = Math.min(progress.filesScanned / 300, 1)
-    return Math.min(dirWeight * 70 + fileWeight * 14, 84)
-  }
-
   const showEye = redEyePhase !== 'hidden'
 
   return (
@@ -635,11 +638,11 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
 
               <div className="checker-progress-header">
                 <span className="checker-progress-label">{t('scanning')}</span>
-                <span className="checker-progress-pct"><span className="pct-num">{Math.round(calcPercent())}</span>%</span>
+                <span className="checker-progress-pct"><span className="pct-num">{Math.round(calcScanPercent(progress))}</span>%</span>
               </div>
 
               <div className="checker-progress-bar">
-                <div className="checker-progress-fill" style={{ width: `${calcPercent()}%` }} />
+                <div className="checker-progress-fill" style={{ width: `${calcScanPercent(progress)}%` }} />
               </div>
 
               <div className="checker-progress-info">
@@ -658,7 +661,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       {phase === 'done' && (
         <div className="checker-results">
           {summary && (
-            <div className="checker-summary stagger-summary">
+            <div className="checker-summary">
               <div className={`checker-summary-icon ${summary.suspiciousFiles > 0 ? 'warning' : 'safe'}`}>
                 {summary.suspiciousFiles > 0 ? (
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -698,10 +701,9 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                   </div>
                 </div>
               )}
-              <div className="checker-summary-stats">
+              <div className="checker-summary-stats" style={{ animationDelay: '0.3s', animation: 'phaseFadeIn 0.5s 0.3s var(--ease-out) both' }}>
                 <span>{summary.totalScanned} {t('filesScanned')}</span>
-                <span className="checker-summary-dot">•</span>
-                <span>{t('time')}: {formatTime(summary.scanTimeMs)}</span>
+                <span className="checker-summary-dot">•</span><span>{t('time')}: {formatTime(summary.scanTimeMs, t('sec'))}</span>
               </div>
             </div>
           )}
@@ -832,7 +834,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                       <span className="checker-type-icon-large">{typeIcon(selectedResult.type)}</span>
                       <div>
                         <div className="checker-detail-filename">{selectedResult.fileName}</div>
-                        <div className="checker-detail-type">{typeName(selectedResult.type)} · {riskLabel(selectedResult.risk)}</div>
+                        <div className="checker-detail-type">{typeName(selectedResult.type, lang)} · {riskLabel(selectedResult.risk, lang)}</div>
                       </div>
                     </div>
                     <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>

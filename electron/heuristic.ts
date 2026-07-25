@@ -1,0 +1,600 @@
+/**
+ * Predator — Heuristic Analysis Engine
+ *
+ * The core scoring logic that decides whether a file or process is suspicious.
+ * Extracted from the monolithic scanner.ts for testability and clarity.
+ */
+
+import crypto from 'crypto'
+import fs from 'fs'
+import fsp from 'fs/promises'
+import path from 'path'
+import { execSync } from 'child_process'
+
+import {
+  KNOWN_PROCESSES,
+  KNOWN_CHEAT_FILES,
+  KNOWN_LUA_SCRIPTS,
+  KNOWN_CHEAT_FOLDERS,
+  KNOWN_CHEAT_HASHES,
+  KNOWN_BINARY_SIGNATURES,
+  TARGET_EXTENSIONS,
+  isPlatformWhitelisted,
+} from './cheats-db'
+
+import {
+  evaluateYara,
+  isTrustedPath,
+  isTrustedCompany,
+  analyzePeHeaders,
+  analyzeSectionEntropy,
+} from './cheat-rules'
+
+import {
+  checkAutoRules,
+  learnFromFile,
+} from './auto-yara'
+
+import {
+  analyzeApiHashingStatic,
+  analyzeApiHashingInDump,
+} from './api-hashing'
+
+import type { HeuristicResult, CheatCategory } from './types'
+import { _PF, _PF86, _HOME, _WR } from './types'
+
+// ═══════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════
+
+export const SUSPICIOUS_CATEGORIES: Record<string, CheatCategory> = {
+  injector: {
+    names: ['inject', 'injector', 'map', 'manualmap', 'threadhijack'],
+    strings: [Buffer.from('CreateRemoteThread'), Buffer.from('NtCreateThreadEx'), Buffer.from('RtlCreateUserThread'),
+              Buffer.from('WriteProcessMemory'), Buffer.from('VirtualAllocEx'), Buffer.from('MapViewOfFile')],
+    description: 'DLL injector — code injection into processes',
+    risk: 'CRITICAL',
+  },
+  debugger: {
+    names: ['debug', 'debugger', 'cheatengine', 'ce', 'x64dbg', 'ollydbg', 'ida'],
+    strings: [Buffer.from('IsDebuggerPresent'), Buffer.from('CheckRemoteDebuggerPresent'), Buffer.from('NtQueryInformationProcess')],
+    description: 'Debugger / memory hacking tool',
+    risk: 'CRITICAL',
+  },
+  hook: {
+    names: ['hook', 'detour', 'minhook', 'easyhook'],
+    strings: [Buffer.from('SetWindowsHookEx'), Buffer.from('DetourAttach'), Buffer.from('MinHook'), Buffer.from('EasyHook')],
+    description: 'System function hooking',
+    risk: 'HIGH',
+  },
+  driver: {
+    names: ['.sys', 'driver', 'kernel', 'km', 'ring0'],
+    strings: [Buffer.from('\\Device\\'), Buffer.from('\\DosDevices\\'), Buffer.from('IoCreateDevice'), Buffer.from('PsSetCreateProcessNotifyRoutine')],
+    description: 'Kernel-level driver',
+    risk: 'CRITICAL',
+  },
+  spoofer: {
+    names: ['spoofer', 'spoof', 'hwid', 'mac', 'serial', 'disk'],
+    strings: [Buffer.from('HardwareID'), Buffer.from('MACAddress'), Buffer.from('DiskSerial'), Buffer.from('SMBIOS')],
+    description: 'Hardware ID spoofing',
+    risk: 'HIGH',
+  },
+  bypass: {
+    names: ['bypass', 'evade', 'anti', 'block', 'disable'],
+    strings: [Buffer.from('bypass'), Buffer.from('evade'), Buffer.from('anti-cheat'), Buffer.from('anti cheat')],
+    description: 'Security mechanism bypass',
+    risk: 'CRITICAL',
+  },
+  menu: {
+    names: ['menu', 'gui', 'overlay', 'imgui', 'd3d'],
+    strings: [Buffer.from('ImGui'), Buffer.from('Direct3D'), Buffer.from('OpenGL'), Buffer.from('overlay'), Buffer.from('esp'), Buffer.from('aimbot')],
+    description: 'Game menu / overlay',
+    risk: 'HIGH',
+  },
+  network: {
+    names: ['proxy', 'vpn', 'socks', 'mitm', 'packet'],
+    strings: [Buffer.from('WSASocket'), Buffer.from('connect'), Buffer.from('send'), Buffer.from('recv'), Buffer.from('socks'), Buffer.from('proxy')],
+    description: 'Network manipulation tools',
+    risk: 'MEDIUM',
+  },
+  obfuscator: {
+    names: ['obf', 'pack', 'crypt', 'protect', 'vm', 'virtual'],
+    strings: [Buffer.from('VMProtect'), Buffer.from('Themida'), Buffer.from('Enigma'), Buffer.from('Obsidium'), Buffer.from('Armadillo')],
+    description: 'Code obfuscation / packing (hides malicious code)',
+    risk: 'HIGH',
+  },
+}
+
+export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
+  '.dll': 'Dynamic library (possible inject)',
+  '.asi': 'ASI mod GTA (game modification)',
+  '.lua': 'Lua script (often used in cheats)',
+  '.luac': 'Compiled Lua script',
+  '.exe': 'Executable file',
+  '.sys': 'System driver',
+  '.bin': 'Binary file (may contain cheat config)',
+  '.dat': 'Data file',
+  '.cfg': 'Configuration file',
+  '.ini': 'Configuration file',
+  '.js': 'JavaScript (may contain cheat loader)',
+  '.ahk': 'AutoHotkey script',
+}
+
+export const SCAN_CONFIG = {
+  SCAN_DEPTH: 3,
+  MAX_FILE_SIZE: 100 * 1024 * 1024,
+  MIN_FILE_SIZE: 1024,
+  SUSPICIOUS_AGE_DAYS: 30,
+  ENTROPY_THRESHOLD: 7.5,
+}
+
+export const ALL_CHEAT_KEYWORDS = [
+  ...KNOWN_PROCESSES.map(n => n.replace(/\.exe$/i, '').replace(/_\*\.exe$/i, '').replace(/\*\.exe$/i, '')),
+  ...KNOWN_CHEAT_FILES.map(n => n.replace(/\.(dll|exe|asi)$/i, '')),
+  ...KNOWN_LUA_SCRIPTS.map(n => n.replace(/\.lua$/i, '')),
+  ...KNOWN_CHEAT_FOLDERS,
+  'cheat', 'hack', 'inject', 'bypass', 'mod menu', 'trainer',
+  'aimbot', 'wallhack', 'esp', 'triggerbot', 'norecoil', 'nospread',
+  'godmode', 'teleport', 'moneydrop', 'recovery', 'unlockall',
+  'nightfall', 'dma', 'fpga', 'pcileech', 'fuser', 'screamer',
+  'kmem', 'memprocfs', 'winpmem',
+]
+
+export const SUSPICIOUS_PATTERNS = [
+  /[Nn]ightfall/i,
+  /[Cc]heats?\s*(?:folder|dir|menu)/i,
+  /[Mm]od\s*[Mm]enu/i,
+  /[Ii]nject/i,
+  /[Bb]ypass/i,
+  /[Hh]ook\d*\.dll/i,
+  /[Ss]cript\s*[Hh]ook/i,
+  /[Aa]imbot/i,
+  /[Ww]allhack/i,
+  /[Dd][Mm][Aa]/i,
+  /[Ff][Pp][Gg][Aa]/i,
+  /[Pp][Cc][Ii]\s*[Ll]eech/i,
+]
+
+// Protected paths — game mod directories where files should not be
+export const PROTECTED_PATHS = [
+  path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'mods'),
+  path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'plugins'),
+  path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'cache'),
+  path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'data'),
+  path.join(_HOME, 'AppData', 'Roaming', 'CitizenFX'),
+  path.join(_PF, 'RAGEMP'),
+  path.join(_PF86, 'RAGEMP'),
+  path.join(_HOME, 'RAGEMP'),
+  path.join(_HOME, 'AppData', 'Local', 'altv', 'modules'),
+  path.join(_HOME, 'AppData', 'Local', 'altv', 'resources'),
+  path.join(_PF, 'Rockstar Games', 'Grand Theft Auto V'),
+  path.join(_PF86, 'Rockstar Games', 'Grand Theft Auto V'),
+  path.join(_PF, 'Steam', 'steamapps', 'common', 'Grand Theft Auto V'),
+  path.join(_PF86, 'Steam', 'steamapps', 'common', 'Grand Theft Auto V'),
+]
+
+/** System process names that cheat loaders commonly masquerade as */
+export const SYSTEM_PROC_NAMES = new Set([
+  'svchost.exe', 'csrss.exe', 'lsass.exe', 'services.exe', 'smss.exe',
+  'winlogon.exe', 'explorer.exe', 'spoolsv.exe', 'conhost.exe',
+  'rundll32.exe', 'taskhostw.exe', 'sihost.exe', 'ctfmon.exe',
+  'dwm.exe', 'fontdrvhost.exe', 'RuntimeBroker.exe',
+  'SearchIndexer.exe', 'SecurityHealthSystray.exe',
+  'LogonUI.exe', 'SystemSettings.exe', 'LockApp.exe',
+  'startmenuexperiencehost.exe', 'shellexperiencehost.exe',
+  'applicationframehost.exe', 'SearchApp.exe',
+])
+
+// ═══════════════════════════════════════════════════
+// CACHES
+// ═══════════════════════════════════════════════════
+
+const _peHeaderCache = new Map<string, { peInfo: any; secEntropy: any[]; mtime: number; filepath: string }>()
+const PE_CACHE_MAX = 500
+export const _sigCache = new Map<string, boolean>()
+const _cheatNameCache = new Map<string, string[]>()
+
+// Pre-normalized arrays for fast substring matching
+const _PROC_BASES = KNOWN_PROCESSES.map(n =>
+  n.toLowerCase()
+    .replace(/\.exe$/i, '')
+    .replace(/_\*\.exe$/i, '')
+    .replace(/\*\.exe$/i, '')
+)
+const _FILE_NAMES = KNOWN_CHEAT_FILES.map(n => n.toLowerCase())
+const _LUA_NAMES = KNOWN_LUA_SCRIPTS.map(n => n.toLowerCase())
+const _FOLDER_NAMES = KNOWN_CHEAT_FOLDERS.map(n => n.toLowerCase())
+
+// ═══════════════════════════════════════════════════
+// PURE FUNCTIONS
+// ═══════════════════════════════════════════════════
+
+/** Shannon entropy (0–8). High = possibly packed / encrypted. O(n) single-pass. */
+export function calculateEntropy(data: Buffer): number {
+  if (!data || data.length === 0) return 0
+  const freq = new Array(256).fill(0)
+  for (const b of data) freq[b]++
+  const len = data.length
+  let entropy = 0
+  for (const count of freq) {
+    if (count > 0) {
+      const p = count / len
+      entropy -= p * Math.log2(p)
+    }
+  }
+  return entropy
+}
+
+/** Extract ASCII + Unicode strings from a binary file */
+export function scanStrings(filepath: string, maxSize = 5 * 1024 * 1024): string[] {
+  const strings: string[] = []
+  try {
+    const stat = fs.statSync(filepath)
+    if (stat.size > maxSize) return strings
+
+    const fd = fs.openSync(filepath, 'r')
+    const data = Buffer.alloc(Math.min(stat.size, maxSize))
+    fs.readSync(fd, data, 0, data.length, 0)
+    fs.closeSync(fd)
+
+    let ascii = ''
+    for (const b of data) {
+      if (b >= 0x20 && b <= 0x7E) {
+        ascii += String.fromCharCode(b)
+      } else {
+        if (ascii.length >= 4) strings.push(ascii)
+        ascii = ''
+      }
+    }
+    if (ascii.length >= 4) strings.push(ascii)
+
+    let uniBuf: number[] = []
+    for (let i = 0; i < data.length - 1; i += 2) {
+      if (data[i] >= 0x20 && data[i] <= 0x7E && data[i + 1] === 0x00) {
+        uniBuf.push(data[i])
+      } else {
+        if (uniBuf.length >= 4) strings.push(String.fromCharCode(...uniBuf))
+        uniBuf = []
+      }
+    }
+    if (uniBuf.length >= 4) strings.push(String.fromCharCode(...uniBuf))
+  } catch (_e) { /* skip */ }
+  return strings
+}
+
+/** Cached digital signature check via PowerShell Get-AuthenticodeSignature */
+export function checkDigitalSignature(filepath: string): boolean {
+  const cached = _sigCache.get(filepath)
+  if (cached !== undefined) return cached
+  try {
+    const out = execSync(
+      `powershell -Command "(Get-AuthenticodeSignature '${filepath.replace(/'/g, "''")}').Status"`,
+      { encoding: 'utf-8', timeout: 5000 },
+    )
+    const valid = out.includes('Valid')
+    _sigCache.set(filepath, valid)
+    return valid
+  } catch (_e) {
+    _sigCache.set(filepath, false)
+    return false
+  }
+}
+
+/**
+ * Match a name against the known cheat database.
+ * Uses cached lookups for performance.
+ */
+export function matchKnownCheat(name: string): string[] {
+  const lower = name.toLowerCase()
+  const cached = _cheatNameCache.get(lower)
+  if (cached !== undefined) return cached
+
+  const matches: string[] = []
+  for (const base of _PROC_BASES) {
+    if (lower.includes(base)) matches.push(`process:${base}`)
+  }
+  for (const file of _FILE_NAMES) {
+    if (lower.includes(file)) matches.push(`file:${file}`)
+  }
+  for (const lua of _LUA_NAMES) {
+    if (lower.includes(lua)) matches.push(`lua:${lua}`)
+  }
+  for (const folder of _FOLDER_NAMES) {
+    if (lower.includes(folder)) matches.push(`folder:${folder}`)
+  }
+  _cheatNameCache.set(lower, matches)
+  return matches
+}
+
+export function riskScoreToLevel(score: number): 'high' | 'medium' | 'low' {
+  if (score > 80) return 'high'
+  if (score > 50) return 'medium'
+  return 'low'
+}
+
+export function getFileRiskLevel(fileName: string, matches: string[]): 'high' | 'medium' | 'low' {
+  const ext = path.extname(fileName).toLowerCase()
+  const highRiskExts = ['.exe', '.dll', '.sys', '.drv', '.bat', '.ps1', '.vbs', '.ahk']
+  const mediumRiskExts = ['.js', '.lua', '.py', '.cs', '.asi', '.luac']
+
+  const hasHighKeyword = matches.some(k =>
+    ['dll inject', 'memory hack', 'injector', 'aimbot', 'wallhack',
+     'triggerbot', 'dma', 'fpga', 'pcileech', 'fuser'].includes(k)
+  )
+
+  if ((highRiskExts.includes(ext) && hasHighKeyword) || matches.length >= 3) return 'high'
+  if (highRiskExts.includes(ext) || mediumRiskExts.includes(ext) || matches.length >= 2) return 'medium'
+  return 'low'
+}
+
+/** Check if a file matches any known hash (SHA256) in the database. Streams the file. */
+export async function checkFileHash(filePath: string): Promise<{ matched: boolean; hash: string }> {
+  if (KNOWN_CHEAT_HASHES.length === 0) return { matched: false, hash: '' }
+  try {
+    const hash = crypto.createHash('sha256')
+    const stream = fs.createReadStream(filePath)
+    for await (const chunk of stream) hash.update(chunk as Buffer)
+    const hex = hash.digest('hex')
+    return { matched: KNOWN_CHEAT_HASHES.includes(hex), hash: hex }
+  } catch (_e) {
+    return { matched: false, hash: '' }
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// HEURISTIC FILE SCAN (core business logic)
+// ═══════════════════════════════════════════════════
+
+/**
+ * Heuristic file analysis — entropy, signatures, name, age, protected paths.
+ * This is the primary function that decides whether a file is suspicious.
+ */
+export function heuristicFileScan(filepath: string): HeuristicResult | null {
+  try {
+    const stat = fs.statSync(filepath)
+    if (!stat.isFile() || stat.size > SCAN_CONFIG.MAX_FILE_SIZE || stat.size < SCAN_CONFIG.MIN_FILE_SIZE) {
+      return null
+    }
+
+    const fileName = path.basename(filepath).toLowerCase()
+    const ext = path.extname(filepath).toLowerCase()
+    const ageDays = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60 * 24)
+    const suspicions: string[] = []
+    let riskScore = 0
+
+    // 1. Extension check
+    if (SUSPICIOUS_EXTENSIONS[ext]) {
+      suspicions.push(`Extension ${ext}: ${SUSPICIOUS_EXTENSIONS[ext]}`)
+      riskScore += 20
+    }
+
+    // 2. Name check against categories
+    for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
+      for (const name of cat.names) {
+        if (fileName.includes(name)) {
+          suspicions.push(`Name → [${catName}]: ${cat.description}`)
+          riskScore += 40
+          break
+        }
+      }
+    }
+
+    // Masquerading as system file
+    const system32Path = path.join(_WR, 'System32').toLowerCase()
+    const syswow64Path = path.join(_WR, 'SysWOW64').toLowerCase()
+    const filepathLower = filepath.toLowerCase()
+    if (SYSTEM_PROC_NAMES.has(fileName)) {
+      const isInSystemDir = filepathLower.startsWith(system32Path) || filepathLower.startsWith(syswow64Path)
+      if (!isInSystemDir && !isTrustedPath(filepath)) {
+        suspicions.push(`🎭 Masquerading as system process: ${fileName} (expected in System32, found in unexpected location)`)
+        riskScore += 50
+      }
+    }
+
+    // 3. Age check
+    if (ageDays < SCAN_CONFIG.SUSPICIOUS_AGE_DAYS) {
+      suspicions.push(`Recently created (${Math.round(ageDays)} days ago)`)
+      riskScore += 15
+    }
+
+    // Whitelist check — reduce score for trusted paths
+    if (isTrustedPath(filepath)) {
+      riskScore = Math.max(riskScore - 30, 0)
+    }
+
+    // 4. Binary analysis
+    const binaryExts = new Set(['.exe', '.dll', '.asi', '.sys', '.drv'])
+    if (binaryExts.has(ext) && stat.size >= 4096 && stat.size < 50 * 1024 * 1024) {
+      const fd = fs.openSync(filepath, 'r')
+      const sampleSize = Math.min(65536, stat.size)
+      const sample = Buffer.alloc(sampleSize)
+      fs.readSync(fd, sample, 0, sampleSize, 0)
+      fs.closeSync(fd)
+
+      const entropy = calculateEntropy(sample)
+      if (entropy > SCAN_CONFIG.ENTROPY_THRESHOLD) {
+        suspicions.push(`High entropy (${entropy.toFixed(2)}) — possibly packed/encrypted`)
+        riskScore += 30
+      }
+
+      const strings = scanStrings(filepath)
+      const stringsLower = strings.map(s => s.toLowerCase())
+
+      const yaraMatches = evaluateYara(sample, stringsLower)
+      for (const yMatch of yaraMatches) {
+        suspicions.push(`YARA [${yMatch.ruleName}]: ${yMatch.description}`)
+        riskScore += yMatch.risk === 'CRITICAL' ? 60 : yMatch.risk === 'HIGH' ? 40 : 20
+      }
+
+      const peCacheKey = `${filepath}|${stat.mtimeMs}`
+      let peInfo: any = null
+      let secEntropy: any[] = []
+
+      const cachedPe = _peHeaderCache.get(peCacheKey)
+      if (cachedPe) {
+        peInfo = cachedPe.peInfo
+        secEntropy = cachedPe.secEntropy
+      } else {
+        peInfo = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? analyzePeHeaders(filepath) : null
+        try {
+          secEntropy = analyzeSectionEntropy(filepath)
+        } catch (_e) { /* skip */ }
+        _peHeaderCache.set(peCacheKey, { peInfo, secEntropy, mtime: stat.mtimeMs, filepath })
+        if (_peHeaderCache.size > PE_CACHE_MAX) {
+          const firstKey = _peHeaderCache.keys().next().value
+          if (firstKey) _peHeaderCache.delete(firstKey)
+        }
+      }
+
+      const sigValid = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? checkDigitalSignature(filepath) : false
+
+      if (ext === '.exe' || ext === '.dll' || ext === '.sys') {
+        if (peInfo && peInfo.isValidPe && peInfo.isSuspicious) {
+          if (peInfo.suspiciousSections.length > 0) {
+            suspicions.push(`PE: Unusual sections: ${peInfo.suspiciousSections.join(', ')}`)
+            riskScore += 25
+          }
+          if (peInfo.entryPointInSuspiciousSection) {
+            suspicions.push('PE: Entry point in unusual section')
+            riskScore += 20
+          }
+          if (peInfo.relocsStripped) {
+            suspicions.push('PE: Relocations stripped (suggests packed/ASLR disabled)')
+            riskScore += 15
+          }
+        }
+
+        if (secEntropy.length > 0) {
+          const suspiciousSections = secEntropy.filter(s => s.isSuspicious)
+          for (const sec of suspiciousSections) {
+            suspicions.push(`📊 Section [${sec.name}]: ${sec.reason}`)
+            riskScore += 30
+          }
+          const rsrcHigh = secEntropy.find(s => s.name === '.rsrc' && s.entropy > 7.5)
+          if (rsrcHigh) {
+            suspicions.push(`🚩 .rsrc entropy ${rsrcHigh.entropy.toFixed(2)} > 7.5 — shellcode/config likely hidden in resources`)
+            riskScore += 40
+          }
+        }
+
+        const apiHashRes = analyzeApiHashingStatic(filepath)
+        if (apiHashRes && apiHashRes.detected) {
+          suspicions.push(`🔐 API Hashing detected (confidence: ${apiHashRes.confidence}%)`)
+          for (const p of apiHashRes.patterns.slice(0, 3)) {
+            suspicions.push(`  → ${p}`)
+          }
+          riskScore += Math.min(apiHashRes.confidence * 0.5, 45)
+        }
+
+        // Fuzzy loader match
+        const FUZZY_SIZE_LOWER_MB = 16
+        const FUZZY_SIZE_UPPER_MB = 28
+        const FUZZY_ENTROPY_THRESHOLD = 7.2
+        const FUZZY_SECTION_MIN = 7
+
+        if (ext === '.exe' || ext === '.dll') {
+          let fuzzyScore = 0
+          const fuzzySignals: string[] = []
+
+          if (stat.size >= FUZZY_SIZE_LOWER_MB * 1024 * 1024 && stat.size <= FUZZY_SIZE_UPPER_MB * 1024 * 1024) {
+            fuzzyScore += 25
+            fuzzySignals.push(`Size ${(stat.size / 1024 / 1024).toFixed(1)} MB (loader range ${FUZZY_SIZE_LOWER_MB}–${FUZZY_SIZE_UPPER_MB} MB)`)
+          }
+          if (entropy > FUZZY_ENTROPY_THRESHOLD) {
+            fuzzyScore += 20
+            fuzzySignals.push(`Entropy ${entropy.toFixed(2)} > ${FUZZY_ENTROPY_THRESHOLD} (packed/obfuscated)`)
+          }
+          if (peInfo && peInfo.sectionCount >= FUZZY_SECTION_MIN) {
+            fuzzyScore += 25
+            fuzzySignals.push(`${peInfo.sectionCount} PE sections ≥ ${FUZZY_SECTION_MIN} (packing)`)
+          }
+          if (peInfo && peInfo.subsystem !== '' && peInfo.subsystem !== 'WINDOWS_GUI' && peInfo.subsystem !== 'WINDOWS_CUI' && peInfo.subsystem !== 'NATIVE') {
+            fuzzyScore += 15
+            fuzzySignals.push(`PE subsystem: ${peInfo.subsystem} (unusual for EXE)`)
+          }
+          if (!sigValid) {
+            fuzzyScore += 15
+            fuzzySignals.push('Unsigned executable (no digital signature)')
+          }
+
+          if (fuzzyScore >= 50) {
+            suspicions.push(`🧬 Fuzzy loader match (score ${fuzzyScore}/100): ${fuzzySignals.join('; ')}`)
+            riskScore += Math.min(fuzzyScore, 60)
+          }
+        }
+      }
+
+      // Category signature analysis
+      for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
+        const found: string[] = []
+        for (const sigBuf of cat.strings) {
+          const sigStr = sigBuf.toString().toLowerCase()
+          if (stringsLower.some(s => s.includes(sigStr))) {
+            found.push(sigStr)
+          }
+        }
+        if (found.length > 0) {
+          suspicions.push(`Signatures [${catName}]: ${found.slice(0, 3).join(', ')}`)
+          riskScore += 50
+        }
+      }
+
+      // Hash check against known cheat database
+      if (KNOWN_CHEAT_HASHES.length > 0) {
+        try {
+          const h = crypto.createHash('sha256')
+          const fd2 = fs.openSync(filepath, 'r')
+          const hashBuf = Buffer.alloc(Math.min(stat.size, 50 * 1024 * 1024))
+          fs.readSync(fd2, hashBuf, 0, hashBuf.length, 0)
+          fs.closeSync(fd2)
+          h.update(hashBuf)
+          const hex = h.digest('hex')
+          if (KNOWN_CHEAT_HASHES.includes(hex)) {
+            suspicions.push(`Hash match: known cheat file (SHA256: ${hex.slice(0, 16)}...)`)
+            riskScore += 60
+          }
+        } catch (_e) { /* skip */ }
+      }
+
+      if (sigValid) {
+        riskScore -= 10
+      } else {
+        suspicions.push('No digital signature')
+        riskScore += 20
+      }
+    }
+
+    // 5. Protected path check
+    for (const protectedPath of PROTECTED_PATHS) {
+      if (filepath.toLowerCase().includes(protectedPath.toLowerCase())) {
+        suspicions.push(`File in protected folder: ${protectedPath}`)
+        riskScore += 25
+        break
+      }
+    }
+
+    // Auto-YARA check
+    if (binaryExts.has(ext) && stat.size < 50 * 1024 * 1024) {
+      try {
+        const auto = checkAutoRules(filepath)
+        if (auto.matched) {
+          suspicions.push(`AutoYara [${auto.rules.length} правил]: score ${auto.score.toFixed(0)}`)
+          riskScore += auto.score * 0.6
+        }
+      } catch (_e) { /* skip */ }
+    }
+
+    // Auto-YARA: learn from high-risk files
+    if (riskScore > 70 && binaryExts.has(ext)) {
+      try {
+        learnFromFile(filepath, riskScore)
+      } catch (_e) { /* skip */ }
+    }
+
+    if (riskScore === 0) return null
+
+    return { riskScore, suspicions }
+  } catch (_e) {
+    return null
+  }
+}
