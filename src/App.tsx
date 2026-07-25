@@ -2,15 +2,14 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { validateToken, useToken, requestAccess, checkRequestStatus } from './api'
 import Checker from './pages/Checker'
 import Dashboard from './pages/Dashboard'
-import Statistics from './pages/Statistics'
-import { IconShield, IconDashboard, IconStats } from './icons'
+import { IconShield, IconDashboard } from './icons'
 
 // ── Types ──────────────────────────────────────
 
 type AppPhase =
   | 'loading' | 'onboarding-lang'
   | 'onboarding-theme' | 'onboarding-auth' | 'requesting-access'
-  | 'main' | 'checker' | 'dashboard' | 'statistics'
+  | 'main' | 'checker' | 'dashboard'
 
 type ThemeId = 'predator' | 'ocean' | 'stealth' | 'nebula'
 
@@ -34,7 +33,7 @@ const T: Record<Lang, Record<string, string>> = {
     close: 'Закрыть', updateAvailable: 'Доступно обновление', download: 'Скачать',
     downloading: 'Загрузка обновления...', downloaded: 'Обновление готово!',
     installRestart: 'Установить и перезапустить',
-    ready: 'Система готова', startCheck: 'Начать проверку',    dashboard: 'Мониторинг', statistics: 'Статистика', continue: 'Продолжить',
+    ready: 'Система готова', startCheck: 'Начать проверку',    dashboard: 'Мониторинг', continue: 'Продолжить',
     langTitle: 'Выберите язык', langDesc: 'Язык интерфейса приложения',
     langRu: 'Русский', langEn: 'English', next: 'Далее',
     themeTitle: 'Выберите тему', themeDesc: 'Оформление приложения',
@@ -52,7 +51,7 @@ const T: Record<Lang, Record<string, string>> = {
     close: 'Close', updateAvailable: 'Update Available', download: 'Download',
     downloading: 'Downloading update...', downloaded: 'Update Ready!',
     installRestart: 'Install & Restart',
-    ready: 'System Ready', startCheck: 'Start Check',    dashboard: 'Dashboard', statistics: 'Statistics', continue: 'Continue',
+    ready: 'System Ready', startCheck: 'Start Check',    dashboard: 'Dashboard', continue: 'Continue',
     langTitle: 'Choose Language', langDesc: 'Application interface language',
     langRu: 'Русский', langEn: 'English', next: 'Next',
     themeTitle: 'Choose Theme', themeDesc: 'Application appearance',
@@ -197,7 +196,6 @@ const App: React.FC = () => {
 
   const hStartChecker = useCallback(() => setPhase('checker'), [])
   const hStartDashboard = useCallback(() => setPhase('dashboard'), [])
-  const hStartStatistics = useCallback(() => setPhase('statistics'), [])
 
   const hNextLang = useCallback(() => setPhase('onboarding-theme'), [])
   const hNextTheme = useCallback(() => setPhase('onboarding-auth'), [])
@@ -528,16 +526,6 @@ const App: React.FC = () => {
                 </div>
                 <span className="main-card-arrow">→</span>
               </button>
-              <button className="main-card" onClick={hStartStatistics}>
-                <div className="main-card-icon" style={{ background: 'rgba(139,92,246,0.08)' }}>
-                  <IconStats size={24} color="#8B5CF6" />
-                </div>
-                <div className="main-card-body">
-                  <span className="main-card-title">{t('statistics')}</span>
-                  <span className="main-card-desc">Агрегированная статистика по всем проверкам и типам угроз</span>
-                </div>
-                <span className="main-card-arrow">→</span>
-              </button>
             </div></>
         )}
 
@@ -549,11 +537,6 @@ const App: React.FC = () => {
         {/* ── DASHBOARD ── */}
         {phase === 'dashboard' && (
           <Dashboard lang={lang} onBack={() => setPhase('main')} />
-        )}
-
-        {/* ── STATISTICS ── */}
-        {phase === 'statistics' && (
-          <Statistics lang={lang} onBack={() => setPhase('main')} />
         )}
 
         {/* ═══ UPDATE MODAL (overlay) ═══ */}
