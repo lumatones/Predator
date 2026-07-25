@@ -2210,6 +2210,15 @@ function scanNetstatV2(): ScanResult[] {
 
 const EXTENDED_SCAN_PATHS: string[] = getScanPaths()
 
+/** Safe spread — logs and returns empty array if value is not iterable */
+function safeSpread<T>(label: string, value: T[] | null | undefined): T[] {
+  if (!Array.isArray(value)) {
+    console.error(`[safeSpread] ${label} — expected array, got:`, typeof value, value)
+    return []
+  }
+  return value
+}
+
 async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   // Clear dedup for a fresh scan
   _findingDedup.clear()
@@ -2225,7 +2234,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     filesFound: 0, filesScanned: 0, totalDirs: totalPhases, dirsDone: 1,
   })
   const processes = scanRunningProcessesV2()
-  results.push(...processes)
+  results.push(...safeSpread('scanRunningProcessesV2', processes))
   filesScanned += processes.length
   await yieldToEventLoop()
 
@@ -2282,7 +2291,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 3,
   })
   const regResults = scanRegistryDeepV2()
-  results.push(...regResults)
+  results.push(...safeSpread('scanRegistryDeepV2', regResults))
   await yieldToEventLoop()
 
   // ── Phase 4/8: Prefetch analysis (v2) ──
@@ -2291,7 +2300,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 4,
   })
   const pfResults = scanPrefetchV2()
-  results.push(...pfResults)
+  results.push(...safeSpread('scanPrefetchV2', pfResults))
   await yieldToEventLoop()
 
   // ── Phase 5/8: Network connections (v2) ──
@@ -2300,7 +2309,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 5,
   })
   const netResults = scanNetstatV2()
-  results.push(...netResults)
+  results.push(...safeSpread('scanNetstatV2', netResults))
   await yieldToEventLoop()
 
   // ── Phase 5a: Masquerading process detection ──
@@ -2308,7 +2317,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     phase: 'scanning', currentDir: 'Этап 5a: Проверка маскировки под системные процессы...',
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 5,
   })
-  results.push(...scanMasqueradingProcesses())
+  results.push(...safeSpread('scanMasqueradingProcesses', scanMasqueradingProcesses()))
   await yieldToEventLoop()
 
   // ── Phase 5b: Game integrity + platform modules ──
@@ -2316,9 +2325,9 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     phase: 'scanning', currentDir: 'Этап 5b: Проверка целостности игры (FiveM, RAGE, ALT:V)...',
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 5,
   })
-  results.push(...scanGameIntegrity())
-  results.push(...scanGameModules())
-  results.push(...scanOpenHandles())
+  results.push(...safeSpread('scanGameIntegrity', scanGameIntegrity()))
+  results.push(...safeSpread('scanGameModules', scanGameModules()))
+  results.push(...safeSpread('scanOpenHandles', scanOpenHandles()))
   await yieldToEventLoop()
 
   // ── Phase 5c: Named Pipes + WMI persistence + AMSI/ETW ──
@@ -2326,8 +2335,8 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     phase: 'scanning', currentDir: 'Этап 5c: Named Pipes, WMI, AMSI/ETW...',
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 5,
   })
-  results.push(...scanNamedPipes())
-  results.push(...scanWmiPersistence())
+  results.push(...safeSpread('scanNamedPipes', scanNamedPipes()))
+  results.push(...safeSpread('scanWmiPersistence', scanWmiPersistence()))
 
   // AMSI/ETW patch detection on all processes
   try {
@@ -2363,7 +2372,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 6,
   })
   const dmaResults = scanDmaDevices()
-  results.push(...dmaResults)
+  results.push(...safeSpread('scanDmaDevices', dmaResults))
   await yieldToEventLoop()
 
   // ── Phase 6b/8: Scheduled Tasks (persistence) ──
@@ -2371,7 +2380,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     phase: 'scanning', currentDir: 'Этап 6b/8: Проверка планировщика (персистентность читов)...',
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 6,
   })
-  results.push(...scanScheduledTasks())
+  results.push(...safeSpread('scanScheduledTasks', scanScheduledTasks()))
   await yieldToEventLoop()
 
   // ── Phase 7/8: Registry (standard cheat scan) ──
@@ -2380,7 +2389,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 7,
   })
   const regStdResults = scanRegistryForCheats()
-  results.push(...regStdResults)
+  results.push(...safeSpread('scanRegistryForCheats', regStdResults))
   await yieldToEventLoop()
 
   // ── Phase 8/8: Browser history (v2 keywords) ──
@@ -2389,7 +2398,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     filesFound: results.length, filesScanned, totalDirs: totalPhases, dirsDone: 8,
   })
   const browserResults = await scanBrowserHistory(EXTENDED_CHEAT_KEYWORDS)
-  results.push(...browserResults)
+  results.push(...safeSpread('scanBrowserHistory', browserResults))
 
   return { results, filesScanned }
 }
@@ -2665,14 +2674,25 @@ export function registerScanHandlers() {
     let results: ScanResult[] = []
     let filesScanned = 0
 
-    switch (mode) {
-      case 'files':     ({ results, filesScanned } = await runFileScan(win)); break
-      case 'processes': ({ results, filesScanned } = await runProcessScan(win)); break
-      case 'cheats':    ({ results, filesScanned } = await runCheatScan(win)); break
-      case 'dma':       ({ results, filesScanned } = await runDmaScan(win)); break
-      case 'extended':  ({ results, filesScanned } = await runExtendedScan(win)); break
-      case 'network':   ({ results, filesScanned } = await runNetworkScan(win)); break
+    try {
+      switch (mode) {
+        case 'files':     ({ results, filesScanned } = await runFileScan(win)); break
+        case 'processes': ({ results, filesScanned } = await runProcessScan(win)); break
+        case 'cheats':    ({ results, filesScanned } = await runCheatScan(win)); break
+        case 'dma':       ({ results, filesScanned } = await runDmaScan(win)); break
+        case 'extended':  ({ results, filesScanned } = await runExtendedScan(win)); break
+        case 'network':   ({ results, filesScanned } = await runNetworkScan(win)); break
+      }
+    } catch (scanErr) {
+      console.error('Scan error:', scanErr)
+      // Return empty results instead of crashing
+      results = results || []
+      filesScanned = filesScanned || 0
     }
+
+    // Safety: ensure results is always an array
+    if (!Array.isArray(results)) results = []
+    filesScanned = filesScanned || 0
 
     const highRiskCount = results.filter(r => r.risk === 'high').length
 
