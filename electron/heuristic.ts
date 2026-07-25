@@ -19,6 +19,7 @@ import {
   KNOWN_CHEAT_HASHES,
   KNOWN_BINARY_SIGNATURES,
   TARGET_EXTENSIONS,
+  MASQUERADING_FILENAMES,
   isPlatformWhitelisted,
 } from './cheats-db'
 
@@ -262,6 +263,109 @@ export function scanStrings(filepath: string, maxSize = 5 * 1024 * 1024): string
   return strings
 }
 
+// ═══════════════════════════════════════════════════
+// MASQUERADING EXECUTABLE HEURISTIC
+// ═══════════════════════════════════════════════════
+
+/**
+ * Check if a file is a masquerading executable — a cheat loader disguised
+ * as a legitimate utility (e.g., dxwebsetup.exe, epicgameslauncher.exe).
+ *
+ * Detection logic:
+ *   1. Filename is in MASQUERADING_FILENAMES (known masquerading targets)
+ *   2. File is NOT in a trusted Windows/system path
+ *   3. File has NO digital signature (legitimate versions always have one)
+ *   4. Optional: file is packed (high entropy, many sections, no PE metadata)
+ *
+ * Returns: { isMasquerading, signals } where signals explains why.
+ */
+export function checkMasqueradingExecutable(
+  fileName: string,
+  filepath: string,
+  stat: fs.Stats,
+  peInfo: any,
+  secEntropy: any[],
+  entropy: number,
+  sigValid: boolean,
+): { isMasquerading: boolean; signals: string[] } {
+  const signals: string[] = []
+  const lowerName = fileName.toLowerCase()
+
+  // Step 1: Check if filename is a known masquerading target
+  if (!MASQUERADING_FILENAMES.has(lowerName)) {
+    return { isMasquerading: false, signals }
+  }
+
+  signals.push(`Filename matches masquerading target: ${fileName}`)
+
+  // Step 2: Check location — system32/syswow64 is fine (legit Windows files live there)
+  const systemPaths = [
+    path.join(_WR, 'System32').toLowerCase(),
+    path.join(_WR, 'SysWOW64').toLowerCase(),
+    path.join(_WR).toLowerCase(),
+  ]
+  const fpLower = filepath.toLowerCase()
+  const inSystemDir = systemPaths.some(p => fpLower.startsWith(p))
+
+  if (inSystemDir) {
+    // If it's in System32 with a legitimate Windows filename, it's likely legit
+    const winSysFiles = new Set(['conhost.exe', 'rundll32.exe', 'svchost.exe', 'lsass.exe', 'services.exe', 'winlogon.exe', 'explorer.exe', 'notepad.exe'])
+    if (winSysFiles.has(lowerName)) {
+      signals.push(`Located in System32 — legitimate Windows component, not flagged`)
+      return { isMasquerading: false, signals }
+    }
+  }
+
+  // Step 3: Digital signature check (most important signal)
+  if (sigValid) {
+    signals.push(`Has valid digital signature — likely legitimate version`)
+    // Still suspicious if packed even with valid sig — reduce severity
+    if (entropy > 7.0 || (peInfo && peInfo.sectionCount >= 7)) {
+      signals.push('But file is packed/obfuscated despite valid signature — suspicious')
+    } else {
+      return { isMasquerading: false, signals }
+    }
+  } else {
+    signals.push('No digital signature — legitimate versions of this software ALWAYS have one')
+  }
+
+  // Step 4: PE structure anomalies
+  if (peInfo) {
+    if (peInfo.sectionCount >= 7) {
+      signals.push(`Suspicious: ${peInfo.sectionCount} PE sections (expected 3-5 for legitimate tool)`)
+    }
+    if (peInfo.relocsStripped) {
+      signals.push('PE relocations stripped — suggests packing/obfuscation')
+    }
+    if (!peInfo.hasImportTable) {
+      signals.push('No import table — highly unusual for a legitimate executable')
+    }
+    if (peInfo.entryPointInSuspiciousSection) {
+      signals.push('Entry point in unusual section — packed executable')
+    }
+  }
+
+  // Step 5: Section entropy anomalies
+  if (secEntropy.length > 0) {
+    const highEntropySections = secEntropy.filter(s => s.entropy > 7.5)
+    for (const sec of highEntropySections) {
+      signals.push(`Section [${sec.name}] entropy ${sec.entropy.toFixed(2)} > 7.5 — packed`)
+    }
+  }
+
+  // Step 6: File entropy (overall sample)
+  if (entropy > 7.2) {
+    signals.push(`Overall entropy ${entropy.toFixed(2)} > 7.2 — packed/encrypted`)
+  }
+
+  // Step 7: Size check — known masquerading cheat loaders are typically 16-30 MB
+  if (stat.size >= 15 * 1024 * 1024 && stat.size <= 35 * 1024 * 1024) {
+    signals.push(`File size ${(stat.size / 1024 / 1024).toFixed(1)} MB — matches masquerading loader range`)
+  }
+
+  return { isMasquerading: signals.length >= 2, signals }
+}
+
 /** Cached digital signature check via PowerShell Get-AuthenticodeSignature */
 export function checkDigitalSignature(filepath: string): boolean {
   const cached = _sigCache.get(filepath)
@@ -484,6 +588,15 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
             suspicions.push(`  → ${p}`)
           }
           riskScore += Math.min(apiHashRes.confidence * 0.5, 45)
+        }
+
+        // Masquerading executable check
+        const masqResult = checkMasqueradingExecutable(fileName, filepath, stat, peInfo, secEntropy, entropy, sigValid)
+        if (masqResult.isMasquerading) {
+          for (const signal of masqResult.signals) {
+            suspicions.push(`🎭 ${signal}`)
+            riskScore += 25
+          }
         }
 
         // Fuzzy loader match

@@ -15,10 +15,33 @@ export interface ElectronAPI {
   restartApp: () => Promise<void>
   getPCName: () => Promise<string>
 
+  getConfig: () => Promise<{
+    apiUrl: string
+    tokenId: number | null
+    lang: 'ru' | 'en'
+    theme: 'predator' | 'ocean' | 'stealth' | 'nebula'
+    onboardingComplete: boolean
+  }>
+  saveConfig: (partial: Partial<{
+    apiUrl: string
+    tokenId: number | null
+    lang: 'ru' | 'en'
+    theme: 'predator' | 'ocean' | 'stealth' | 'nebula'
+    onboardingComplete: boolean
+  }>) => Promise<{
+    apiUrl: string
+    tokenId: number | null
+    lang: 'ru' | 'en'
+    theme: 'predator' | 'ocean' | 'stealth' | 'nebula'
+    onboardingComplete: boolean
+  }>
+  getApiBase: () => Promise<string>
+  setApiBase: (url: string) => Promise<string>
+
   // Scanner
   startScan: (mode?: ScanMode, tokenId?: number) => Promise<ScanResponse>
-  onScanProgress: (callback: (data: ScanProgress) => void) => void
-  offScanProgress?: (callback: (data: ScanProgress) => void) => void
+  onScanProgress: (callback: (data: ScanProgress) => void) => (() => void)
+  offScanProgress?: (unsubscribe?: () => void) => void
 
   // System info dashboard
   getSystemSnapshot: () => Promise<SystemInfoSnapshot>
@@ -26,8 +49,8 @@ export interface ElectronAPI {
   // System info streaming (replaces polling)
   startSystemStream: (intervalMs?: number) => void
   stopSystemStream: () => void
-  onSystemUpdate: (callback: (data: SystemInfoSnapshot) => void) => void
-  offSystemUpdate?: (callback: (data: SystemInfoSnapshot) => void) => void
+  onSystemUpdate: (callback: (data: SystemInfoSnapshot) => void) => (() => void)
+  offSystemUpdate?: (unsubscribe?: () => void) => void
 }
 
 export interface ScanResult {

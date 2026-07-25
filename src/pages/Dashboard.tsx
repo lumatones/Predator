@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import type { SystemInfoSnapshot } from '../types/electron'
+import ServerStatus from '../components/ServerStatus'
 
 interface DashboardProps {
   lang: 'ru' | 'en'
@@ -161,16 +162,14 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
       const handler = (data: SystemInfoSnapshot) => {
         if (isMounted.current) setSnapshot(data)
       }
-      api.onSystemUpdate(handler)
+      const unsubscribeSystemUpdate = api.onSystemUpdate(handler)
       api.startSystemStream(2000)
       setStreamActive(true)
 
       return () => {
         api.stopSystemStream()
         setStreamActive(false)
-        if (api.offSystemUpdate) {
-          api.offSystemUpdate(handler)
-        }
+        if (typeof unsubscribeSystemUpdate === 'function') unsubscribeSystemUpdate()
       }
     }
 
@@ -195,7 +194,8 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
           </svg>
         </button>
         <h2 className="dash-title">{t('title')}</h2>
-        <div className="dash-status">
+        <div className="dash-header-right">
+          <ServerStatus lang={lang} />
           {snapshot ? (
             <span className="dash-online">{t('online')}</span>
           ) : (

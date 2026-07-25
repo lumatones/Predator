@@ -5,6 +5,7 @@ import os from 'os'
 import { autoUpdater } from 'electron-updater'
 import { registerScanHandlers, startCloudSync } from './scanner'
 import { registerSystemInfoHandlers } from './system-info'
+import { loadConfig, saveConfig, getApiBase } from './config'
 
 let mainWindow: BrowserWindow | null = null
 let _updateCheckInterval: ReturnType<typeof setInterval> | null = null
@@ -116,12 +117,19 @@ app.whenReady().then(() => {
   // Log startup
   writeCrashLog('INFO', `App started v${app.getVersion()} on ${os.platform()} ${os.release()}`)
 
+  registerScanHandlers()
+  startCloudSync()
+  registerSystemInfoHandlers()
+
   // ── Update check helpers ──
 
   function checkForUpdates() {
-    mainWindow?.webContents.send('checking-for-update')
-    autoUpdater.checkForUpdates().catch(() => {
-      mainWindow?.webContents.send('update-not-available')
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('checking-for-update')
+    autoUpdater.checkForUpdates().catch((err) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-error', err instanceof Error ? err.message : String(err))
+      }
     })
   }
 
@@ -163,14 +171,16 @@ app.on('will-quit', () => {
 // ── Auto-Updater Events ───────────────────────────
 
 autoUpdater.on('update-available', (info) => {
-  mainWindow?.webContents.send('update-available', {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('update-available', {
     version: info.version,
     url: info.files?.[0]?.url || '',
   })
 })
 
 autoUpdater.on('download-progress', (progress) => {
-  mainWindow?.webContents.send('download-progress', {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('download-progress', {
     percent: Math.round(progress.percent),
     bytesPerSecond: progress.bytesPerSecond,
     total: progress.total,
@@ -179,15 +189,18 @@ autoUpdater.on('download-progress', (progress) => {
 })
 
 autoUpdater.on('update-downloaded', () => {
-  mainWindow?.webContents.send('update-downloaded')
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('update-downloaded')
 })
 
 autoUpdater.on('update-not-available', () => {
-  mainWindow?.webContents.send('update-not-available')
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('update-not-available')
 })
 
 autoUpdater.on('error', (err) => {
-  mainWindow?.webContents.send('update-error', err.message)
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('update-error', err.message)
 })
 
 // ── IPC Handlers ──────────────────────────────────
@@ -238,11 +251,24 @@ ipcMain.handle('get-pc-name', async () => {
   }
 })
 
-// ── Scanner ──────────────────────────────────────
+ipcMain.handle('get-config', async () => loadConfig())
 
-registerScanHandlers()
-startCloudSync()
+ipcMain.handle('save-config', async (_event, partial) => {
+  if (!partial || typeof partial !== 'object') return loadConfig()
+  return saveConfig(partial)
+})
 
-// ── System Info Dashboard ────────────────────────
+ipcMain.handle('get-api-base', async () => getApiBase())
 
-registerSystemInfoHandlers()
+ipcMain.handle('set-api-base', async (_event, url: string) => {
+  if (!url || typeof url !== 'string') return getApiBase()
+  try {
+    const parsed = new URL(url.trim().replace(/\/$/, ''))
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return getApiBase()
+    const clean = parsed.toString().replace(/\/$/, '')
+    saveConfig({ apiUrl: clean })
+    return clean
+  } catch {
+    return getApiBase()
+  }
+})

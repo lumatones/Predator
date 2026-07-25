@@ -1,16 +1,49 @@
 // ── Config ──
 
-// Priority: 1) VITE_API_URL env var  →  2) localStorage  →  3) localhost fallback
+// Priority:
+//   1) VITE_API_URL env var (build-time)
+//   2) Electron userData config (via initApiConfig)
+//   3) localStorage fallback (browser dev)
+//   4) http://localhost:3001
+//
+// Set production URL at build time:
+//   VITE_API_URL=http://your-server:3001 npm run build
+
+let _apiBase = 'http://localhost:3001'
+
 function resolveApiBase(): string {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL as string
+  if (import.meta.env.VITE_API_URL) return (import.meta.env.VITE_API_URL as string).replace(/\/$/, '')
   try {
     const stored = localStorage.getItem('predator_api_url')
-    if (stored) return stored
+    if (stored) return stored.replace(/\/$/, '')
   } catch { /* localStorage unavailable */ }
-  return 'http://localhost:3001'
+  return _apiBase
 }
 
-const API_BASE = resolveApiBase()
+export function getApiBase(): string {
+  return _apiBase
+}
+
+export function setApiBase(url: string): void {
+  _apiBase = url.replace(/\/$/, '')
+}
+
+/** Load API URL from Electron config or env. Call once on app start. */
+export async function initApiConfig(): Promise<string> {
+  const api = window.electronAPI
+  if (api?.getApiBase) {
+    try {
+      const url = await api.getApiBase()
+      if (url) {
+        setApiBase(url)
+        return url
+      }
+    } catch { /* fallback below */ }
+  }
+  const resolved = resolveApiBase()
+  setApiBase(resolved)
+  return resolved
+}
 
 // ── Types ──
 
@@ -45,14 +78,13 @@ export interface RequestStatusResponse {
 // ── Helpers ──
 
 async function fetchApi<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   const data = await res.json()
   if (!res.ok) {
-    // Validation endpoints return { valid, error } — return as data, don't throw
     if (typeof data.valid === 'boolean') return data as T
     throw new Error(data.error || `HTTP ${res.status}`)
   }
@@ -60,7 +92,7 @@ async function fetchApi<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function fetchGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`)
+  const res = await fetch(`${getApiBase()}${path}`)
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
   return data as T
@@ -121,7 +153,6 @@ export interface SubmitHashesResponse {
   total: number
 }
 
-/** Submit SHA256 hashes of suspicious files to the cloud database */
 export async function submitHashes(hashes: SuspectHash[], pc_username?: string, token_id?: number): Promise<SubmitHashesResponse> {
   return fetchApi<SubmitHashesResponse>('/api/auth/submit-hashes', {
     hashes,
@@ -142,7 +173,6 @@ export interface FetchHashesResponse {
   hashes: CloudHash[]
 }
 
-/** Fetch confirmed cheat hashes from the cloud database (for auto-update) */
 export async function fetchCheatHashes(after?: string): Promise<FetchHashesResponse> {
   const q = after ? `?after=${after}` : ''
   return fetchGet<FetchHashesResponse>(`/api/auth/fetch-hashes${q}`)

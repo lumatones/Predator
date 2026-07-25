@@ -1,0 +1,612 @@
+async function runProcessScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+  const results: ScanResult[] = []
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Running processes...', filesFound: 0, filesScanned: 0, totalDirs: 7, dirsDone: 1 })
+  results.push(...scanRunningProcesses())
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Masquerading checks...', filesFound: results.length, filesScanned: results.length, totalDirs: 7, dirsDone: 2 })
+  results.push(...scanMasqueradingProcesses())
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Recent items...', filesFound: results.length, filesScanned: results.length, totalDirs: 7, dirsDone: 3 })
+  results.push(...scanRecentItems())
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Prefetch files...', filesFound: results.length, filesScanned: results.length, totalDirs: 7, dirsDone: 4 })
+  results.push(...scanPrefetchFiles())
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Game integrity check...', filesFound: results.length, filesScanned: results.length, totalDirs: 7, dirsDone: 5 })
+  results.push(...scanGameIntegrity())
+  results.push(...scanGameModules())
+
+  await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history...', filesFound: results.length, filesScanned: results.length, totalDirs: 7, dirsDone: 6 })
+
+  const browserResults = await scanBrowserHistory()
+  results.push(...browserResults)
+
+  return { results, filesScanned: results.length + browserResults.length }
+}
+
+// ═══════════════════════════════════════════════
+// BONUS: NAMED PIPES SCAN
+// ═══════════════════════════════════════════════
+
+/** Scan Windows Named Pipes for cheat-related IPC channels */
+function scanNamedPipes(): ScanResult[] {
+  const results: ScanResult[] = []
+  try {
+    const out = execSync('powershell -Command "[System.IO.Directory]::GetFiles(\"\\\\\\.\\\\pipe\\\\\")" 2>$null', { encoding: 'utf-8', timeout: 5000 })
+    const pipes = out.split('\n').map(l => l.trim()).filter(Boolean)
+
+    const suspiciousPipePatterns = [
+      /cheat/i, /hack/i, /inject/i, /menu/i, /gta/i, /fivem/i,
+      /rage/i, /altv/i, /eulen/i, /redengine/i, /dma/i, /overlay/i,
+    ]
+
+    for (const pipe of pipes) {
+      const lower = pipe.toLowerCase()
+      for (const pat of suspiciousPipePatterns) {
+        if (pat.test(lower)) {
+          if (addFindingDedup(`pipe:${pipe}`)) {
+            results.push({
+              path: pipe,
+              fileName: path.basename(pipe),
+              type: 'software',
+              risk: 'high',
+              matches: [`Named pipe matches: ${pat.source}`, 'Possible cheat IPC channel'],
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+            })
+          }
+          break
+        }
+      }
+    }
+  } catch (_e) { /* ignore */ }
+  return results
+}
+
+// ═══════════════════════════════════════════════
+// BONUS: WMI PERSISTENCE SCAN
+// ═══════════════════════════════════════════════
+
+/** Scan WMI Event Subscription for cheat persistence */
+function scanWmiPersistence(): ScanResult[] {
+  const results: ScanResult[] = []
+  try {
+    const out = execSync(
+      'powershell -Command "Get-WmiObject -Class __EventFilter -Namespace \"root\\\\subscription\" | Select-Object Name, Query | ConvertTo-Json -Compress" 2>$null',
+      { encoding: 'utf-8', timeout: 8000 },
+    )
+    if (!out.trim() || out.includes('null')) return results
+
+    const parsed = JSON.parse(out)
+    const items = Array.isArray(parsed) ? parsed : [parsed]
+
+    const wmiSuspicious = ['process', 'create', 'gta', 'fivem', 'cheat', 'inject', 'bypass']
+    for (const item of items) {
+      const query = (item.Query || '').toLowerCase()
+      const name = (item.Name || '').toLowerCase()
+
+      if (wmiSuspicious.some(k => query.includes(k) || name.includes(k))) {
+        results.push({
+          path: `WMI:\\${item.Name}`,
+          fileName: `WMI Filter: ${item.Name}`,
+          type: 'registry',
+          risk: 'high',
+          matches: ['WMI Event Subscription — cheat persistence', `Query: ${(item.Query || '').slice(0, 80)}`],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+  } catch (_e) { /* ignore */ }
+  return results
+}
+
+// ═══════════════════════════════════════════════
+// MODE 3: CHEAT-SPECIFIC SEARCH
+// ═══════════════════════════════════════════════
+
+const CHEAT_SOFTWARE_NAMES: Record<string, string[]> = {
+  'Nightfall': ['nightfall', 'nightfall cheat', 'nightfall loader'],
+  'DMA': ['dma', 'dma card', 'dma cheat', 'dma firmware'],
+  '0XCheat': ['0xcheat', '0x cheat', 'oxcheat'],
+  '1337 Cheat': ['1337', '1337 cheat', 'leet cheat'],
+  'NoleetCheats': ['noleet', 'noleetcheats', 'noleet cheat'],
+}
+
+// ═══════════════════════════════════════════════
+// SCHEDULED TASKS + WMI PERSISTENCE SCAN
+// ═══════════════════════════════════════════════
+
+/**
+ * Scan for suspicious scheduled tasks — cheat loaders often persist via
+ * schtasks under names like "Windows Update Helper", "Discord Updater", etc.
+ */
+function scanScheduledTasks(): ScanResult[] {
+  const results: ScanResult[] = []
+
+  try {
+    // Get scheduled tasks that:
+    // 1. Are in the root path (\), not Microsoft\Windows\ etc
+    // 2. Run from suspicious locations (Temp, AppData, Downloads)
+    // 3. Are not by Microsoft, Adobe, Google, or known vendors
+    const ps = `
+Get-ScheduledTask | Where-Object {
+  $_.TaskPath -eq '\\' -and
+  $_.Author -notmatch 'Microsoft|Adobe|Google|Mozilla|Apple|Oracle|NVIDIA|AMD|Intel|Spotify|Discord|Slack|GitHub|Docker|JetBrains|Valve|Epic|Rockstar'
+} | Select-Object TaskName, TaskPath, Author, State, @{N='Actions';E={($_.Actions | ForEach-Object { $_.Execute }) -join '; '}} | ConvertTo-Json -Compress
+`.trim()
+
+    const out = execSync(`powershell -Command "${ps.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
+      encoding: 'utf-8',
+      timeout: 10000,
+      windowsHide: true,
+    }).trim()
+
+    if (!out || out.length < 5) return results
+
+    const parsed = JSON.parse(out)
+    const tasks = Array.isArray(parsed) ? parsed : [parsed]
+
+    for (const task of tasks) {
+      const name = (task.TaskName || '').trim()
+      const author = (task.Author || '').trim()
+      const actions = (task.Actions || '').toLowerCase()
+      const state = (task.State || '').trim()
+
+      // Skip empty / trivial tasks
+      if (!name || name === '') continue
+
+      const matches: string[] = [`Scheduled task: ${name}`, `Author: ${author || 'N/A'}`, `State: ${state}`]
+      let riskScore = 0
+
+      // Suspicious indicators:
+      // 1. Running from AppData/Local, Temp, or Downloads
+      const suspiciousPaths = ['\\temp\\', '\\appdata\\local\\', '\\appdata\\roaming\\', '\\downloads\\', '\\users\\']
+      const runsFromSuspiciousDir = suspiciousPaths.some(p => actions.includes(p))
+      if (runsFromSuspiciousDir) {
+        matches.push('Executes from user temp/AppData directory')
+        riskScore += 25
+      }
+
+      // 2. No author (empty or null) — often means malware hiding origin
+      if (!author || author === '' || author === 'null') {
+        matches.push('No author information')
+        riskScore += 15
+      }
+
+      // 3. Known cheat-related keywords in task name
+      const cheatKeywords = ['cheat', 'hack', 'inject', 'bypass', 'loader', 'mod menu', 'gta', 'fivem', 'spoofer']
+      for (const kw of cheatKeywords) {
+        if (name.toLowerCase().includes(kw)) {
+          matches.push(`Task name contains: ${kw}`)
+          riskScore += 30
+          break
+        }
+      }
+
+      // 4. Executes a script (ps1, bat, vbs) from temp
+      const scriptExts = ['.ps1', '.bat', '.vbs', '.cmd', '.js', '.exe']
+      if (scriptExts.some(ext => actions.includes(ext)) && runsFromSuspiciousDir) {
+        matches.push('Script executable from suspicious location')
+        riskScore += 20
+      }
+
+      if (riskScore >= 20 && addFindingDedup(`schedtask:${name}`)) {
+        results.push({
+          path: `Scheduled Task: ${name}`,
+          fileName: `Scheduled task: ${name}`,
+          type: 'software',
+          risk: riskScore > 50 ? 'high' : 'medium',
+          matches: matches.slice(0, 6),
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+  } catch { /* schtasks optional */ }
+
+  return results
+}
+
+const _walkCache = new Map<string, string[]>()
+
+function getDeepWalkEntries(dirPath: string, maxDepth = 2): string[] {
+  const key = `${dirPath}:${maxDepth}`
+  const cached = _walkCache.get(key)
+  if (cached !== undefined) return cached
+
+  const entries: string[] = []
+  function walk(d: string, depth: number) {
+    if (depth > maxDepth) return
+    try {
+      const dirEntries = fs.readdirSync(d, { withFileTypes: true })
+      for (const entry of dirEntries) {
+        const fullPath = path.join(d, entry.name)
+        entries.push(fullPath)
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+          walk(fullPath, depth + 1)
+        }
+      }
+    } catch (_e) { /* skip */ }
+  }
+  walk(dirPath, 0)
+
+  _walkCache.set(key, entries)
+  return entries
+}
+
+function scanForCheatFiles(cheatName: string, keywords: string[]): ScanResult[] {
+  const results: ScanResult[] = []
+  const searchDirs = getScanPaths().slice(0, 8)
+
+  const allEntries: string[] = []
+  for (const dir of searchDirs) {
+    if (!fs.existsSync(dir)) continue
+    try {
+      allEntries.push(...getDeepWalkEntries(dir, 2))
+    } catch (_e) { /* skip */ }
+  }
+
+  for (const entryPath of allEntries) {
+    const lower = path.basename(entryPath).toLowerCase()
+    const matches: string[] = []
+    for (const keyword of keywords) {
+      if (lower.includes(keyword)) matches.push(`cheat:${cheatName.toLowerCase()} → ${keyword}`)
+    }
+    const sigMatches = matchKnownCheat(lower)
+    matches.push(...sigMatches)
+
+    if (matches.length > 0) {
+      try {
+        const stat = fs.statSync(entryPath)
+        results.push({
+          path: entryPath,
+          fileName: stat.isDirectory() ? path.basename(entryPath) + '/' : path.basename(entryPath),
+          type: 'file',
+          risk: matches.length >= 2 ? 'high' : 'medium',
+          matches, size: stat.size, modifiedAt: stat.mtime.toISOString(),
+        })
+      } catch (_e) { /* skip */ }
+    }
+  }
+
+  return results
+}
+
+function scanRegistryForCheats(): ScanResult[] {
+  const results: ScanResult[] = []
+
+  for (const keyPath of REGISTRY_SCAN_KEYS) {
+    try {
+      const output = execSync(`reg query "${keyPath}" /s 2>nul`, { encoding: 'utf-8', timeout: 5000 })
+      if (!output || output.trim().length === 0) continue
+
+      const lower = output.toLowerCase()
+      for (const keyword of ALL_CHEAT_KEYWORDS) {
+        if (lower.includes(keyword.toLowerCase())) {
+          const safeKey = keyword.slice(0, 40)
+          results.push({
+            path: keyPath, fileName: `Registry: ${safeKey}`, type: 'registry',
+            risk: 'high', matches: [`registry:${safeKey} found`], size: 0, modifiedAt: new Date().toISOString(),
+          })
+          break
+        }
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  return results
+}
+
+async function runCheatScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+  const results: ScanResult[] = []
+  const cheatNames = Object.keys(CHEAT_SOFTWARE_NAMES)
+  let filesScanned = 0
+
+  for (let i = 0; i < cheatNames.length; i++) {
+    const cheatName = cheatNames[i]
+    const keywords = CHEAT_SOFTWARE_NAMES[cheatName]
+
+    await sendProgress(win, { phase: 'scanning', currentDir: `Searching for ${cheatName}...`, filesFound: results.length, filesScanned, totalDirs: cheatNames.length + 2, dirsDone: i + 1 })
+
+    const fileResults = scanForCheatFiles(cheatName, keywords)
+    results.push(...fileResults)
+    filesScanned += fileResults.length
+  }
+
+  const cheatKw = Object.values(CHEAT_SOFTWARE_NAMES).flat()
+  const browserResults = await scanBrowserHistory(cheatKw)
+  results.push(...browserResults)
+
+  await sendProgress(win, { phase: 'analyzing', currentDir: 'Checking registry...', filesFound: results.length, filesScanned, totalDirs: cheatNames.length + 2, dirsDone: cheatNames.length + 1 })
+  const registryResults = scanRegistryForCheats()
+  results.push(...registryResults)
+
+  return { results, filesScanned: results.length }
+}
+
+// ═══════════════════════════════════════════════
+// MODE 4: DMA DETECTION
+// ═══════════════════════════════════════════════
+
+const KNOWN_DMA_VENDORS = [
+  { name: 'Xilinx', ids: ['10ee'] },
+  { name: 'Altera/Intel FPGA', ids: ['1172'] },
+  { name: 'Lattice Semiconductor', ids: ['1204'] },
+  { name: 'FTDI (USB-FPGA bridge)', ids: ['0403'] },
+  { name: 'Texas Instruments (FPGA)', ids: ['104c'] },
+]
+
+function queryPnpDevices(filter: string): string {
+  return execCmd(
+    `wmic path Win32_PnPEntity where "${filter}" get DeviceID,Name,PNPDeviceID /format:csv 2>nul`,
+    `powershell "Get-PnpDevice | Where-Object { $_.Class -eq '${filter.replace(/PNPClass='/g, '').replace(/'/g, '')}' } | Format-List"`,
+  )
+}
+
+function scanDmaDevices(): ScanResult[] {
+  const results: ScanResult[] = []
+
+  const output = queryPnpDevices("PNPClass='PCI' OR PNPClass='System'")
+  if (output) {
+    const lower = output.toLowerCase()
+    for (const vendor of KNOWN_DMA_VENDORS) {
+      for (const id of vendor.ids) {
+        if (lower.includes(id)) {
+          results.push({
+            path: 'System Devices', fileName: `PCI Device: ${vendor.name}`, type: 'hardware', risk: 'high',
+            matches: [`pci:${vendor.name} (VEN_${id})`], size: 0, modifiedAt: new Date().toISOString(),
+          })
+        }
+      }
+    }
+  }
+
+  const dmaKeywords = ['dma', 'fpga', 'pcileech', 'fuser', 'screamer', 'leechcore', 'memprocfs', 'vmm', 'kmem', 'coremap', 'ftd3', 'ftd2']
+  for (const dir of getScanPaths()) {
+    if (!fs.existsSync(dir)) continue
+    try {
+      for (const entry of fs.readdirSync(dir)) {
+        const lower = entry.toLowerCase()
+        const matches: string[] = []
+        for (const kw of dmaKeywords) {
+          if (lower.includes(kw)) matches.push(`dma-keyword:${kw}`)
+        }
+        if (matches.length > 0) {
+          try {
+            const stat = fs.statSync(path.join(dir, entry))
+            results.push({ path: path.join(dir, entry), fileName: entry, type: 'software', risk: 'high', matches, size: stat.size, modifiedAt: stat.mtime.toISOString() })
+          } catch (_e) { /* skip */ }
+        }
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  try {
+    const sysDir = path.join(_WR, 'System32', 'drivers')
+    if (fs.existsSync(sysDir)) {
+      for (const driver of fs.readdirSync(sysDir)) {
+        const lower = driver.toLowerCase()
+        const matches: string[] = []
+        if (dmaKeywords.some(k => lower.includes(k))) matches.push(`driver:${driver}`)
+        if (matches.length > 0) {
+          results.push({ path: path.join(sysDir, driver), fileName: `Driver: ${driver}`, type: 'software', risk: 'high', matches, size: 0, modifiedAt: new Date().toISOString() })
+        }
+      }
+    }
+  } catch (_e) { /* skip */ }
+
+  return results
+}
+
+function scanDmaRegistry(): ScanResult[] {
+  const results: ScanResult[] = []
+  const svcPath = 'HKLM\\SYSTEM\\CurrentControlSet\\Services'
+
+  for (const term of ['dma', 'fpga', 'pcileech', 'fuser', 'leech']) {
+    try {
+      const out = execSync(`reg query "${svcPath}" /s /f "${term}" 2>nul`, { encoding: 'utf-8', timeout: 5000 })
+      if (out.trim().length > 0) {
+        results.push({ path: svcPath, fileName: `Registry: ${term.toUpperCase()}-related services`, type: 'registry', risk: 'high', matches: [`registry:${term} service(s) found`], size: 0, modifiedAt: new Date().toISOString() })
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  return results
+}
+
+async function runDmaScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+  const results: ScanResult[] = []
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking PCI devices...', filesFound: 0, filesScanned: 0, totalDirs: 5, dirsDone: 1 })
+  results.push(...scanDmaDevices())
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking USB devices...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 2 })
+  const usbOut = queryPnpDevices("PNPClass='USB'")
+  if (usbOut && (usbOut.toLowerCase().includes('ftdi') || usbOut.toLowerCase().includes('ftd3'))) {
+    results.push({ path: 'USB Devices', fileName: 'USB Device: Possible DMA interface', type: 'hardware', risk: 'medium', matches: ['usb:FTDI device (common DMA interface)'], size: 0, modifiedAt: new Date().toISOString() })
+  }
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking registry...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 3 })
+  results.push(...scanDmaRegistry())
+
+  await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history for DMA...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 4 })
+  const dmaKw = ['dma', 'fpga', 'pcileech', 'fuser', 'screamer', 'kmem']
+  const browserResults = await scanBrowserHistory(dmaKw)
+  results.push(...browserResults)
+
+  return { results, filesScanned: results.length + browserResults.length }
+}
+
+// ═══════════════════════════════════════════════
+// MODE 5: EXTENDED — v2 FULL SYSTEM SCAN
+// Based on predator_scanner_v2.py:
+//   8 phases with heuristic analysis, entropy,
+//   category-based signatures, risk scoring,
+//   deduplication, digital signature verification.
+// ═══════════════════════════════════════════════
+
+const EXTENDED_CHEAT_KEYWORDS: string[] = [
+  'eulen', 'redengine', 'skript.gg', 'impulse.one',
+  'luna', 'paragon', 'ozark', 'cherax', 'stand.gg',
+  '2take1.menu', 'modest', 'kiddions', 'majesty.rp',
+  'menyoo', 'simpletrainer', 'nativeui',
+  'xenos', 'extremeinjector', 'manualmap',
+  'fivem bypass', 'rockstar bypass', 'ac bypass',
+  'rpchanger', 'hwid spoofer', 'mac spoofer',
+  'dma', 'fpga', 'pcileech', 'fuser', 'screamer',
+  'leechcore', 'memprocfs', 'vmm', 'kmem', 'winpmem',
+  'process hacker', 'dnspy', 'ollydbg', 'x64dbg', 'ida',
+  'aimbot', 'wallhack', 'esp', 'triggerbot',
+  'norecoil', 'godmode', 'teleport', 'moneydrop',
+  'recovery', 'unlock all', 'mod menu',
+  // v2 category keywords
+  'inject', 'injector', 'hook', 'detour', 'bypass', 'evade',
+  'spoofer', 'hwid', 'obfuscator', 'vmprotect', 'themida',
+]
+
+/** v2: Deep registry scan — checks all autorun paths against categories */
+function scanRegistryDeepV2(): ScanResult[] {
+  const results: ScanResult[] = []
+
+  const regPaths = [
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce',
+    'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+    'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce',
+    'HKCU\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run',
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run',
+    'HKLM\\SYSTEM\\CurrentControlSet\\Services',
+    // v3.0: Winlogon paths
+    'HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon',
+    'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon',
+  ]
+
+  for (const keyPath of regPaths) {
+    try {
+      const output = execSync(`reg query "${keyPath}" /s 2>nul`, { encoding: 'utf-8', timeout: 5000 })
+      if (!output || output.trim().length === 0) continue
+
+      const lower = output.toLowerCase()
+
+      for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
+        for (const name of cat.names) {
+          if (lower.includes(name)) {
+            const dedupKey = `reg-deep:${catName}:${name}`
+            if (addFindingDedup(dedupKey)) {
+              results.push({
+                path: keyPath,
+                fileName: `Registry [${catName}]: ${name}`,
+                type: 'registry',
+                risk: cat.risk === 'CRITICAL' ? 'high' : cat.risk === 'HIGH' ? 'high' : 'medium',
+                matches: [`registry-deep:${name} (${catName})`, `risk:${cat.risk}`],
+                size: 0,
+                modifiedAt: new Date().toISOString(),
+              })
+            }
+          }
+        }
+      }
+    } catch (_e) { /* skip */ }
+  }
+
+  return results
+}
+
+/** v2: Prefetch analysis against categories */
+function scanPrefetchV2(): ScanResult[] {
+  const results: ScanResult[] = []
+  const prefetchDir = path.join(_WR, 'Prefetch')
+
+  try {
+    if (!fs.existsSync(prefetchDir)) return results
+    for (const file of fs.readdirSync(prefetchDir)) {
+      if (!file.toLowerCase().endsWith('.pf')) continue
+      const fileLower = file.toLowerCase()
+
+      for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
+        for (const name of cat.names) {
+          if (fileLower.includes(name)) {
+            const dedupKey = `pf:${catName}:${file}`
+            if (addFindingDedup(dedupKey)) {
+              const filePath = path.join(prefetchDir, file)
+              let mtime = new Date().toISOString()
+              try { mtime = fs.statSync(filePath).mtime.toISOString() } catch (_e) { /* skip */ }
+
+              results.push({
+                path: filePath,
+                fileName: `Prefetch [${catName}]: ${file}`,
+                type: 'file',
+                risk: cat.risk === 'CRITICAL' || cat.risk === 'HIGH' ? 'high' : 'medium',
+                matches: [`prefetch:${name} (${catName})`, `last-run:${mtime.slice(0, 10)}`],
+                size: 0,
+                modifiedAt: mtime,
+              })
+            }
+          }
+        }
+      }
+    }
+  } catch (_e) { /* skip */ }
+
+  return results
+}
+
+/** v2: Network connection scan — suspicious ports (proxy/VPN) */
+function scanNetstatV2(): ScanResult[] {
+  const results: ScanResult[] = []
+
+  try {
+    const out = execSync('netstat -ano', { encoding: 'utf-8', timeout: 8000 })
+    const lines = out.split('\n')
+    const suspiciousPortSet = new Set(['1080', '3128', '8080', '9050', '9150'])
+    const foundPorts: string[] = []
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.match(/^(TCP|UDP)/i)) continue
+      const parts = trimmed.split(/\s+/)
+      if (parts.length < 4) continue
+
+      const localAddr = parts[1] || ''
+      const remoteAddr = parts[2] || ''
+      const pid = parts[parts.length - 1] || ''
+
+      const port = localAddr.split(':').pop() || ''
+      if (suspiciousPortSet.has(port)) {
+        const dedupKey = `net-port:${port}`
+        if (addFindingDedup(dedupKey)) {
+          foundPorts.push(`${port} (PID: ${pid})`)
+        }
+      }
+
+      // Check for connections from suspicious IP ranges (proxy/VPN hosting)
+      const remoteIp = remoteAddr.split(':')[0]
+      if (remoteIp && remoteIp !== '0.0.0.0' && remoteIp !== '127.0.0.1' && remoteIp !== '[::]') {
+        const suspiciousIps = [/^185\./, /^5\./, /^91\./, /^188\./]
+        for (const pattern of suspiciousIps) {
+          if (pattern.test(remoteIp) && addFindingDedup(`net-ip:${remoteIp}`)) {
+            foundPorts.push(`remote:${remoteIp} (PID: ${pid})`)
+            break
+          }
+        }
+      }
+    }
+
+    if (foundPorts.length > 0) {
+      results.push({
+        path: 'Network Connections',
+        fileName: `Suspicious connections: ${foundPorts.length}`,
+        type: 'software',
+        risk: foundPorts.length >= 2 ? 'high' : 'medium',
+        matches: foundPorts.map(p => `netstat:${p}`),
+        size: 0,
+        modifiedAt: new Date().toISOString(),
+      })
+    }
+  } catch (_e) { /* skip */ }
+
+  return results
+}
+

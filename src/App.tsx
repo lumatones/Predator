@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { motion, useScroll, useTransform, useReducedMotion } from 'framer-motion'
 import { validateToken, useToken, requestAccess, checkRequestStatus } from './api'
 import Checker from './pages/Checker'
 import Dashboard from './pages/Dashboard'
@@ -19,10 +20,10 @@ interface ThemeColors {
 }
 
 const THEMES: Record<ThemeId, ThemeColors> = {
-  predator: { accent: '#ff4444', light: '#ff6b35', dark: '#cc0000', bg: '#0a0a0f', card: '#12121a', name: 'Predator Red' },
-  ocean:    { accent: '#3B82F6', light: '#60A5FA', dark: '#1D4ED8', bg: '#0a0f1a', card: '#121a2a', name: 'Ocean Blue' },
-  stealth:  { accent: '#6B7280', light: '#9CA3AF', dark: '#374151', bg: '#0a0a0c', card: '#121214', name: 'Stealth Black' },
-  nebula:   { accent: '#8B5CF6', light: '#A78BFA', dark: '#6D28D9', bg: '#0f0a1a', card: '#1a122a', name: 'Nebula Purple' },
+  predator: { accent: '#ff4d5a', light: '#ff8a5b', dark: '#b91c1c', bg: '#020202', card: '#0d0d0f', name: 'Predator Red' },
+  ocean:    { accent: '#7dd3fc', light: '#60a5fa', dark: '#1d4ed8', bg: '#020202', card: '#0d0d0f', name: 'Ocean Blue' },
+  stealth:  { accent: '#a1a1aa', light: '#e4e4e7', dark: '#3f3f46', bg: '#020202', card: '#0d0d0f', name: 'Stealth Black' },
+  nebula:   { accent: '#c084fc', light: '#f0abfc', dark: '#7c3aed', bg: '#020202', card: '#0d0d0f', name: 'Nebula Purple' },
 }
 
 type Lang = 'ru' | 'en'
@@ -130,6 +131,12 @@ const App: React.FC = () => {
   const [requestId, setRequestId] = useState<number | null>(null)
   const [requestStatus, setRequestStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const reduceMotion = useReducedMotion()
+  const heroRef = useRef<HTMLDivElement | null>(null)
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
+  const heroY = useTransform(scrollYProgress, [0, 1], [0, reduceMotion ? 0 : -200])
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.5, 1], [1, 0.2, 0])
+  const dashY = useTransform(scrollYProgress, [0, 1], [0, reduceMotion ? 0 : -250])
 
   // Update indicator (footer dot)
   const [updateAvailable, setUpdateAvailable] = useState(false)
@@ -337,6 +344,7 @@ const App: React.FC = () => {
   const hBackToMain = useCallback(() => setPhase('main'), [])
   const c = THEMES[theme]
   const subtitle = t('title')
+  const MotionDiv = motion.div
 
   // ── Render ──
   return (

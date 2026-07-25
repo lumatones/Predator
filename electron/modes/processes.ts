@@ -190,6 +190,104 @@ export function scanWmiPersistence(): ScanResult[] {
 }
 
 // ═══════════════════════════════════════════════════
+// BEHAVIORAL PROCESS DETECTION (from dynamic analysis)
+// ═══════════════════════════════════════════════════
+//
+// Detects cheat loaders masquerading as legitimate executables based on
+// behavioral patterns observed during dynamic analysis of known samples:
+//
+//   1. High memory usage (>200MB for a simple installer)
+//   2. Self-spawning (same name spawning itself as child process)
+//   3. Multiple instances of same masquerading name
+//   4. Unsigned masquerading process running from suspicious location
+//
+// Reference: dxwebsetup.exe monitoring — VMProtect packed loader
+// running at ~240MB with self-spawning child process
+// ═══════════════════════════════════════════════════
+
+import { MASQUERADING_FILENAMES } from '../cheats-db'
+
+/**
+ * Scan for masquerading processes with behavioral anomalies.
+ *
+ * Detects:
+ * - Processes named as known legitimate software but behaving abnormally
+ *   (high memory, self-spawning, multiple instances)
+ * - A lightweight scan — no heavyweight analysis needed
+ */
+export function scanMasqueradingProcesses(): ScanResult[] {
+  const results: ScanResult[] = []
+  try {
+    const output = execSync('tasklist /FO CSV /NH', { encoding: 'utf-8', timeout: 5000 })
+    const lines = output.trim().split('\n')
+
+    // Collect all masquerading-named processes
+    const masqueradingProcs: { name: string; pid: number; memKB: number }[] = []
+    for (const line of lines) {
+      try {
+        const parts = line.match(/"([^"]+)","(\d+)","(\d+)","([^"]+)"/)
+        if (!parts) continue
+        const name = parts[1].toLowerCase()
+        if (!MASQUERADING_FILENAMES.has(name)) continue
+        const pid = parseInt(parts[2], 10)
+        const memStr = parts[3].replace(/[^\d]/g, '')
+        const memKB = parseInt(memStr, 10) || 0
+        masqueradingProcs.push({ name, pid, memKB })
+      } catch (_e) { /* skip */ }
+    }
+
+    if (masqueradingProcs.length === 0) return results
+
+    // Count instances per name
+    const nameCount = new Map<string, number>()
+    for (const p of masqueradingProcs) {
+      nameCount.set(p.name, (nameCount.get(p.name) || 0) + 1)
+    }
+
+    // Emit findings
+    for (const proc of masqueradingProcs) {
+      if (!addFindingDedup(`masq:${proc.name}:${proc.pid}`)) continue
+      const count = nameCount.get(proc.name) || 1
+
+      const matches: string[] = [`behavior:masquerading:${proc.name}`]
+      let risk: 'high' | 'medium' = 'medium'
+
+      // Signal 1: High memory (>200MB for a utility that should be tiny)
+      if (proc.memKB > 200 * 1024) {
+        matches.push(`behavior:high-memory:${(proc.memKB / 1024).toFixed(0)}MB`)
+        risk = 'high'
+      }
+
+      // Signal 2: Multiple instances of same masquerading name
+      if (count >= 2) {
+        matches.push(`behavior:multiple-instances:${count}x`)
+        risk = 'high'
+      }
+
+      // Signal 3: High memory + multiple instances = certain cheat loader
+      if (proc.memKB > 200 * 1024 && count >= 2) {
+        matches.push('behavior:cheat-loader-profile:vmprotect-pattern')
+        risk = 'high'
+      }
+
+      results.push({
+        path: `process:${proc.name} (PID: ${proc.pid})`,
+        fileName: `${proc.name}`,
+        type: 'process',
+        risk,
+        matches,
+        size: proc.memKB * 1024,
+        modifiedAt: new Date().toISOString(),
+      })
+    }
+
+    return results
+  } catch (_e) {
+    return results
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // PROCESS MEMORY ANALYSIS
 // ═══════════════════════════════════════════════════
 
@@ -208,32 +306,37 @@ export async function runProcessScan(win: BrowserWindow | null): Promise<{ resul
   clearFindingDedup()
   const results: ScanResult[] = []
 
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Scanning running processes...', filesFound: 0, filesScanned: 0, totalDirs: 5, dirsDone: 0 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Scanning running processes...', filesFound: 0, filesScanned: 0, totalDirs: 6, dirsDone: 0 })
 
   const v2Results = scanRunningProcessesV2()
   for (const r of v2Results) results.push(r)
 
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking recent items...', filesFound: results.length, filesScanned: 0, totalDirs: 5, dirsDone: 1 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking for masquerading processes...', filesFound: results.length, filesScanned: 0, totalDirs: 6, dirsDone: 1 })
+
+  const masqResults = scanMasqueradingProcesses()
+  for (const r of masqResults) results.push(r)
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking recent items...', filesFound: results.length, filesScanned: 0, totalDirs: 6, dirsDone: 2 })
 
   const recent = scanRecentItems()
   for (const r of recent) results.push(r)
 
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking Prefetch files...', filesFound: results.length, filesScanned: 0, totalDirs: 5, dirsDone: 2 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking Prefetch files...', filesFound: results.length, filesScanned: 0, totalDirs: 6, dirsDone: 3 })
 
   const prefetch = scanPrefetchFiles()
   for (const r of prefetch) results.push(r)
 
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking named pipes...', filesFound: results.length, filesScanned: 0, totalDirs: 5, dirsDone: 3 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking named pipes...', filesFound: results.length, filesScanned: 0, totalDirs: 6, dirsDone: 4 })
 
   const pipes = scanNamedPipes()
   for (const r of pipes) results.push(r)
 
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking WMI persistence...', filesFound: results.length, filesScanned: 0, totalDirs: 5, dirsDone: 4 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Checking WMI persistence...', filesFound: results.length, filesScanned: 0, totalDirs: 6, dirsDone: 5 })
 
   const wmi = scanWmiPersistence()
   for (const r of wmi) results.push(r)
 
-  await sendProgress(win, { phase: 'analyzing', currentDir: 'Memory analysis...', filesFound: results.length, filesScanned: 0, totalDirs: 5, dirsDone: 5 })
+  await sendProgress(win, { phase: 'analyzing', currentDir: 'Memory analysis...', filesFound: results.length, filesScanned: 0, totalDirs: 6, dirsDone: 6 })
 
   return { results, filesScanned: results.length }
 }

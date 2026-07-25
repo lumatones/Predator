@@ -2,8 +2,11 @@ import { ipcMain, BrowserWindow } from 'electron'
 import crypto from 'crypto'
 import fs from 'fs'
 import http from 'http'
+import https from 'https'
 import path from 'path'
 import { execSync } from 'child_process'
+
+import { getApiBase, getApiEndpoint } from './config'
 
 import {
   KNOWN_CHEAT_HASHES,
@@ -303,11 +306,17 @@ let _syncTimer: ReturnType<typeof setInterval> | null = null
 
 export async function fetchCheatHashes() {
   try {
+    const base = getApiBase()
+    const url = new URL('/api/auth/fetch-hashes', base)
+    url.searchParams.set('after', '2000-01-01')
+
     const data = await new Promise<string>((resolve, reject) => {
-      const req = http.get('http://localhost:3001/api/auth/fetch-hashes?after=2000-01-01', (res) => {
+      const transport = url.protocol === 'https:' ? https : http
+      const req = transport.get(url, (res) => {
         let body = ''
         res.on('data', (chunk: string) => body += chunk)
         res.on('end', () => resolve(body))
+        res.on('error', reject)
       })
       req.on('error', reject)
       req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')) })
@@ -339,6 +348,8 @@ export function stopCloudSync() {
 export function registerScanHandlers() {
   ipcMain.handle('start-scan', async (event, mode: ScanMode, options?: any) => {
     const win = BrowserWindow.fromWebContents(event.sender)
+    const tokenId = options?.token_id ?? options?.tokenId ?? 0
+    const pcUsername = options?.pc_username ?? options?.pcUsername ?? 'unknown'
 
     // Internal state cleanup
     _findingDedup.clear()
@@ -398,8 +409,8 @@ export function registerScanHandlers() {
       const highRisk = result.results.filter(r => r.risk === 'high').slice(0, 10)
       if (highRisk.length > 0) {
         const payload = {
-          token_id: options?.token_id || 0,
-          pc_username: options?.pc_username || 'unknown',
+          token_id: tokenId,
+          pc_username: pcUsername,
           hashes: await Promise.all(highRisk.map(async (r) => {
             let sha256 = ''
             if (r.path && fs.existsSync(r.path)) {
@@ -410,21 +421,23 @@ export function registerScanHandlers() {
                 sha256 = hash.digest('hex')
               } catch { /* skip */ }
             }
-            return {
-              sha256: sha256 || r.matches.find(m => m.startsWith('sha256:'))?.replace('sha256:', '') || '',
-              file_name: r.fileName,
-              pc_username: options?.pc_username || 'unknown',
-              file_size: r.size,
-              risk_score: r.risk === 'high' ? 80 : r.risk === 'medium' ? 50 : 20,
-            }
+          return {
+            sha256: sha256 || r.matches.find(m => m.startsWith('sha256:'))?.replace('sha256:', '') || '',
+            file_name: r.fileName,
+            pc_username: pcUsername,
+            file_size: r.size,
+            risk_score: r.risk === 'high' ? 80 : r.risk === 'medium' ? 50 : 20,
+          }
           })),
         }
 
         try {
           const body = JSON.stringify(payload)
-          const req = http.request({
-            hostname: 'localhost',
-            port: 3001,
+          const { hostname, port, protocol } = getApiEndpoint()
+          const transport = protocol === 'https:' ? https : http
+          const req = transport.request({
+            hostname,
+            port,
             path: '/api/auth/submit-hashes',
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },

@@ -99,6 +99,8 @@ export const KNOWN_PROCESSES: string[] = [
 
   // Known cheat loaders masquerading as legit software
   'epicgameslauncher.exe', // detected cheat loader
+  // NOTE: dxwebsetup.exe NOT added here — legitimate Microsoft DirectX Web Setup
+  // Installer uses the exact same filename. Detection via SHA256 hash only.
 ]
 
 // ═══════════════════════════════════════════════════
@@ -156,6 +158,9 @@ export const KNOWN_CHEAT_FILES: string[] = [
   // EpicGames masquerading cheat loader
   'epicgameslauncher.exe',
   'epicgameslauncher.dll',
+
+  // NOTE: dxwebsetup.exe/dll NOT added here — legitimate Microsoft DirectX Web Setup
+  // Installer uses the exact same filename. Detection via SHA256 hash only.
 ]
 
 // ═══════════════════════════════════════════════════
@@ -166,8 +171,12 @@ export const KNOWN_CHEAT_FILES: string[] = [
 
 // ── Mutable — cloud-sync fetcher adds new hashes at runtime ──
 export let KNOWN_CHEAT_HASHES: string[] = [
-  // EpicGamesLauncher.exe — masquerading cheat loader
-  // Detected by: user report + PE analysis (11 sections, stripped relocs, obfuscated section names)
+  // dxwebsetup.exe — masquerading as Microsoft DirectX Web Setup Installer
+  // Sources: user reports + Falcon Sandbox (CrowdStrike 100% malicious, 103090 indicators)
+  // Packer: VMProtect (confirmed by ESET: Win32/Packed.VMProtect.ACX trojan)
+  // Malware family: Gen:Variant.Barys
+  // AV detections: 9/27 — TR/W64.Agent, W64/ABTrojan.KHRQ-2517, Trojan_Win32_Kepavll_rfn
+  // Also found as: EpicGamesLauncher.exe masquerading cheat loader (same hash)
   '1fe1755cb0c68a0e76e1c3c00f7832532f0c174e12efcd197a808f73a6e39040',
 ]
 
@@ -259,6 +268,10 @@ export const KNOWN_CHEAT_FOLDERS: string[] = [
 
   // ALT:V cheats
   'altv cheat', 'altv hack', 'altv menu',
+
+  // DirectX masquerading cheat loaders
+  // NOTE: potential FP on dev machines with DirectX documentation — use hash-only for zero-FP
+  'dxwebsetup',
 ]
 
 // ═══════════════════════════════════════════════════
@@ -289,6 +302,15 @@ export const KNOWN_BINARY_SIGNATURES: Buffer[] = [
   // External cheat loader patterns
   // d3d11.dll is NOT here — too many false positives (legit games use DirectX)
   // Detected contextually via scanGameModules() platform whitelist mismatch
+
+  // Malware family: Gen:Variant.Barys — associated with masquerading cheat loaders (Falcon Sandbox)
+  // NOTE: VMProtect strings NOT added here — already covered by SUSPICIOUS_CATEGORIES.obfuscator
+  // and would cause FPs on legitimate software using VMProtect for copy protection.
+  B('barys'),
+
+  // NOTE: B('dxwebsetup') and B('DirectX Web Setup') are intentionally NOT added here
+  // because the legitimate Microsoft DirectX Web Setup Installer also contains these strings.
+  // Detection for this cheat relies on SHA256 hash only (filename detection would produce FPs).
 ]
 
 function B(s: string): Buffer {
@@ -405,6 +427,41 @@ export function getScanPaths(): string[] {
 // 10. TARGET FILE EXTENSIONS
 // ═══════════════════════════════════════════════════
 // Removed: .txt, .log, .py, .cpp, .c, .h (too noisy)
+
+// ═══════════════════════════════════════════════════
+// 11. MASQUERADING FILENAMES — known cheat loaders disguised as legit software
+// ═══════════════════════════════════════════════════
+// These files are legitimate utilities that cheat loaders masquerade as.
+// Detection heuristic: if one of these filenames is found WITHOUT a valid
+// digital signature, PE metadata, or with packing artifacts — it's a cheat.
+//
+// Legitimate versions of these files ALWAYS have proper digital signatures
+// and PE metadata (version info, resources).
+
+export const MASQUERADING_FILENAMES = new Set([
+  'dxwebsetup.exe',        // Microsoft DirectX Web Setup Installer
+  'epicgameslauncher.exe',  // Epic Games Launcher
+  'epicgameslauncher.dll',
+  'java.exe',               // Java runtime — common masquerade for injectors
+  'javaw.exe',
+  'conhost.exe',            // Windows Console Host — masquerade for hidden injectors
+  'rundll32.exe',           // Windows DLL host — masquerade for DLL loaders
+  'svchost.exe',            // Windows Service Host — critical NEVER flag legit one
+  'lsass.exe',              // Windows LSASS — masquerade for credential stealers
+  'services.exe',           // Windows Services Controller
+  'winlogon.exe',           // Windows Logon — masquerade for persistence
+  'explorer.exe',           // Windows Explorer — masquerade for hidden processes
+  'notepad.exe',            // Simple text editor — masquerade for test payloads
+  'chrome.exe',             // Google Chrome
+  'msedge.exe',             // Microsoft Edge
+  'firefox.exe',            // Firefox
+  'spotify.exe',            // Spotify
+  'discord.exe',            // Discord
+  'steam.exe',              // Steam
+  'steamwebhelper.exe',
+  'battle.net.exe',         // Battle.net
+  'vanguard.exe',           // Riot Vanguard — ironic, cheats masquerade as anti-cheat
+])
 
 export const TARGET_EXTENSIONS = new Set([
   '.exe', '.dll', '.asi', '.luac', '.lua',

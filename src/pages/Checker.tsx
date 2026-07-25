@@ -414,7 +414,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
     const progressHandler = (data: ScanProgress) => {
       if (scanRef.current && isMounted.current) setProgress({ ...data })
     }
-    api.onScanProgress(progressHandler)
+    const unsubscribeProgress = api.onScanProgress(progressHandler)
 
     try {
       const response = await api.startScan(activeTab, tokenId !== null ? tokenId : undefined)
@@ -433,9 +433,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       }
     } finally {
       scanRef.current = false
-      if (api?.offScanProgress) {
-        api.offScanProgress(progressHandler)
-      }
+      if (typeof unsubscribeProgress === 'function') unsubscribeProgress()
     }
   }, [activeTab, currentTab, t, tokenId])
 
