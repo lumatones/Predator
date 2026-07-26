@@ -24,6 +24,8 @@ Predator — десктопное приложение для обнаружен
 
 Полная экосистема: десктопное приложение → API-сервер → админ-панель.
 
+Документация: [CHANGELOG](docs/CHANGELOG.md) · [DEV](docs/DEV.md) · [REFACTORING](docs/REFACTORING.md) · [RULES](docs/RULES.md)
+
 ---
 
 ## ⬇️ Установка

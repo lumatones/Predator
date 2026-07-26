@@ -26,9 +26,16 @@ desktop.ini
 *.lnk
 *.zip
 
+# ── External binaries (dev tools, not part of project) ──
+freebuff.exe
+Freebuff-*.exe
+rg.exe
+tree-sitter.wasm
+_nul
+
 # ── User artifacts ──
-Code.zip
 release_info.json
+*release_info.json
 
 # ── Promo video (separate project) ──
 promo/
