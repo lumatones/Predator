@@ -72,6 +72,9 @@
     }
   },
   "private": true,
+  "workspaces": [
+    "admin"
+  ],
   "license": "UNLICENSED",
   "dependencies": {
     "@fontsource/instrument-serif": "^5.3.0",
