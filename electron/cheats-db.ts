@@ -240,6 +240,11 @@ export let KNOWN_CHEAT_HASHES: string[] = [
   // AV detections: 9/27 — TR/W64.Agent, W64/ABTrojan.KHRQ-2517, Trojan_Win32_Kepavll_rfn
   // Also found as: EpicGamesLauncher.exe masquerading cheat loader (same hash)
   '1fe1755cb0c68a0e76e1c3c00f7832532f0c174e12efcd197a808f73a6e39040',
+
+  // dxwebsetup.exe variant #2 — 19.4MB, 10 PE sections, fully packed, 0 readable strings
+  // SHA256 — user-reported cheat loader in Downloads masquerading as DirectX installer
+  // Unsigned, packed, 60x larger than legitimate Microsoft dxwebsetup.exe (~300KB)
+  'a8aab22b4264dda90489192e41adca4989de531ff3453df685ea729b61045c29',
 ]
 
 /** Replace the entire KNOWN_CHEAT_HASHES array with cloud-fetched data */
@@ -610,6 +615,20 @@ export const MASQUERADING_FILENAMES = new Set([
   'steamwebhelper.exe',
   'battle.net.exe',         // Battle.net
   'vanguard.exe',           // Riot Vanguard — ironic, cheats masquerade as anti-cheat
+  // GTA 5 RP specific masquerades (common cheat loader disguises)
+  'rockstar-games-launcher.exe',  // Rockstar Launcher masquerade
+  'socialclub.exe',               // Social Club masquerade
+  'gta5.exe',                     // GTA5.exe masquerade (game itself)
+  'fivem.exe',                    // FiveM masquerade
+  'ragemp_v.exe',                 // RAGE MP masquerade
+  'altv.exe',                     // ALT:V masquerade
+  'vcredist.exe',                 // Visual C++ redistributable
+  'vcredist_x64.exe',
+  'dotnet-runtime.exe',           // .NET runtime installer
+  'nvidia-installer.exe',         // NVIDIA driver masquerade
+  'amd-software.exe',             // AMD software masquerade
+  'directx_installer.exe',        // Alternative DirectX installer name
+  'd3dcompiler_installer.exe',    // D3D compiler installer
 ])
 
 export const TARGET_EXTENSIONS = new Set([

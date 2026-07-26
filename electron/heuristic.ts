@@ -553,6 +553,22 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       riskScore = Math.max(riskScore - 30, 0)
     }
 
+    // 3b. Large unsigned EXE in Downloads/Desktop/Temp — catch-all for packed cheat loaders
+    // Legitimate software NEVER comes as a single large unsigned EXE in user download folders.
+    // This catches VMProtect'd/Themida'd loaders that have 0 readable strings.
+    if (ext === '.exe' && stat.size > 15 * 1024 * 1024 && stat.size < 50 * 1024 * 1024) {
+      const fpLow = filepath.toLowerCase()
+      const inSuspiciousDir = fpLow.includes('downloads') || fpLow.includes('download') ||
+        fpLow.includes('desktop') || fpLow.includes('temp') || fpLow.includes('загрузки')
+      if (inSuspiciousDir) {
+        const signed = checkDigitalSignature(filepath)
+        if (!signed) {
+          suspicions.push(`🚩 Large unsigned EXE (${(stat.size / 1024 / 1024).toFixed(1)} MB) in user directory — likely packed cheat loader`)
+          riskScore += 60
+        }
+      }
+    }
+
     // 4. Binary analysis
     const binaryExts = new Set(['.exe', '.dll', '.asi', '.sys', '.drv'])
     const textExts = new Set(['.js', '.lua', '.cs', '.bat', '.ps1', '.vbs', '.ahk', '.cfg', '.ini', '.json', '.xml'])
@@ -785,6 +801,12 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       try {
         learnFromFile(filepath, riskScore)
       } catch (_e) { /* skip */ }
+    }
+
+    // Dev-mode logging: trace why a file was or wasn't flagged
+    if (process.env.NODE_ENV === 'development' && (riskScore > 0 || (ext === '.exe' && stat.size > 1024 * 1024))) {
+      const label = riskScore > 0 ? `FLAGGED (score=${riskScore})` : 'SKIPPED (score=0)'
+      console.log(`[Heuristic] ${label}: ${fileName} (${(stat.size / 1024 / 1024).toFixed(1)}MB, ${ext}) — ${suspicions.slice(0, 3).join(' | ') || 'no signals'}`)
     }
 
     if (riskScore === 0) return null
