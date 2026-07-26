@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npx tsc --noEmit --project tsconfig.electron.json
 
   typecheck-admin:
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npx tsc --noEmit
 
   build-electron:
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
