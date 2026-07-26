@@ -14,9 +14,11 @@ interface ShieldProps {
   phase?: 'idle' | 'scanning' | 'done'
   /** Threat count — determines color (0 = clean = green) */
   threatCount?: number
+  /** Hovered — intensifies rotation and glow on main screen */
+  hovered?: boolean
 }
 
-function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0 }: ShieldProps) {
+function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0, hovered = false }: ShieldProps) {
   const meshRef = useRef<Mesh>(null)
   const reducedMotion = useReducedMotion()
 
@@ -35,12 +37,14 @@ function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0 }
 
   useFrame((state, delta) => {
     if (meshRef.current && rotate && reducedMotion === false) {
-      // Speed varies by phase
-      const speedMultiplier = phase === 'scanning' ? 3.0 : phase === 'done' ? 0.8 : 1.0
+      // Speed varies by phase + hover boost
+      const baseSpeed = hovered ? 1.2 : 0.8
+      const speedMultiplier = phase === 'scanning' ? 3.0 : phase === 'done' ? 0.8 : baseSpeed
       meshRef.current.rotation.y += delta * 0.6 * speedMultiplier
       meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.6) * 0.08
-      // Pulsing scale — more intense during scanning, celebration bounce on clean
-      const pulseAmp = phase === 'scanning' ? 0.08 : phase === 'done' && threatCount === 0 ? 0.06 : 0.04
+      // Pulsing scale — hover adds extra bounce
+      const hoverAmp = hovered ? 0.02 : 0
+      const pulseAmp = (phase === 'scanning' ? 0.08 : phase === 'done' && threatCount === 0 ? 0.06 : 0.05) + hoverAmp
       const pulseSpeed = phase === 'scanning' ? 2.0 : phase === 'done' && threatCount === 0 ? 1.6 : 1.2
       const s = 1 + Math.sin(state.clock.elapsedTime * pulseSpeed) * pulseAmp
       meshRef.current.scale.setScalar(s)
@@ -70,7 +74,7 @@ function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0 }
       <meshStandardMaterial
         color={phase === 'done' ? reactiveColor : dark}
         emissive={reactiveColor}
-        emissiveIntensity={phase === 'scanning' ? 1.2 : phase === 'done' ? 0.9 : 0.7}
+        emissiveIntensity={phase === 'scanning' ? 1.2 : phase === 'done' ? 0.9 : hovered ? 1.0 : 0.7}
         metalness={0.7}
         roughness={0.25}
       />
@@ -135,6 +139,8 @@ interface PredatorLogo3DProps {
   phase?: 'idle' | 'scanning' | 'done'
   /** Threat count for color determination (0 = clean) */
   threatCount?: number
+  /** Enable hover interaction (intensifies rotation + glow) */
+  interactive?: boolean
 }
 
 export default function PredatorLogo3D({
@@ -145,8 +151,10 @@ export default function PredatorLogo3D({
   preset = 'auto',
   phase = 'idle',
   threatCount = 0,
+  interactive = false,
 }: PredatorLogo3DProps) {
   const [webglFailed, setWebglFailed] = useState(false)
+  const [hovered, setHovered] = useState(false)
   const hasWebGL = useMemo(() => isWebGLAvailable(), [])
 
   const config = useMemo(() => {
@@ -163,7 +171,12 @@ export default function PredatorLogo3D({
   }
 
   return (
-    <div className="logo-3d" style={{ width: size, height: size, lineHeight: 0 }}>
+    <div
+      className="logo-3d"
+      style={{ width: size, height: size, lineHeight: 0 }}
+      onMouseEnter={() => interactive && setHovered(true)}
+      onMouseLeave={() => interactive && setHovered(false)}
+    >
       <Canvas
         camera={{ position: [0, 0, 4.5], fov: 45 }}
         dpr={[1, Math.max(window.devicePixelRatio || 2, 2)]}
@@ -174,7 +187,7 @@ export default function PredatorLogo3D({
         <ambientLight intensity={config.lightCount >= 2 ? 0.3 : 0.2} />
         <pointLight position={[4, 4, 6]} intensity={config.lightCount >= 2 ? 1.2 : 0.8} color={light} />
         {config.lightCount >= 2 && <pointLight position={[-4, -2, 2]} intensity={0.4} color={accent} />}
-        <Shield accent={accent} light={light} dark={dark} rotate={config.rotate} phase={phase} threatCount={threatCount} />
+        <Shield accent={accent} light={light} dark={dark} rotate={config.rotate} phase={phase} threatCount={threatCount} hovered={hovered} />
       </Canvas>
     </div>
   )

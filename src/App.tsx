@@ -23,7 +23,7 @@ const Logo = React.memo(function Logo({ accent, light, dark, subtitle }: {
   return (
     <div className="logo-section">
       <div className="logo-icon">
-        <PredatorLogo3D accent={accent} light={light} dark={dark} size={96} />
+        <PredatorLogo3D accent={accent} light={light} dark={dark} size={96} interactive />
       </div>
       <h1 className="title" data-text="Predator">Predator</h1>
       <p className="subtitle">{subtitle}</p>

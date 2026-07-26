@@ -227,12 +227,31 @@ body {
   align-items: center;
   justify-content: center;
   animation: logoFloat 4s ease-in-out infinite;
+  position: relative;
+}
+
+/* Ambient glow behind the 3D shield */
+.logo-icon::after {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent-red) 25%, transparent), transparent 70%);
+  filter: blur(16px);
+  animation: logoGlowPulse 3s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
 }
 
 @keyframes logoFloat {
   0%, 100% { transform: translateY(0) scale(1); }
   30% { transform: translateY(-6px) scale(1.05); }
   60% { transform: translateY(-2px) scale(1.02); }
+}
+
+@keyframes logoGlowPulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.15); }
 }
 
 .logo-3d {
