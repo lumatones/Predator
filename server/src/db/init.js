@@ -80,6 +80,19 @@ async function init() {
   `)
 
   // MySQL < 8.0 не поддерживает IF NOT EXISTS для CREATE INDEX
+  await query(`
+    CREATE TABLE IF NOT EXISTS safe_files (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      partial_hash  CHAR(64) NOT NULL,
+      file_name     VARCHAR(255),
+      file_size     INT DEFAULT 0,
+      confirm_count INT DEFAULT 1,
+      first_seen    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_seen     DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_partial_hash_size (partial_hash, file_size)
+    ) ENGINE=InnoDB
+  `)
+
   try {
     await query('CREATE INDEX idx_sh_status ON suspicious_hashes(status)')
   } catch (err) {
@@ -88,6 +101,12 @@ async function init() {
 
   try {
     await query('CREATE INDEX idx_sh_created ON suspicious_hashes(created_at)')
+  } catch (err) {
+    if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
+
+  try {
+    await query('CREATE INDEX idx_sf_last_seen ON safe_files(last_seen)')
   } catch (err) {
     if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
   }
