@@ -37,7 +37,7 @@ import { scanNetstatV2 } from './modes/network'
 import { scanRegistryDeepV2, scanPrefetchV2, scanRegistryForCheats } from './modes/registry'
 import { scanBrowserHistory } from './modes/browser'
 import { runDmaScan, scanDmaDevices, scanScheduledTasks, checkIommuStatus } from './modes/dma'
-import { safeSpread } from './utils/safe-spread'
+import { safeCall, safeSpread } from './utils/safe-spread'
 import { runEtwScan } from './etw-provider'
 import { runForensicScan } from './forensic-traces'
 import { runAntiForensicScan } from './anti-forensic'
@@ -54,7 +54,7 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   clearFindingDedup()
   ctx.sigCache.clear()
   await sendProgress(win, { phase: 'scanning', currentDir: 'Advanced process scanning...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 1 })
-  results.push(...safeSpread('scanRunningProcessesV2', scanRunningProcessesV2()))
+  results.push(...safeCall('scanRunningProcessesV2', () => scanRunningProcessesV2()))
 
   // Phase 2 — heuristic file scan (with incremental + pre-filter + fuzzy hash)
   await sendProgress(win, { phase: 'scanning', currentDir: `Heuristic file scan (${EXTENDED_SCAN_PATHS.length} directories)...`, filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 2 })
@@ -100,27 +100,27 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   // Phase 3-5: parallel execution (registry + prefetch + network are independent)
   await sendProgress(win, { phase: 'scanning', currentDir: 'Parallel: registry + prefetch + network...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 3 })
   const [regResults, prefResults, netResults] = await Promise.all([
-    Promise.resolve(safeSpread('scanRegistryDeepV2', scanRegistryDeepV2())),
-    Promise.resolve(safeSpread('scanPrefetchV2', scanPrefetchV2())),
-    Promise.resolve(safeSpread('scanNetstatV2', scanNetstatV2())),
+    Promise.resolve(safeCall('scanRegistryDeepV2', () => scanRegistryDeepV2())),
+    Promise.resolve(safeCall('scanPrefetchV2', () => scanPrefetchV2())),
+    Promise.resolve(safeCall('scanNetstatV2', () => scanNetstatV2())),
   ])
   results.push(...regResults, ...prefResults, ...netResults)
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Parallel: exec + memory + behavior...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
-  results.push(...safeSpread('scanMasqueradingProcesses', scanMasqueradingProcesses()))
+  results.push(...safeCall('scanMasqueradingProcesses', () => scanMasqueradingProcesses()))
 
   // Phase 5b — game integrity + modules + handles
   await sendProgress(win, { phase: 'scanning', currentDir: 'Game integrity...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
-  results.push(...safeSpread('scanGameIntegrity', scanGameIntegrity()))
-  results.push(...safeSpread('scanGameModules', scanGameModules()))
-  results.push(...safeSpread('scanOpenHandles', scanOpenHandles()))
+  results.push(...safeCall('scanGameIntegrity', () => scanGameIntegrity()))
+  results.push(...safeCall('scanGameModules', () => scanGameModules()))
+  results.push(...safeCall('scanOpenHandles', () => scanOpenHandles()))
 
   // Phase 5c — named pipes + WMI + AMSI/ETW patch + ETW kernel monitor
   await sendProgress(win, { phase: 'scanning', currentDir: 'IPC & persistence...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
-  results.push(...safeSpread('scanNamedPipes', scanNamedPipes()))
-  results.push(...safeSpread('scanWmiPersistence', scanWmiPersistence()))
+  results.push(...safeCall('scanNamedPipes', () => scanNamedPipes()))
+  results.push(...safeCall('scanWmiPersistence', () => scanWmiPersistence()))
   // ETW/WMI kernel-level monitoring
-  results.push(...safeSpread('runEtwScan', runEtwScan()))
+  results.push(...safeCall('runEtwScan', () => runEtwScan()))
 
   // AMSI/ETW patch detection
   try {
@@ -170,30 +170,35 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
 
   // Phase 6 — DMA + scheduled tasks + IOMMU
   await sendProgress(win, { phase: 'scanning', currentDir: 'DMA devices + IOMMU...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 6 })
-  results.push(...safeSpread('scanDmaDevices', scanDmaDevices()))
-  results.push(...safeSpread('checkIommuStatus', checkIommuStatus()))
+  results.push(...safeCall('scanDmaDevices', () => scanDmaDevices()))
+  results.push(...safeCall('checkIommuStatus', () => checkIommuStatus()))
   await sendProgress(win, { phase: 'scanning', currentDir: 'Scheduled tasks...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 6 })
-  results.push(...safeSpread('scanScheduledTasks', scanScheduledTasks()))
+  results.push(...safeCall('scanScheduledTasks', () => scanScheduledTasks()))
 
   // Phase 7 — registry cheat scan
   await sendProgress(win, { phase: 'scanning', currentDir: 'Registry cheat scan...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 7 })
-  results.push(...safeSpread('scanRegistryForCheats', scanRegistryForCheats()))
+  results.push(...safeCall('scanRegistryForCheats', () => scanRegistryForCheats()))
 
   // Phase 8 — browser history
   await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 8 })
-  results.push(...safeSpread('scanBrowserHistory', await scanBrowserHistory(EXTENDED_CHEAT_KEYWORDS)))
+  try {
+    const bh = await scanBrowserHistory(EXTENDED_CHEAT_KEYWORDS)
+    results.push(...safeSpread('scanBrowserHistory', bh))
+  } catch (err) {
+    console.error('[scan] scanBrowserHistory crashed:', (err as Error).message || err)
+  }
 
   // Phase 9 — Forensic artifact scan (Prefetch, Amcache, BAM, UserAssist, EventLogs...)
   await sendProgress(win, { phase: 'scanning', currentDir: 'Forensic artifact scan...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 9 })
-  results.push(...safeSpread('runForensicScan', runForensicScan()))
+  results.push(...safeCall('runForensicScan', () => runForensicScan()))
 
   // Phase 10 — Anti-forensic scan (log clearing, cleaning tools, tampering)
   await sendProgress(win, { phase: 'scanning', currentDir: 'Anti-forensic integrity check...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 10 })
-  results.push(...safeSpread('runAntiForensicScan', runAntiForensicScan()))
+  results.push(...safeCall('runAntiForensicScan', () => runAntiForensicScan()))
 
   // Phase 11 — Enhanced PC cleaning detection (USN journal, timestomping, ShellBags, MRU)
   await sendProgress(win, { phase: 'scanning', currentDir: 'PC cleaning detection...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 11 })
-  results.push(...safeSpread('runPcCleanerScan', runPcCleanerScan()))
+  results.push(...safeCall('runPcCleanerScan', () => runPcCleanerScan()))
 
   await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 13 })
   return { results, filesScanned }
@@ -211,25 +216,30 @@ async function runQuickScan(win: BrowserWindow | null): Promise<{ results: ScanR
   ctx.sigCache.clear()
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Processes...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 1 })
-  results.push(...safeSpread('scanRunningProcessesV2', scanRunningProcessesV2()))
-  results.push(...safeSpread('scanMasqueradingProcesses', scanMasqueradingProcesses()))
+  results.push(...safeCall('scanRunningProcessesV2', () => scanRunningProcessesV2()))
+  results.push(...safeCall('scanMasqueradingProcesses', () => scanMasqueradingProcesses()))
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Prefetch...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 2 })
-  results.push(...safeSpread('scanPrefetchV2', scanPrefetchV2()))
+  results.push(...safeCall('scanPrefetchV2', () => scanPrefetchV2()))
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Registry...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 3 })
-  results.push(...safeSpread('scanRegistryDeepV2', scanRegistryDeepV2()))
-  results.push(...safeSpread('scanRegistryForCheats', scanRegistryForCheats()))
+  results.push(...safeCall('scanRegistryDeepV2', () => scanRegistryDeepV2()))
+  results.push(...safeCall('scanRegistryForCheats', () => scanRegistryForCheats()))
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Pipes & persistence...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 4 })
-  results.push(...safeSpread('scanNamedPipes', scanNamedPipes()))
-  results.push(...safeSpread('scanWmiPersistence', scanWmiPersistence()))
+  results.push(...safeCall('scanNamedPipes', () => scanNamedPipes()))
+  results.push(...safeCall('scanWmiPersistence', () => scanWmiPersistence()))
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Network...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 5 })
-  results.push(...safeSpread('scanNetstatV2', scanNetstatV2()))
+  results.push(...safeCall('scanNetstatV2', () => scanNetstatV2()))
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Browser history...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 6 })
-  results.push(...safeSpread('scanBrowserHistory', await scanBrowserHistory(QUICK_CHEAT_KEYWORDS)))
+  try {
+    const bh = await scanBrowserHistory(QUICK_CHEAT_KEYWORDS)
+    results.push(...safeSpread('scanBrowserHistory', bh))
+  } catch (err) {
+    console.error('[scan] scanBrowserHistory crashed:', (err as Error).message || err)
+  }
 
   await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 6 })
   filesScanned = results.length
