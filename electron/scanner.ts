@@ -41,6 +41,7 @@ import { safeSpread } from './utils/safe-spread'
 import { runEtwScan } from './etw-provider'
 import { runForensicScan } from './forensic-traces'
 import { runAntiForensicScan } from './anti-forensic'
+import { runPcCleanerScan } from './pc-cleaner-detection'
 
 // ═══════════════════════════════════════════════════
 // FULL SCAN (was extended) — 9-phase deep scan
@@ -190,7 +191,11 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   await sendProgress(win, { phase: 'scanning', currentDir: 'Anti-forensic integrity check...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 10 })
   results.push(...safeSpread('runAntiForensicScan', runAntiForensicScan()))
 
-  await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 12 })
+  // Phase 11 — Enhanced PC cleaning detection (USN journal, timestomping, ShellBags, MRU)
+  await sendProgress(win, { phase: 'scanning', currentDir: 'PC cleaning detection...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 11 })
+  results.push(...safeSpread('runPcCleanerScan', runPcCleanerScan()))
+
+  await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 13 })
   return { results, filesScanned }
 }
 
