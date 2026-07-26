@@ -635,6 +635,285 @@ export function detectBrowserMassWipe(): ScanResult[] {
 }
 
 // ══════════════════════════════════════════════════════════
+// 8. PREFETCH MASS DELETION DETECTION
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Windows Prefetch stores .pf files for every executed program.
+ * A healthy system typically has 150–500+ Prefetch files over time.
+ * If there are abnormally FEW entries (< 50), someone likely mass-deleted them
+ * to hide traces of having run cheat tools.
+ *
+ * Another signal: if ALL remaining prefetch files are from the last 1–2 hours,
+ * and the count is low, the old entries were wiped and only system processes
+ * have re-populated the cache since boot.
+ */
+export function detectPrefetchMassDeletion(): ScanResult[] {
+  const results: ScanResult[] = []
+  const prefetchDir = path.join(_WR, 'Prefetch')
+
+  if (!fs.existsSync(prefetchDir)) {
+    const dedupKey = 'pc-cleaner:prefetch-dir-missing'
+    if (addFindingDedup(dedupKey)) {
+      results.push({
+        path: prefetchDir,
+        fileName: '🚨 Prefetch Directory Missing — Mass Deletion',
+        type: 'system',
+        risk: 'high',
+        matches: [
+          'prefetch-dir:missing',
+          '⚠ Entire Prefetch folder was deleted — all execution history destroyed',
+        ],
+        size: 0,
+        modifiedAt: new Date().toISOString(),
+      })
+    }
+    return results
+  }
+
+  try {
+    const files = fs.readdirSync(prefetchDir)
+    const pfFiles = files.filter(f => f.toUpperCase().endsWith('.PF'))
+    const totalCount = pfFiles.length
+
+    // Signal 1: Abnormally low Prefetch count (< 50 on a system that's been running)
+    if (totalCount < 50) {
+      const dedupKey = 'pc-cleaner:prefetch-low-count'
+      if (addFindingDedup(dedupKey)) {
+        const matches = [
+          `prefetch-count:${totalCount} (normal: 150-500+)`,
+          `⚠ Prefetch entries extremely LOW — mass deletion of execution history`,
+        ]
+
+        // If also VERY few (< 10), it's even more suspicious
+        if (totalCount < 10) {
+          matches.push('🚩 Only system-critical entries remain — ALL cheat traces wiped')
+        } else {
+          matches.push('50+ entries deleted or entire Prefetch cache recently purged')
+        }
+
+        results.push({
+          path: prefetchDir,
+          fileName: `🚨 Prefetch Mass Deletion: ${totalCount} entries (normal 150+)`,
+          type: 'system',
+          risk: totalCount < 10 ? 'high' : 'medium',
+          matches,
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+
+    // Signal 2: All entries are from the last 2 hours (old ones were purged)
+    const now = Date.now()
+    let recentCount = 0
+    let oldestMtime = now
+
+    for (const file of pfFiles) {
+      try {
+        const fp = path.join(prefetchDir, file)
+        const stat = fs.statSync(fp)
+        if (now - stat.mtimeMs < 7200000) { // 2 hours
+          recentCount++
+        }
+        if (stat.mtimeMs < oldestMtime) {
+          oldestMtime = stat.mtimeMs
+        }
+      } catch { /* skip */ }
+    }
+
+    // If ALL entries are from last 2 hours and there are < 100 of them
+    if (recentCount === totalCount && totalCount < 100 && totalCount > 0) {
+      const dedupKey = 'pc-cleaner:prefetch-all-recent'
+      if (addFindingDedup(dedupKey)) {
+        results.push({
+          path: prefetchDir,
+          fileName: `🚨 Prefetch All Recent: ${totalCount} entries from last 2h`,
+          type: 'system',
+          risk: 'medium',
+          matches: [
+            `prefetch-recent:${recentCount}/${totalCount} from last 2 hours`,
+            `oldest-entry:${new Date(oldestMtime).toISOString().slice(0, 16)}`,
+            `⚠ Old Prefetch entries were purged — only current boot session remains`,
+          ],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+  } catch { /* skip */ }
+
+  return results
+}
+
+// ══════════════════════════════════════════════════════════
+// 9. EVENTLOG CLEARING DETECTION
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Windows Security EventLog keeps Event ID 104 when logs are cleared.
+ * We check for:
+ * 1. Event ID 104 in Security log (wevtutil cl / Clear-EventLog)
+ * 2. PowerShell Clear-EventLog command execution (Event ID 4688 = process creation)
+ * 3. Abnormally small Security log size relative to system uptime
+ * 4. Missing EventLog files (.evtx) that should exist
+ */
+export function detectEventLogClearing(): ScanResult[] {
+  const results: ScanResult[] = []
+
+  // ── Check 1: Event ID 104 — Event Log was explicitly cleared ──
+  try {
+    const clearedLogs = ps(`
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=104} -MaxEvents 5 -ErrorAction SilentlyContinue |
+  Select-Object TimeCreated, @{N='LogName';E={$_.Properties[0].Value}} |
+  ConvertTo-Json -Compress
+`, 15000)
+
+    if (clearedLogs && clearedLogs.length > 5 && clearedLogs !== '[]') {
+      // Parse the log name that was cleared
+      const logNameMatch = clearedLogs.match(/"LogName":"([^"]+)"/)
+      const logName = logNameMatch ? logNameMatch[1] : 'Security'
+
+      const dedupKey = 'pc-cleaner:eventlog-104'
+      if (addFindingDedup(dedupKey)) {
+        results.push({
+          path: 'Windows Security Event Log',
+          fileName: `🚨 Event Log Was Cleared: ${logName}`,
+          type: 'system',
+          risk: 'high',
+          matches: [
+            'eventlog:cleared (Event ID 104)',
+            `log-name:${logName}`,
+            `⚠ wevtutil or Clear-EventLog was used — ${logName} log history destroyed`,
+          ],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+  } catch { /* optional */ }
+
+  // ── Check 2: Clear-EventLog PowerShell command ──
+  try {
+    const cmdLog = ps(`
+Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4688} -MaxEvents 200 -ErrorAction SilentlyContinue |
+  Where-Object { $_.Properties[8].Value -match 'Clear-EventLog|wevtutil\\s+cl' } |
+  Select-Object TimeCreated, @{N='Cmd';E={$_.Properties[8].Value}} |
+  ConvertTo-Json -Compress
+`, 15000)
+
+    if (cmdLog && cmdLog.length > 5 && cmdLog !== '[]') {
+      const dedupKey = 'pc-cleaner:eventlog-clearcmd'
+      if (addFindingDedup(dedupKey)) {
+        results.push({
+          path: 'Windows Security Event Log (Process Creation)',
+          fileName: '🚨 Log Clearing Command Was Executed',
+          type: 'system',
+          risk: 'high',
+          matches: [
+            'eventlog:clear-command-executed (Event ID 4688)',
+            '⚠ wevtutil cl or Clear-EventLog was RUN on this system',
+          ],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+  } catch { /* optional */ }
+
+  // ── Check 3: Security log size vs system uptime ──
+  try {
+    const logInfo = ps(`
+$log = Get-WinEvent -ListLog Security -ErrorAction SilentlyContinue
+if ($log) {
+  Write-Output (\"LOG_SIZE:\" + $log.LogMode + \":\" + $log.LogFilePath + \":\" + $log.IsEnabled + \":\" + $log.MaximumSizeInBytes + \":\" + $log.LogIsolation)
+}
+
+# Also check uptime for reference
+$boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+$uptimeHrs = [math]::Round(((Get-Date) - $boot).TotalHours, 1)
+Write-Output (\"UPTIME_HOURS:\" + $uptimeHrs)
+
+# Check event count in Security log
+$count = (Get-WinEvent -ListLog Security -ErrorAction SilentlyContinue).RecordCount
+if ($count) { Write-Output (\"EVENT_COUNT:\" + $count) }
+`, 20000)
+
+    if (logInfo) {
+      const uptimeMatch = logInfo.match(/UPTIME_HOURS:([\d.]+)/)
+      const eventCountMatch = logInfo.match(/EVENT_COUNT:(\d+)/)
+
+      if (uptimeMatch && eventCountMatch) {
+        const uptimeHours = parseFloat(uptimeMatch[1])
+        const eventCount = parseInt(eventCountMatch[1])
+
+        // System running > 24 hours but < 500 events = log was recently cleared
+        if (uptimeHours > 24 && eventCount < 500) {
+          const dedupKey = 'pc-cleaner:eventlog-sparse'
+          if (addFindingDedup(dedupKey)) {
+            results.push({
+              path: 'Windows Security Event Log',
+              fileName: '🚨 Security Log Abnormally Sparse',
+              type: 'system',
+              risk: 'medium',
+              matches: [
+                `uptime:${uptimeHours}h, events:${eventCount} (expected: 1000+)`,
+                `⚠ System running ${uptimeHours}h but only ${eventCount} events — log was recently cleared`,
+              ],
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+            })
+          }
+        }
+      }
+    }
+  } catch { /* optional */ }
+
+  // ── Check 4: Missing .evtx files (specific logs were deleted) ──
+  try {
+    const evtxDir = path.join(_WR, 'System32', 'winevt', 'Logs')
+    if (fs.existsSync(evtxDir)) {
+      const criticalLogs = [
+        'Security.evtx',
+        'System.evtx',
+        'Application.evtx',
+        'Microsoft-Windows-Sysmon%4Operational.evtx',
+        'Windows PowerShell.evtx',
+        'Microsoft-Windows-PowerShell%4Operational.evtx',
+      ]
+
+      const missingLogs: string[] = []
+      for (const logFile of criticalLogs) {
+        const fp = path.join(evtxDir, logFile)
+        if (!fs.existsSync(fp) || fs.statSync(fp).size < 1024) {
+          missingLogs.push(logFile.split('%')[0].replace('.evtx', ''))
+        }
+      }
+
+      if (missingLogs.length >= 2) {
+        const dedupKey = 'pc-cleaner:eventlog-evtx-missing'
+        if (addFindingDedup(dedupKey)) {
+          results.push({
+            path: evtxDir,
+            fileName: `🚨 Event Log Files Missing/Empty: ${missingLogs.join(', ')}`,
+            type: 'system',
+            risk: 'high',
+            matches: [
+              `missing-evtx:${missingLogs.join(', ')}`,
+              `⚠ ${missingLogs.length} critical Event Log files were deleted or emptied`,
+            ],
+            size: 0,
+            modifiedAt: new Date().toISOString(),
+          })
+        }
+      }
+    }
+  } catch { /* optional */ }
+
+  return results
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED ENHANCED PC CLEANER SCAN
 // ══════════════════════════════════════════════════════════
 
@@ -661,6 +940,12 @@ export function runPcCleanerScan(): ScanResult[] {
 
   // Phase 7: Browser mass-wipe
   results.push(...detectBrowserMassWipe())
+
+  // Phase 8: Prefetch mass deletion
+  results.push(...detectPrefetchMassDeletion())
+
+  // Phase 9: EventLog clearing
+  results.push(...detectEventLogClearing())
 
   return results
 }
