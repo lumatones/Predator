@@ -29,7 +29,7 @@ export function isCloudSyncActive(): boolean {
 export function connectCloudWebSocket(serverUrl: string): void {
   try {
     // Dynamic import to avoid requiring socket.io-client in all builds
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const io = require('socket.io-client') as { default?: { io?: (url: string, opts: Record<string, unknown>) => { on: (e: string, cb: (data: unknown) => void) => void; emit: (e: string) => void; disconnect: () => void } } }
     const ioFn = io?.default?.io ?? (io as { io?: (url: string, opts: Record<string, unknown>) => { on: (e: string, cb: (data: unknown) => void) => void; emit: (e: string) => void; disconnect: () => void } })?.io
     if (!ioFn) {

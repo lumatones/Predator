@@ -583,7 +583,7 @@ export function analyzePeHeaders(filepath: string): PeAnalysisResult | null {
       if (secStart + 8 > buffer.length) break
 
       // Section name is 8 bytes, null-terminated
-      let nameBytes: number[] = []
+      const nameBytes: number[] = []
       for (let j = 0; j < 8; j++) {
         const b = buffer[secStart + j]
         if (b === 0) break
