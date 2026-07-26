@@ -23,10 +23,10 @@ export interface UpdateModalState {
 }
 
 export const THEMES: Record<ThemeId, ThemeColors> = {
-  predator: { accent: '#ff4d5a', light: '#ff8a5b', dark: '#b91c1c', bg: '#020202', card: '#0d0d0f', name: 'Predator Red' },
-  ocean:    { accent: '#7dd3fc', light: '#60a5fa', dark: '#1d4ed8', bg: '#020202', card: '#0d0d0f', name: 'Ocean Blue' },
-  stealth:  { accent: '#a1a1aa', light: '#e4e4e7', dark: '#3f3f46', bg: '#020202', card: '#0d0d0f', name: 'Stealth Black' },
-  nebula:   { accent: '#c084fc', light: '#f0abfc', dark: '#7c3aed', bg: '#020202', card: '#0d0d0f', name: 'Nebula Purple' },
+  predator: { accent: '#ff4d5a', light: '#ff8a5b', dark: '#b91c1c', bg: '#0a0202', card: '#140a0a', name: 'Predator Red' },
+  ocean:    { accent: '#7dd3fc', light: '#60a5fa', dark: '#1d4ed8', bg: '#02020a', card: '#0a0d16', name: 'Ocean Blue' },
+  stealth:  { accent: '#a1a1aa', light: '#e4e4e7', dark: '#3f3f46', bg: '#050505', card: '#101010', name: 'Stealth Black' },
+  nebula:   { accent: '#c084fc', light: '#f0abfc', dark: '#7c3aed', bg: '#060210', card: '#0f0a1a', name: 'Nebula Purple' },
 }
 
 export const T: Record<Lang, Record<string, string>> = {

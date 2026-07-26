@@ -27,6 +27,16 @@
   --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3);
   --shadow-glow: 0 0 20px rgba(255, 68, 68, 0.15);
 
+  /* ── Semantic Colors ── */
+  --color-success: #22c55e;
+  --color-success-dim: rgba(34, 197, 94, 0.4);
+  --color-success-glow: rgba(34, 197, 94, 0.1);
+  --color-warning: #f59e0b;
+  --color-warning-dim: rgba(245, 158, 11, 0.3);
+  --color-error: #ef4444;
+  --color-error-dim: rgba(239, 68, 68, 0.4);
+  --color-info: #3b82f6;
+
   /* ── Typography ── */
   --font-display: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
   --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -380,8 +390,8 @@ body {
 }
 
 .onb-step.done .onb-step-dot {
-  background: #22c55e;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  background: var(--color-success);
+  box-shadow: 0 0 6px var(--color-success-dim);
 }
 
 .onb-step.done .onb-step-dot::after {
@@ -405,7 +415,7 @@ body {
 }
 
 .onb-step.active .onb-step-label { color: rgba(255, 255, 255, 0.6); }
-.onb-step.done .onb-step-label { color: rgba(34, 197, 94, 0.6); }
+.onb-step.done .onb-step-label { color: rgba(34, 197, 94, 0.6); } /* kept rgba for text readability */
 
 .onb-step-line {
   flex: 0 1 24px;
@@ -695,7 +705,7 @@ body {
 
 .token-error {
   font-size: var(--text-sm);
-  color: #EF4444;
+  color: var(--color-error);
   margin-top: var(--space-1);
 }
 
@@ -846,7 +856,7 @@ body {
 .ready-text {
   font-size: var(--text-xl);
   font-weight: var(--fw-semibold);
-  color: #22c55e;
+  color: var(--color-success);
 }
 
 /* ═══ MAIN SCREEN CARDS ═══ */
@@ -952,9 +962,9 @@ body {
   transform: translateY(-50%);
   width: 8px;
   height: 8px;
-  background: #22c55e;
+  background: var(--color-success);
   border-radius: var(--radius-full);
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 8px var(--color-success-dim);
 }
 
 .update-indicator {
@@ -1091,7 +1101,7 @@ body {
 
 .checker-status-dot[data-phase="idle"] { background: #6B7280; }
 .checker-status-dot[data-phase="scanning"] { background: var(--accent-red); animation: dotPulse 1.5s ease-in-out infinite; }
-.checker-status-dot[data-phase="done"] { background: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,0.4); }
+.checker-status-dot[data-phase="done"] { background: var(--color-success); box-shadow: 0 0 10px var(--color-success-dim); }
 
 @keyframes dotPulse {
   0%, 100% { opacity: 0.4; transform: scale(1); }
@@ -1477,9 +1487,9 @@ body {
 }
 
 .checker-error {
-  background: rgba(255,68,68,0.1);
-  border: 1px solid rgba(255,68,68,0.2);
-  color: #ff6b6b;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.2);
+  color: var(--color-error);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
@@ -1650,7 +1660,9 @@ body {
   text-align: center;
 }
 
-/* ── Result Rows (colored left border + stagger animation) ── */
+/* ── Result Rows (colored left border) ──
+   Stagger animation handled by framer-motion staggerChildren.
+   No CSS animation here to avoid double-animation conflict. */
 .result-row {
   position: relative;
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
@@ -1684,7 +1696,7 @@ body {
   box-shadow: 0 0 20px color-mix(in srgb, var(--accent-red) 70%, transparent);
 }
 
-.result-row[data-risk="medium"]::before { background: #F59E0B; box-shadow: 0 0 8px rgba(245,158,11,0.3); }
+.result-row[data-risk="medium"]::before { background: var(--color-warning); box-shadow: 0 0 8px var(--color-warning-dim); }
 .result-row[data-risk="low"]::before { background: #6B7280; }
 
 .result-row:hover {
@@ -1817,11 +1829,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(34, 197, 94, 0.1);
+  background: var(--color-success-glow);
   border: 2px solid rgba(34, 197, 94, 0.2);
   border-radius: 50%;
   animation: emptyCheckBounce 0.7s var(--ease-spring) both;
-  box-shadow: 0 0 30px rgba(34, 197, 94, 0.1);
+  box-shadow: 0 0 30px var(--color-success-glow);
 }
 
 @keyframes emptyCheckBounce {
@@ -1830,10 +1842,48 @@ body {
   100% { transform: scale(1) rotate(0); }
 }
 
+/* ── Celebration: green wave on clean scan ── */
+@keyframes celebrateWave {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+  50% { box-shadow: 0 0 60px 20px rgba(34, 197, 94, 0.15); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@keyframes celebratePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.checker-summary.safe {
+  animation: celebrateWave 2s ease-out, celebratePulse 0.6s var(--ease-spring);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.checker-summary.warning-active {
+  animation: warningPulse 2s ease-in-out infinite;
+  border-color: rgba(255, 68, 68, 0.3);
+}
+
+@keyframes warningPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 68, 68, 0.1); }
+  50% { box-shadow: 0 0 40px rgba(255, 68, 68, 0.25); }
+}
+
+/* ── Accessibility: reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .gradient-orb { animation: none !important; }
+  .scan-line { animation: none !important; display: none; }
+}
+
 .checker-empty-title {
   font-size: var(--text-xl);
   font-weight: var(--fw-bold);
-  color: #22c55e;
+  color: var(--color-success);
   animation: emptyStateIn 0.6s 0.1s var(--ease-out) both;
 }
 
