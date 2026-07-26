@@ -48,10 +48,12 @@ const renderCard = (children: React.ReactNode) => (
 )
 
 const phaseVariants = {
-  initial: { opacity: 0, filter: 'blur(8px)', scale: 0.97 },
+  initial: { opacity: 0, filter: 'blur(10px)', scale: 0.95 },
   animate: { opacity: 1, filter: 'blur(0px)', scale: 1 },
-  exit: { opacity: 0, filter: 'blur(8px)', scale: 0.97 },
+  exit: { opacity: 0, filter: 'blur(10px)', scale: 0.95 },
 }
+
+const entryTransition = { duration: 0.55, ease: [0.16, 1, 0.3, 1] as const }
 
 const PageWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const reducedMotion = useReducedMotion()
@@ -65,7 +67,7 @@ const PageWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       initial="initial"
       animate="animate"
       exit="exit"
-      transition={{ duration: isReduced ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: isReduced ? 0 : entryTransition.duration, ease: entryTransition.ease }}
     >
       {children}
     </motion.div>
@@ -110,34 +112,30 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    // Fallback: always move past loading after 5s max, even if everything breaks
-    const forceTimer = setTimeout(() => setPhase(p => p === 'loading' ? 'onboarding-lang' : p), 5000)
-
+    // Сразу переходим к онбордингу — проверка апдейтов идёт в фоне
     const api = window.electronAPI
-    if (!api) { setPhase('onboarding-lang'); clearTimeout(forceTimer); return }
+    if (!api) {
+      // Без Electron (браузер) — показываем загрузку недолго
+      const t = setTimeout(() => setPhase('onboarding-lang'), 1200)
+      return () => clearTimeout(t)
+    }
 
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null
-
+    // Запрос версии (быстрый)
     try { api.getAppVersion().then(setVersion).catch(() => setVersion('unknown')) } catch { setVersion('unknown') }
 
+    // Показываем загрузку ~1.5с для плавного старта, потом выбор языка
+    const enterTimer = setTimeout(() => setPhase('onboarding-lang'), 1500)
+
+    // Фоновые слушатели апдейтов
     try {
-      api.onUpdateAvailable(info => { setUpdateAvailable(true); setUpdateModal(p => ({ ...p, show: true, version: info.version, state: 'available' })); setPhase('onboarding-lang'); if (fallbackTimer) clearTimeout(fallbackTimer) })
-    } catch { /* listener failed, continue */ }
+      api.onUpdateAvailable(info => { setUpdateAvailable(true); setUpdateModal(p => ({ ...p, show: true, version: info.version, state: 'available' })) })
+    } catch { /* skip */ }
+    try { api.onUpdateNotAvailable(() => { /* апдейтов нет, ничего не делаем */ }) } catch { /* skip */ }
+    try { api.onDownloadProgress(data => { setUpdateModal(p => ({ ...p, show: true, state: 'downloading', percent: data.percent, speed: data.bytesPerSecond > 0 ? `${(data.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : '', size: `${(data.transferred / 1024 / 1024).toFixed(1)} / ${(data.total / 1024 / 1024).toFixed(1)} MB` })) }) } catch { /* skip */ }
+    try { api.onUpdateDownloaded(() => { setUpdateModal(p => ({ ...p, show: true, state: 'done' })) }) } catch { /* skip */ }
+    try { api.onUpdateError(msg => { setUpdateModal(p => ({ ...p, state: 'error', errorMsg: msg })) }) } catch { /* skip */ }
 
-    try {
-      api.onUpdateNotAvailable(() => { setPhase('onboarding-lang'); if (fallbackTimer) clearTimeout(fallbackTimer) })
-    } catch { /* listener failed, continue */ }
-
-    try { api.onDownloadProgress(data => { setUpdateModal(p => ({ ...p, show: true, state: 'downloading', percent: data.percent, speed: data.bytesPerSecond > 0 ? `${(data.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : '', size: `${(data.transferred / 1024 / 1024).toFixed(1)} / ${(data.total / 1024 / 1024).toFixed(1)} MB` })); if (fallbackTimer) clearTimeout(fallbackTimer) }) } catch { /* skip */ }
-    try { api.onUpdateDownloaded(() => { setUpdateModal(p => ({ ...p, show: true, state: 'done' })); if (fallbackTimer) clearTimeout(fallbackTimer) }) } catch { /* skip */ }
-    try { api.onUpdateError(msg => { setUpdateModal(p => ({ ...p, state: 'error', errorMsg: msg })); if (fallbackTimer) clearTimeout(fallbackTimer) }) } catch { /* skip */ }
-
-    fallbackTimer = setTimeout(() => { setPhase(p => p === 'loading' ? 'onboarding-lang' : p); clearTimeout(forceTimer) }, 4000)
-
-    return () => {
-      clearTimeout(forceTimer)
-      if (fallbackTimer) clearTimeout(fallbackTimer)
-    }
+    return () => clearTimeout(enterTimer)
   }, [])
 
   const hInstallUpdate = useCallback(() => { setUpdateModal(p => ({ ...p, state: 'downloading', percent: 0 })); window.electronAPI?.startDownload() }, [])
@@ -145,8 +143,15 @@ const App: React.FC = () => {
   const hCloseModal = useCallback(() => setUpdateModal(p => ({ ...p, show: false })), [])
   const hStartChecker = useCallback(() => setPhase('checker'), [])
   const hStartDashboard = useCallback(() => setPhase('dashboard'), [])
-  const hNextLang = useCallback(() => setPhase('onboarding-theme'), [])
-  const hNextTheme = useCallback(() => setPhase('onboarding-auth'), [])
+  const hNextLang = useCallback(() => {
+    // Небольшая задержка для плавного перехода
+    setTimeout(() => setPhase('onboarding-theme'), 150)
+  }, [])
+
+  const hNextTheme = useCallback(() => {
+    setTimeout(() => setPhase('onboarding-auth'), 150)
+  }, [])
+
   const hBackToMain = useCallback(() => setPhase('main'), [])
 
   const hNextAuth = useCallback(async () => {
@@ -173,11 +178,19 @@ const App: React.FC = () => {
 
   const handleThemeSelect = useCallback((id: ThemeId) => {
     if (id === theme) return
+
+    // Во время онбординга — просто меняем тему без анимации сгорания,
+    // чтобы оверлей не перекрывал карточки выбора темы
+    if (phase === 'onboarding-theme') {
+      setTheme(id)
+      return
+    }
+
     const old = THEMES[theme]
     const next = THEMES[id]
     setBurnState({ old, new: next, newId: id })
     setIsBurning(true)
-  }, [theme])
+  }, [theme, phase])
 
   const handleBurnComplete = useCallback(() => {
     if (burnState) {

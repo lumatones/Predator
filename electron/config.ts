@@ -25,7 +25,7 @@ export const CFG = {
 }
 
 const DEFAULT_CONFIG: PredatorConfig = {
-  apiUrl: 'http://localhost:3001',
+  apiUrl: 'http://5.164.42.189:3001',
   tokenId: null,
   lang: 'ru',
   theme: 'predator',

@@ -12,6 +12,18 @@ let _updateCheckInterval: ReturnType<typeof setInterval> | null = null
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 
+// ── Proxy bypass for local API ───────────────────────────────────────
+// When the OS has a system-wide proxy enabled (e.g. Clash / V2RayN on
+// 127.0.0.1:10809), Chromium routes fetch() calls — including those to
+// http://localhost:3001 — through that proxy. The proxy doesn't know how
+// to forward localhost and answers with a plain-text HTTP 400 "invalid
+// request", which the renderer then fails to parse as JSON.
+//
+// Tell Chromium to bypass the proxy for local addresses BEFORE any
+// request happens. Command-line switches must be applied before
+// app.whenReady() fires.
+app.commandLine.appendSwitch('proxy-bypass-list', '<local>,127.0.0.1,localhost,::1')
+
 // ── Crash Log File ────────────────────────────────
 
 const CRASH_LOG = path.join(app.getPath('userData'), 'crash.log')

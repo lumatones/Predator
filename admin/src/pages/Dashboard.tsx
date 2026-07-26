@@ -29,7 +29,7 @@ export default memo(function Dashboard() {
   const { toasts, addToast, removeToast } = useToasts()
   const [wsConnected, setWsConnected] = useState(false)
 
-  const WS_BASE = `http://${window.location.hostname}:3001`
+  const WS_BASE = 'http://5.164.42.189:3001'
 
   // ── Initial data load ──
 

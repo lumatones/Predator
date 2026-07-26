@@ -9,7 +9,7 @@
 // Set production URL at build time:
 //   VITE_API_URL=http://your-server:3001 npm run build
 
-let _apiBase = 'http://localhost:3001'
+let _apiBase = 'http://5.164.42.189:3001'
 
 function resolveApiBase(): string {
   if (import.meta.env.VITE_API_URL) return (import.meta.env.VITE_API_URL as string).replace(/\/$/, '')
