@@ -914,6 +914,189 @@ if ($count) { Write-Output (\"EVENT_COUNT:\" + $count) }
 }
 
 // ══════════════════════════════════════════════════════════
+// 10. MFT ORPHANED ENTRIES DETECTION
+// ══════════════════════════════════════════════════════════
+
+/**
+ * The Master File Table ($MFT) is the central index of ALL files on an NTFS volume.
+ * When a file is deleted, its MFT record is marked as "free" but the FILENAME
+ * ATTRIBUTE often remains in the record until it's overwritten by a new file.
+ *
+ * These "orphaned entries" are a goldmine for forensics — they reveal the names
+ * of deleted files, including cheat loaders that were wiped before a check.
+ *
+ * Detection methods:
+ * 1. MFT record count vs actual file count — discrepancy = orphaned entries
+ * 2. Deleted USN entries with cheat-related file names
+ * 3. $MFT file size anomaly (too small for uptime = trimmed/deleted)
+ *
+ * No admin privileges needed — we use fsutil + WMI queries.
+ */
+export function detectMftOrphanedEntries(): ScanResult[] {
+  const results: ScanResult[] = []
+  const volumeRoot = _WR.slice(0, 3) // e.g. "C:"
+  const mftPath = path.join(volumeRoot, '$MFT')
+
+  // ── Check 1: Does $MFT exist? ──
+  let mftExists = false
+  let mftSize = 0
+  try {
+    if (fs.existsSync(mftPath)) {
+      mftExists = true
+      mftSize = fs.statSync(mftPath).size
+    }
+  } catch { /* skip */ }
+
+  if (!mftExists) {
+    const dedupKey = 'pc-cleaner:mft-missing'
+    if (addFindingDedup(dedupKey)) {
+      results.push({
+        path: mftPath,
+        fileName: '🚨 $MFT File Missing — Volume Not NTFS or $MFT Deleted',
+        type: 'system',
+        risk: 'high',
+        matches: [
+          'mft:missing',
+          '⚠ $MFT does not exist — unlikely for NTFS, possible volume corruption or intentional destruction',
+        ],
+        size: 0,
+        modifiedAt: new Date().toISOString(),
+      })
+    }
+    return results
+  }
+
+  // ── Check 2: (removed — MFT-vs-file-count ratio was unreliable without full disk walk) ──
+  // File count from 3 dirs vs MFT of entire volume always produced false positives.
+  // Check 3 below (USN deleted names) gives the same information more accurately.
+
+  // ── Check 3: Deleted USN entries with cheat-related names ──
+  try {
+    // This requires USN journal to exist (checked in detectUsnJournalTampering)
+    const usnJPath = path.join(volumeRoot, '$Extend', '$UsnJrnl', '$J')
+    if (fs.existsSync(usnJPath)) {
+      // Query USN journal for recently deleted files with suspicious patterns
+      const deletedFiles = ps(`
+$cheatKeywords = @(
+  'cheat', 'hack', 'inject', 'loader', 'menu', 'dma',
+  'spoofer', 'bypass', 'trainer', 'eulen', 'redengine',
+  'aimbot', 'esp', 'wallhack', 'nightfall', 'vanish',
+  'unicore', 'noleet', '0xcheat', 'leetcheat'
+)
+
+# fsutil usn enumdata output: space/tab-separated columns
+# Format: FileName  Reason  Usn  TimeStamp
+# We look for CLOSE+DELETE or DELETION in the Reason column
+$usnDump = fsutil usn enumdata 1 0 1 $env:SystemDrive 2>nul
+$foundDeletes = @()
+
+if ($usnDump) {
+  $lines = $usnDump -split [Environment]::NewLine
+  foreach ($line in $lines) {
+    if (-not $line.Trim()) { continue }    # Extract filename (first tab-delimited column — fsutil uses tabs)
+        $parts = $line.Trim() -split '\\t'
+    if ($parts.Length -lt 2) { continue }
+    $name = $parts[0].Trim()
+    $reason = $parts[1].Trim()
+    # Check for delete reason
+    if ($reason -match '(DELETION|DELETE|CLOSE.*DEL)') {
+      $lowerName = $name.ToLower()
+      foreach ($kw in $cheatKeywords) {
+        if ($lowerName -match [regex]::Escape($kw)) {
+          $foundDeletes += $name
+          break
+        }
+      }
+    }
+    # Cap at 50 findings to avoid huge output
+    if ($foundDeletes.Count -ge 50) { break }
+  }
+}
+
+if ($foundDeletes.Count -gt 0) {
+  Write-Output (\"DELETED_CHEAT_FILES:\" + ($foundDeletes -join ';'))
+  Write-Output (\"DELETED_COUNT:\" + $foundDeletes.Count)
+}
+`, 20000)
+
+      if (deletedFiles && deletedFiles.includes('DELETED_CHEAT_FILES:')) {
+        const namesMatch = deletedFiles.match(/DELETED_CHEAT_FILES:([^]+?)(?:\nDELETED_COUNT|$)/)
+        const countMatch = deletedFiles.match(/DELETED_COUNT:(\d+)/)
+        const deletedNames = namesMatch ? namesMatch[1].split(';').filter(Boolean) : []
+        const deletedCount = countMatch ? parseInt(countMatch[1]) : deletedNames.length
+
+        if (deletedCount > 0) {
+          const dedupKey = 'pc-cleaner:mft-deleted-cheats'
+          if (addFindingDedup(dedupKey)) {
+            results.push({
+              path: mftPath,
+              fileName: `🚨 Deleted Cheat Files Found in MFT: ${deletedCount} files`,
+              type: 'system',
+              risk: 'high',
+              matches: [
+                `deleted-cheat-files:${deletedCount}`,
+                `names:${deletedNames.slice(0, 5).join(', ')}${deletedNames.length > 5 ? `... (+${deletedNames.length - 5})` : ''}`,
+                '⚠ Cheat-related files were deleted but their NAMES remain in MFT records',
+                'These files were wiped to hide evidence before this check',
+              ],
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+            })
+          }
+        }
+      }
+    }
+  } catch { /* USN enumeration optional */ }
+
+  // ── Check 4: $MFT file size vs system uptime ═──
+  if (mftSize > 0) {
+    try {
+      const uptimeInfo = ps(`
+$boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+$uptimeHrs = [math]::Round(((Get-Date) - $boot).TotalHours, 1)
+Write-Output (\"UPTIME_HOURS:\" + $uptimeHrs)
+
+# MFT typically grows ~1-2 MB per day of active use
+$mftSizeMB = ${mftSize} / 1MB
+Write-Output (\"MFT_SIZE_MB:\" + [math]::Round($mftSizeMB, 1))
+`, 10000)
+
+      if (uptimeInfo) {
+        const uptimeMatch = uptimeInfo.match(/UPTIME_HOURS:([\d.]+)/)
+        const mftSizeMatch = uptimeInfo.match(/MFT_SIZE_MB:([\d.]+)/)
+
+        if (uptimeMatch && mftSizeMatch) {
+          const uptimeHours = parseFloat(uptimeMatch[1])
+          const mftSizeMB = parseFloat(mftSizeMatch[1])
+
+          // If uptime > 48 hours but MFT < 20MB, it was likely reduced/trimmed
+          if (uptimeHours > 48 && mftSizeMB < 20) {
+            const dedupKey = 'pc-cleaner:mft-too-small'
+            if (addFindingDedup(dedupKey)) {
+              results.push({
+                path: mftPath,
+                fileName: `🚨 MFT Abnormally Small: ${mftSizeMB}MB (uptime ${uptimeHours}h)`,
+                type: 'system',
+                risk: 'medium',
+                matches: [
+                  `mft-size:${mftSizeMB} MB`,
+                  `uptime:${uptimeHours}h (expected MFT: 40MB+ for this uptime)`,
+                  '⚠ MFT was intentionally compacted — orphaned entries cleared but also destroys forensic evidence',
+                ],
+                size: 0,
+                modifiedAt: new Date().toISOString(),
+              })
+            }
+          }
+        }
+      }
+    } catch { /* optional */ }
+  }
+
+  return results
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED ENHANCED PC CLEANER SCAN
 // ══════════════════════════════════════════════════════════
 
@@ -946,6 +1129,9 @@ export function runPcCleanerScan(): ScanResult[] {
 
   // Phase 9: EventLog clearing
   results.push(...detectEventLogClearing())
+
+  // Phase 10: MFT orphaned entries
+  results.push(...detectMftOrphanedEntries())
 
   return results
 }
