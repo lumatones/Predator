@@ -478,6 +478,107 @@ export function getFileRiskLevel(fileName: string, matches: string[]): 'high' | 
   return 'low'
 }
 
+// ═══════════════════════════════════════════════════
+// COMBO DETECTOR — Universal unsigned binary heuristic
+// ═══════════════════════════════════════════════════
+
+/**
+ * Universal combo-detector for unsigned .exe/.dll files.
+ *
+ * Catches cheat loaders REGARDLESS of filename — no name matching needed.
+ * Uses 5 behavioral signals:
+ *   1. Strange size (5–100 MB) — too big for a utility, too small for a game
+ *   2. High entropy (> 7.0) — packed/encrypted (VMProtect, Themida)
+ *   3. Few readable strings (< 10) — fully obfuscated binary
+ *   4. Suspicious directory — Downloads/Desktop/Temp
+ *   5. Many PE sections (>= 7) — typical for packed binaries
+ *
+ * Scoring:
+ *   >= 2 signals → HIGH risk (+70)
+ *   >= 1 signal + suspicious dir → MEDIUM risk (+40)
+ *   1 signal → LOW risk (+15)
+ *
+ * Legitimate software is NEVER all of: unsigned + packed + no strings + wrong size.
+ */
+export function comboScoreUnsignedBinary(
+  ext: string,
+  sizeBytes: number,
+  entropy: number,
+  stringCount: number,
+  filepath: string,
+  sectionCount: number,
+  sigValid: boolean,
+): { signals: string[]; riskBonus: number } {
+  // Only applies to PE files
+  if (ext !== '.exe' && ext !== '.dll') {
+    return { signals: [], riskBonus: 0 }
+  }
+
+  // Signed = trust (legitimate vendors sign their software)
+  if (sigValid) {
+    return { signals: [], riskBonus: 0 }
+  }
+
+  let signalCount = 0
+  const reasons: string[] = []
+
+  const fpLow = filepath.toLowerCase()
+  const inSuspiciousDir = fpLow.includes('downloads') || fpLow.includes('download') ||
+    fpLow.includes('desktop') || fpLow.includes('temp') || fpLow.includes('загрузки')
+
+  // Signal 1: Strange size (5–100 MB)
+  // Legitimate: small utils < 5MB, big games > 100MB. Cheat loaders: 5–100MB.
+  if (sizeBytes >= 5 * 1024 * 1024 && sizeBytes <= 100 * 1024 * 1024) {
+    signalCount++
+    reasons.push(`Strange size: ${(sizeBytes / 1024 / 1024).toFixed(1)} MB (unsigned binary of this size is unusual)`)
+  }
+
+  // Signal 2: High entropy (> 7.0) — packed/encrypted
+  if (entropy > 7.0) {
+    signalCount++
+    reasons.push(`Entropy ${entropy.toFixed(2)} > 7.0 — packed/encrypted (VMProtect/Themida/obsufcation)`)
+  }
+
+  // Signal 3: Few readable strings (< 10) — fully obfuscated
+  // Legitimate EXEs always have readable strings (error messages, resource names, etc.)
+  if (stringCount < 10) {
+    signalCount++
+    reasons.push(`Only ${stringCount} readable strings — fully obfuscated binary`)
+  }
+
+  // Signal 4: Suspicious directory
+  if (inSuspiciousDir) {
+    signalCount++
+    reasons.push('Located in user directory (Downloads/Desktop/Temp)')
+  }
+
+  // Signal 5: Many PE sections (>= 7) — packing signature
+  if (sectionCount >= 7) {
+    signalCount++
+    reasons.push(`${sectionCount} PE sections — typical for packed/VMProtected binaries (normal: 3–5)`)
+  }
+
+  // ── Scoring ──
+
+  // Count "strong" signals (entropy, strings, sections) — requiring at least one
+  // prevents false positives on legitimate unsigned utilities (e.g. open-source tools)
+  const strongSignals = [entropy > 7.0, stringCount < 10, sectionCount >= 7].filter(Boolean).length
+
+  if (signalCount >= 2 && strongSignals >= 1) {
+    return { signals: reasons, riskBonus: 70 }
+  }
+
+  if (signalCount === 1 && inSuspiciousDir) {
+    return { signals: reasons, riskBonus: 40 }
+  }
+
+  if (signalCount === 1) {
+    return { signals: reasons, riskBonus: 15 }
+  }
+
+  return { signals: [], riskBonus: 0 }
+}
+
 /** Check if a file matches any known hash (SHA256) in the database. Streams the file. */
 export async function checkFileHash(filePath: string): Promise<{ matched: boolean; hash: string }> {
   if (KNOWN_CHEAT_HASHES.length === 0) return { matched: false, hash: '' }
@@ -551,22 +652,6 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
     // Whitelist check — reduce score for trusted paths
     if (isTrustedPath(filepath)) {
       riskScore = Math.max(riskScore - 30, 0)
-    }
-
-    // 3b. Large unsigned EXE in Downloads/Desktop/Temp — catch-all for packed cheat loaders
-    // Legitimate software NEVER comes as a single large unsigned EXE in user download folders.
-    // This catches VMProtect'd/Themida'd loaders that have 0 readable strings.
-    if (ext === '.exe' && stat.size > 15 * 1024 * 1024 && stat.size < 50 * 1024 * 1024) {
-      const fpLow = filepath.toLowerCase()
-      const inSuspiciousDir = fpLow.includes('downloads') || fpLow.includes('download') ||
-        fpLow.includes('desktop') || fpLow.includes('temp') || fpLow.includes('загрузки')
-      if (inSuspiciousDir) {
-        const signed = checkDigitalSignature(filepath)
-        if (!signed) {
-          suspicions.push(`🚩 Large unsigned EXE (${(stat.size / 1024 / 1024).toFixed(1)} MB) in user directory — likely packed cheat loader`)
-          riskScore += 60
-        }
-      }
     }
 
     // 4. Binary analysis
@@ -651,6 +736,27 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
 
       const sigValid = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? checkDigitalSignature(filepath) : false
 
+      // ── UNIVERSAL COMBO DETECTOR ──
+      // Catches ANY unsigned .exe/.dll with 2+ suspicious signals, regardless of filename.
+      // Replaces the old catch-all that only worked in Downloads + known names.
+      const comboResult = comboScoreUnsignedBinary(
+        ext,
+        stat.size,
+        entropy,
+        strings.length,
+        filepath,
+        peInfo?.sectionCount ?? 0,
+        sigValid,
+      )
+      if (comboResult.riskBonus > 0) {
+        for (const signal of comboResult.signals) {
+          suspicions.push(`🧬 COMBO: ${signal}`)
+        }
+        const signalCount = comboResult.signals.length
+        suspicions.push(`🧬 Combo-detector: ${signalCount} signals matched → +${comboResult.riskBonus} risk (ANY unsigned binary with these traits is suspicious)`)
+        riskScore += comboResult.riskBonus
+      }
+
       if (ext === '.exe' || ext === '.dll' || ext === '.sys') {
         if (peInfo && peInfo.isValidPe && peInfo.isSuspicious) {
           if (peInfo.suspiciousSections.length > 0) {
@@ -698,7 +804,9 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
           }
         }
 
-        // Fuzzy loader match
+        // Fuzzy loader match — only if combo-detector didn't already flag it
+        // (combo-detector checks the same signals; avoid double-counting)
+        if (comboResult.riskBonus === 0) {
         const FUZZY_SIZE_LOWER_MB = 16
         const FUZZY_SIZE_UPPER_MB = 28
         const FUZZY_ENTROPY_THRESHOLD = 7.2
@@ -734,6 +842,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
             riskScore += Math.min(fuzzyScore, 60)
           }
         }
+        } // end fuzzy loader match gate
       }
 
       // Category signature analysis
