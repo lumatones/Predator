@@ -42,7 +42,7 @@ import { runEtwScan } from './etw-provider'
 import { runForensicScan } from './forensic-traces'
 import { runAntiForensicScan } from './anti-forensic'
 import { runPcCleanerScan } from './pc-cleaner-detection'
-import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb } from './safe-files-db'
+import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, syncSafeFilesFromServer, uploadSafeFiles, getSafeFilesCount } from './safe-files-db'
 
 // ═══════════════════════════════════════════════════
 // FULL SCAN (was extended) — 9-phase deep scan
@@ -309,6 +309,17 @@ interface ScanOptions {
   pcUsername?: string
 }
 
+// ── Initialize safe-files DB with community whitelist ──
+// Load local DB first, then overlay community-verified safe files from server.
+// This ensures ALL devices immediately know which files are safe.
+export async function initSafeFilesDb(): Promise<void> {
+  loadSafeFilesDb()
+  try {
+    const count = await syncSafeFilesFromServer()
+    console.log(`  📁 Safe files DB ready: ${getSafeFilesCount()} entries (${count} new from server)`)
+  } catch (_e) { /* server sync optional */ }
+}
+
 export function registerScanHandlers() {
   ipcMain.handle('start-scan', async (event, mode: ScanMode, options?: ScanOptions) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -416,6 +427,8 @@ export function registerScanHandlers() {
           markFilesSafe(lowRiskFiles, 'auto')
         }
         saveSafeFilesDb()
+        // Upload our safe files to the community whitelist
+        try { uploadSafeFiles() } catch (_e) { /* upload optional */ }
       } catch (_e) { /* safe-db optional */ }
 
       // ── Submit SHA256 hashes for HIGH-risk files ──

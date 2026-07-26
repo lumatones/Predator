@@ -302,4 +302,63 @@ router.get('/safe-hashes', async (req, res) => {
   }
 })
 
+// ── POST /api/auth/submit-safe-files ───────────
+router.post('/submit-safe-files', async (req, res) => {
+  try {
+    const { entries } = req.body
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ error: 'Не указаны safe-файлы' })
+    }
+
+    let updated = 0
+    let inserted = 0
+
+    for (const entry of entries) {
+      if (!entry.partialHash || typeof entry.partialHash !== 'string' || entry.partialHash.length !== 64) continue
+      if (!entry.size || typeof entry.size !== 'number') continue
+
+      try {
+        const existing = await query(
+          'SELECT id, confirm_count FROM safe_files WHERE partial_hash = ? AND file_size = ?',
+          [entry.partialHash, entry.size]
+        )
+
+        if (existing.length > 0) {
+          await query(
+            'UPDATE safe_files SET confirm_count = confirm_count + ?, last_seen = NOW() WHERE partial_hash = ? AND file_size = ?',
+            [entry.confirmCount || 1, entry.partialHash, entry.size]
+          )
+          updated++
+        } else {
+          await query(
+            'INSERT INTO safe_files (partial_hash, file_name, file_size, confirm_count) VALUES (?, ?, ?, ?)',
+            [entry.partialHash, entry.fileName || 'unknown', entry.size, entry.confirmCount || 1]
+          )
+          inserted++
+        }
+      } catch { /* skip */ }
+    }
+
+    return res.json({ success: true, inserted, updated })
+  } catch (err) {
+    console.error('Submit safe files error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
+// ── GET /api/auth/safe-files (community whitelist) ──
+router.get('/safe-files', async (req, res) => {
+  try {
+    const since = req.query.since || '2000-01-01'
+    const rows = await query(
+      'SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS size, confirm_count AS confirmCount, last_seen AS lastSeen FROM safe_files WHERE last_seen > ? AND confirm_count >= 2 ORDER BY confirm_count DESC LIMIT 2000',
+      [since]
+    )
+    return res.json(rows)
+  } catch (err) {
+    console.error('Safe files error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
 module.exports = router

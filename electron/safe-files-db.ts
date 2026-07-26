@@ -119,21 +119,32 @@ export function computePartialHash(filepath: string): string {
 }
 
 /**
- * Check if a file is known-safe by partial hash + size + path.
- * Returns true if the file is in the safe DB and hasn't changed.
+ * Check if a file is known-safe by path+size (local entries) or hash+size (server entries).
+ * - Local entries: matched by file path + size (fast, no hash needed)
+ * - Server entries: matched by partial hash + size (slower, requires reading 64KB)
+ * This ensures community-verified safe files work on ALL devices.
  */
 export function isFileSafe(filepath: string, size: number, mtimeMs: number): boolean {
   if (!filepath || size === 0) return false
 
-  // Fast check by path (most files don't change between scans)
+  // Fast check by path + size (for local entries with known paths)
   const normalizedPath = filepath.toLowerCase().replace(/\\/g, '/')
   for (const entry of Object.values(_db.entries)) {
+    if (!entry.path) continue // skip server entries (no local path)
     const entryPath = entry.path.toLowerCase().replace(/\\/g, '/')
     if (entryPath === normalizedPath && entry.size === size) {
-      // Quick check: if size and path match, it's likely the same file
       return true
     }
   }
+
+  // Second pass: check by partial hash + size (for server entries with empty path)
+  // This catches community-verified safe files downloaded from the server
+  const partialHash = computePartialHash(filepath)
+  if (partialHash) {
+    const key = `${partialHash}_${size}`
+    if (_db.entries[key]) return true
+  }
+
   return false
 }
 
@@ -212,17 +223,17 @@ export function getSafeFilesCount(): number {
 // ── Server Sync ────────────────────────────────────
 
 /**
- * Download known-safe SHA256 hashes from the server.
- * These are community-verified safe files.
+ * Sync safe files FROM the server (community whitelist).
+ * Every startup, download the crowd-verified safe files and add them to the local DB.
+ * This ensures ALL devices share the same whitelist immediately.
  */
-export function downloadKnownSafeHashes(): Promise<Set<string>> {
+export function syncSafeFilesFromServer(): Promise<number> {
   return new Promise((resolve) => {
-    const safeHashes = new Set<string>()
     try {
       const { hostname, port, protocol } = getApiEndpoint()
       const transport = protocol === 'https:' ? https : http
       const req = transport.get(
-        `${protocol}//${hostname}${port ? `:${port}` : ''}/api/auth/safe-hashes`,
+        `${protocol}//${hostname}${port ? `:${port}` : ''}/api/auth/safe-files`,
         (res) => {
           let data = ''
           res.on('data', (chunk: string) => { data += chunk })
@@ -230,41 +241,65 @@ export function downloadKnownSafeHashes(): Promise<Set<string>> {
             try {
               const parsed = JSON.parse(data)
               if (Array.isArray(parsed)) {
-                for (const hash of parsed) {
-                  if (typeof hash === 'string' && hash.length === 64) {
-                    safeHashes.add(hash)
+                let added = 0
+                for (const entry of parsed) {
+                  if (entry.partialHash && entry.size) {
+                    const key = `${entry.partialHash}_${entry.size}`
+                    if (!_db.entries[key]) {
+                      _db.entries[key] = {
+                        partialHash: entry.partialHash,
+                        path: '',  // server entry — no local path, check by hash+size only
+                        size: entry.size,
+                        mtime: '',
+                        firstSeen: entry.lastSeen || new Date().toISOString(),
+                        lastSeen: new Date().toISOString(),
+                        confirmCount: entry.confirmCount || 2,
+                        verifiedBy: 'server',
+                      }
+                      added++
+                    }
                   }
                 }
+                if (added > 0) {
+                  _dirty = true
+                  saveSafeFilesDb()
+                  console.log(`  ☁️  Synced ${added} safe files from community whitelist`)
+                }
+                resolve(added)
+              } else {
+                resolve(0)
               }
-            } catch { /* parse error */ }
-            resolve(safeHashes)
+            } catch {
+              resolve(0)
+            }
           })
         },
       )
-      req.on('error', () => resolve(safeHashes))
-      req.setTimeout(5000, () => { req.destroy(); resolve(safeHashes) })
+      req.on('error', () => resolve(0))
+      req.setTimeout(8000, () => { req.destroy(); resolve(0) })
     } catch {
-      resolve(safeHashes)
+      resolve(0)
     }
   })
 }
 
 /**
  * Upload local safe-file entries to server for community analysis.
- * Sends new entries that haven't been uploaded yet.
+ * Sends entries that have been confirmed by at least 3 scans.
+ * Called after each scan completes.
  */
-export function uploadSafeFiles(sinceTimestamp?: string): void {
+export function uploadSafeFiles(): void {
   try {
     const entries = Object.values(_db.entries)
       .filter(e => e.verifiedBy === 'auto' && e.confirmCount >= 3)
-      .slice(0, 100) // max 100 per upload
+      .slice(0, 100)
 
     if (entries.length === 0) return
 
     const payload = JSON.stringify({
-      type: 'safe-files',
       entries: entries.map(e => ({
         partialHash: e.partialHash,
+        fileName: path.basename(e.path) || 'unknown',
         size: e.size,
         confirmCount: e.confirmCount,
       })),

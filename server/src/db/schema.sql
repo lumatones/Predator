@@ -80,3 +80,18 @@ CREATE TABLE IF NOT EXISTS suspicious_hashes (
 
 CREATE INDEX idx_sh_status ON suspicious_hashes(status);
 CREATE INDEX idx_sh_created ON suspicious_hashes(created_at);
+
+-- ── Community Safe Files (crowdsourced whitelist) ────────
+
+CREATE TABLE IF NOT EXISTS safe_files (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  partial_hash  CHAR(64) NOT NULL,
+  file_name     VARCHAR(255),
+  file_size     INT DEFAULT 0,
+  confirm_count INT DEFAULT 1,
+  first_seen    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen     DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_partial_hash_size (partial_hash, file_size)
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_sf_last_seen ON safe_files(last_seen);

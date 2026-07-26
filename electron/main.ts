@@ -3,7 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { autoUpdater } from 'electron-updater'
-import { registerScanHandlers, startCloudSync } from './scanner'
+import { registerScanHandlers, startCloudSync, initSafeFilesDb } from './scanner'
 import { registerSystemInfoHandlers } from './system-info'
 import { loadConfig, saveConfig, getApiBase } from './config'
 
@@ -123,11 +123,14 @@ function createWindow() {
 
 // ── App Ready ──────────────────────────────────────
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow()
 
   // Log startup
   writeCrashLog('INFO', `App started v${app.getVersion()} on ${os.platform()} ${os.release()}`)
+
+  // Initialize safe-files DB from community whitelist BEFORE scan handlers
+  await initSafeFilesDb()
 
   registerScanHandlers()
   startCloudSync()
