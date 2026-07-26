@@ -7,7 +7,7 @@ import os from 'os'
 // SCANNER — Shared Types & Utilities
 // ═══════════════════════════════════════════════════
 
-export type ScanMode = 'full' | 'quick' | 'dma'
+export type ScanMode = 'full' | 'quick' | 'dma' | 'cleaner'
 
 export interface ScanResult {
   path: string

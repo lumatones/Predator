@@ -20,8 +20,12 @@ export async function* walkDirAsync(dirPath: string): AsyncGenerator<string> {
     const entries = await fsp.readdir(dirPath, { withFileTypes: true })
     // Check if this is a suspicious location (Downloads, Desktop, Temp)
     const dirLower = dirPath.toLowerCase()
-    const isSuspiciousDir = dirLower.includes('downloads') || dirLower.includes('download') ||
-      dirLower.includes('desktop') || dirLower.includes('temp') || dirLower.includes('загрузки')
+    // Temp is intentionally NOT treated as suspicious dir — it's transitory and huge.
+    // We scan it by extension only (TARGET_EXTENSIONS) to avoid yielding 50K+ .tmp files.
+    // Downloads, Desktop remain suspicious (scan ALL files — cheats hide there).
+    const isSuspiciousDir = (dirLower.includes('downloads') || dirLower.includes('download') ||
+      dirLower.includes('desktop') || dirLower.includes('загрузки')) &&
+      !dirLower.includes('temp')
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name)
       if (entry.isDirectory()) {

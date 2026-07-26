@@ -257,6 +257,33 @@ async function runQuickScan(win: BrowserWindow | null): Promise<{ results: ScanR
 // MAIN IPC HANDLER
 // ═══════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════
+// CLEANER SCAN — PC cleaning detection + anti-forensic + forensic traces
+// ═══════════════════════════════════════════════════
+
+async function runCleanerScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+  const results: ScanResult[] = []
+
+  clearFindingDedup()
+  ctx.sigCache.clear()
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'PC cleaning detection...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 1 })
+  results.push(...safeCall('runPcCleanerScan', () => runPcCleanerScan()))
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Anti-forensic integrity check...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 2 })
+  results.push(...safeCall('runAntiForensicScan', () => runAntiForensicScan()))
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Forensic artifact scan...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 3 })
+  results.push(...safeCall('runForensicScan', () => runForensicScan()))
+
+  // DMA + IOMMU check (HWID spoofing often involves disabling IOMMU)
+  await sendProgress(win, { phase: 'scanning', currentDir: 'IOMMU / DMA integrity...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 4 })
+  results.push(...safeCall('checkIommuStatus', () => checkIommuStatus()))
+
+  await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned: results.length, totalDirs: 4, dirsDone: 4 })
+  return { results, filesScanned: 0 } // filesScanned = 0 (not a file-walking scan)
+}
+
 export { startCloudSync, stopCloudSync, fetchCheatHashes } from './cloud-sync'
 
 interface ScanOptions {
@@ -289,6 +316,9 @@ export function registerScanHandlers() {
           break
         case 'dma':
           result = await runDmaScan(win)
+          break
+        case 'cleaner':
+          result = await runCleanerScan(win)
           break
         default:
           result = { results: [], filesScanned: 0 }

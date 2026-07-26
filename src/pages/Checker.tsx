@@ -27,6 +27,15 @@ import {
   IconChart,
 } from '../icons'
 
+// Import the eraser/broom icon for cleaner scan
+const IconEraser = ({ size = 24, color = '#fff' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.6 1.6c.8-.8 2-.8 2.8 0L21 5.2c.8.8.8 2 0 2.8L12 17" />
+    <line x1="6" y1="20" x2="10" y2="20" />
+    <line x1="18" y1="8" x2="14" y2="12" />
+  </svg>
+)
+
 interface CheckerProps {
   lang: 'ru' | 'en'
   tokenId: number | null
@@ -57,6 +66,7 @@ const T: Record<string, Record<string, string>> = {
     tabFull: 'Полное сканирование', tabFullDesc: 'Все модули: файлы, процессы, реестр, сеть, DMA, браузер, эвристика',
     tabQuick: 'Быстрая проверка', tabQuickDesc: 'Процессы, Prefetch, реестр и история браузера — без обхода диска',
     tabDma: 'DMA-устройства', tabDmaDesc: 'Обнаружение DMA-карт и FPGA-устройств',
+    tabCleaner: 'Детект чистки ПК', tabCleanerDesc: 'Следы очистки системы, USN-журнал, таймстомпинг, ShellBags, HWID',
     riskHigh: 'Высокий риск', riskMedium: 'Средний риск', riskLow: 'Низкий риск',
     processRunning: 'Запущен', processRecent: 'Недавние', processPrefetch: 'Prefetch', processMem: 'Память',
     cheatFiles: 'Файлы', cheatBrowser: 'История', cheatRegistry: 'Реестр',
@@ -98,6 +108,7 @@ const T: Record<string, Record<string, string>> = {
     tabFull: 'Full Scan', tabFullDesc: 'All modules: files, processes, registry, network, DMA, browser, heuristics',
     tabQuick: 'Quick Check', tabQuickDesc: 'Processes, Prefetch, registry & browser history — no disk walk',
     tabDma: 'DMA Devices', tabDmaDesc: 'Detect DMA cards & FPGA devices',
+    tabCleaner: 'PC Cleaner Detection', tabCleanerDesc: 'System cleaning traces, USN journal, timestomping, ShellBags, HWID changes',
     riskHigh: 'High risk', riskMedium: 'Medium risk', riskLow: 'Low risk',
     processRunning: 'Running', processRecent: 'Recent', processPrefetch: 'Prefetch', processMem: 'Memory',
     cheatFiles: 'Files', cheatBrowser: 'History', cheatRegistry: 'Registry',
@@ -133,6 +144,7 @@ const TABS: TabConfig[] = [
   { id: 'full',     icon: 'Shield',     label: 'tabFull',     desc: 'tabFullDesc',     color: '#22c55e' },
   { id: 'quick',    icon: 'Crosshair',  label: 'tabQuick',    desc: 'tabQuickDesc',    color: '#F59E0B' },
   { id: 'dma',      icon: 'USB',        label: 'tabDma',      desc: 'tabDmaDesc',      color: '#8B5CF6' },
+  { id: 'cleaner',  icon: 'Eraser',     label: 'tabCleaner',  desc: 'tabCleanerDesc',  color: '#EF4444' },
 ]
 
 // ── Realistic mock data per mode ──
@@ -170,6 +182,15 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
         { path: 'System32/drivers/', fileName: 'leeched.sys', type: 'software', risk: 'high', matches: ['dma-driver:leeched.sys', 'DMA kernel driver'], size: 0, modifiedAt: now },
       ],
       scanned: 8,
+    },
+    cleaner: {
+      results: [
+        { path: 'C:\\$Extend\\$UsnJrnl', fileName: '🚨 USN Journal Deleted — Evidence Destruction', type: 'system', risk: 'high', matches: ['usn-journal:deleted', 'All file change history destroyed'], size: 0, modifiedAt: now },
+        { path: 'C:\\Windows\\Prefetch\\SDELETE.EXE-*.pf', fileName: '🚨 Secure Deletion Tool: SDELETE', type: 'file', risk: 'high', matches: ['prefetch:sdelete', 'Secure file wiping detected'], size: 0, modifiedAt: now },
+        { path: 'HKCU\\Software\\...\\Shell\\BagMRU', fileName: '🚨 ShellBags Registry Keys Wiped', type: 'registry', risk: 'high', matches: ['shellbags:missing', 'Folder browsing history wiped'], size: 0, modifiedAt: now },
+        { path: 'C:\\Users\\...\\Downloads', fileName: '🚨 Timestomping Detected', type: 'system', risk: 'high', matches: ['timestomp:5+ files', 'File timestamps manipulated'], size: 0, modifiedAt: now },
+      ],
+      scanned: 42,
     },
 
   }
@@ -504,6 +525,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                tab.icon === 'USB' ? <IconUSB size={16} color={tab.color} /> :
                tab.icon === 'Shield' ? <IconShield size={16} color={tab.color} /> :
                tab.icon === 'Globe' ? <IconGlobe size={16} color={tab.color} /> :
+               tab.icon === 'Eraser' ? <IconEraser size={16} color={tab.color} /> :
                tab.icon}
             </span>
             <div className="checker-tab-text">
@@ -534,7 +556,8 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
              currentTab.icon === 'Crosshair' ? <IconCrosshair size={24} color={currentTab.color} animated /> :
              currentTab.icon === 'USB' ? <IconUSB size={24} color={currentTab.color} animated /> :
              currentTab.icon === 'Shield' ? <IconShield size={24} color={currentTab.color} animated /> :
-             currentTab.icon === 'Globe' ? <IconGlobe size={24} color={currentTab.color} animated /> : null}
+             currentTab.icon === 'Globe' ? <IconGlobe size={24} color={currentTab.color} animated /> :
+             currentTab.icon === 'Eraser' ? <IconEraser size={24} color={currentTab.color} /> : null}
           </div>
           <Button className="checker-start-btn" onClick={handleStartScan}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

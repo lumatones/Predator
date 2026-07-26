@@ -1,4 +1,4 @@
-export type ScanMode = 'full' | 'quick' | 'dma'
+export type ScanMode = 'full' | 'quick' | 'dma' | 'cleaner'
 
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
@@ -56,7 +56,7 @@ export interface ElectronAPI {
 export interface ScanResult {
   path: string
   fileName: string
-  type: 'file' | 'browser' | 'process' | 'registry' | 'hardware' | 'software'
+  type: 'file' | 'browser' | 'process' | 'registry' | 'hardware' | 'software' | 'system'
   risk: 'high' | 'medium' | 'low'
   matches: string[]
   size: number

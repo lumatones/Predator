@@ -510,12 +510,11 @@ export function isPlatformWhitelisted(moduleName: string, platform: string): boo
 
 export function getScanPaths(): string[] {
   return [
-    // NOTE: Temp folders intentionally NOT scanned
-    // - %TEMP% and AppData\Local\Temp are transitory — Windows purges them
-    // - Cheats are NEVER stored in Temp permanently (they live in Downloads/Desktop/Documents)
-    // - Temp can contain 50,000+ files (crash dumps, browser cache, .tmp, etc.)
-    // - Each file triggers expensive heuristicFileScan (5s signature check) — hangs indefinitely
-    // - Temp is already checked by anti-forensic scanner for cleaning traces
+    // Temp — scanned by EXTENSION ONLY (not all files).
+    // walkDirAsync filters Temp by TARGET_EXTENSIONS to avoid 50K+ .tmp files.
+    // Limit 2000 files/dir prevents hangs. Cheats CAN be temporarily extracted here.
+    process.env.TEMP || 'C:\\Windows\\Temp',
+    path.join(HOME, 'AppData', 'Local', 'Temp'),
     path.join(HOME, 'Downloads'),
     path.join(HOME, 'Desktop'),
 

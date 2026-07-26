@@ -34,6 +34,9 @@ function mockScan(tab: ScanMode): { results: ScanResult[]; scanned: number } {
     dma: { scanned: 8, results: [
       { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx', 'FPGA detected'], size: 0, modifiedAt: now },
     ]},
+    cleaner: { scanned: 42, results: [
+      { path: 'C:\\$Extend\\$UsnJrnl', fileName: 'USN Journal Deleted', type: 'system', risk: 'high', matches: ['usn-journal:deleted'], size: 0, modifiedAt: now },
+    ]},
   }
   return base[tab]
 }
