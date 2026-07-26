@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Clock, Check, X, FileCheck } from 'lucide-react'
 import { SuspiciousHash, ScanResultHash } from '../api'
 import Confetti from './Confetti'
+import { smoothEase } from '../constants'
 
 interface HashRowProps {
   data: SuspiciousHash | ScanResultHash
@@ -15,8 +16,6 @@ interface HashRowProps {
   onReject: (id: number) => void
   onConfirmFromScan: (sha256: string, fileName: string, fileSize: number) => void
 }
-
-const smoothEase = [0.16, 1, 0.3, 1] as const
 
 const rowVariants = {
   hidden: { opacity: 0, y: 10 },

@@ -6,12 +6,13 @@ import { IconShield, IconDashboard } from './icons'
 import UpdateModal from './components/ui/UpdateModal'
 import ParticleBackground from './components/ui/ParticleBackground'
 import PredatorLogo3D from './components/ui/PredatorLogo3D'
+import ThemeBurnTransition from './components/ui/ThemeBurnTransition'
 import { ToastProvider } from './components/ui/ToastProvider'
 import { Skeleton } from './components/ui/Skeleton'
 import { Magnetic } from './components/ui/Magnetic'
 import { Button } from './components/ui/Button'
 import { useAuth } from './hooks/useAuth'
-import type { AppPhase, ThemeId, Lang, UpdateModalState } from './types'
+import type { AppPhase, ThemeId, Lang, UpdateModalState, ThemeColors } from './types'
 import { THEMES, T } from './types'
 
 // ── Stable components ──
@@ -166,6 +167,29 @@ const App: React.FC = () => {
     if (ok) setPhase('requesting-access')
   }, [handleRequestAccess])
 
+  // ── Burn transition state ──
+  const [burnState, setBurnState] = useState<{ old: ThemeColors; new: ThemeColors; newId: ThemeId } | null>(null)
+  const [isBurning, setIsBurning] = useState(false)
+
+  const handleThemeSelect = useCallback((id: ThemeId) => {
+    if (id === theme) return
+    const old = THEMES[theme]
+    const next = THEMES[id]
+    setBurnState({ old, new: next, newId: id })
+    setIsBurning(true)
+  }, [theme])
+
+  const handleBurnComplete = useCallback(() => {
+    if (burnState) {
+      setTheme(burnState.newId)
+    }
+    // Small delay before removing overlay to avoid flicker
+    setTimeout(() => {
+      setIsBurning(false)
+      setBurnState(null)
+    }, 50)
+  }, [burnState])
+
   const c = THEMES[theme]
   const subtitle = t('title')
 
@@ -201,11 +225,48 @@ const App: React.FC = () => {
           <div className="onb-step-actions"><Button className="start-button" onClick={hNextLang}>{t('next')}</Button></div></>)}</PageWrapper>}
 
           {phase === 'onboarding-theme' && <PageWrapper key="onboarding-theme">{renderCard(<><p className="onb-label">{t('themeTitle')}</p><p className="onb-desc">{t('themeDesc')}</p>
-          <div className="theme-grid">
-            {(Object.entries(THEMES) as [ThemeId, typeof c][]).map(([id, th]) => (
-              <Magnetic key={id}><button className={`theme-btn${theme === id ? ' active' : ''}`} style={{ '--theme-accent': th.accent, '--theme-bg': th.card } as React.CSSProperties} onClick={() => setTheme(id)}>
-                <span className="theme-swatch" style={{ background: th.accent }} /><span className="theme-name">{th.name}</span>
-              </button></Magnetic>
+          <div className="theme-grid-new">
+            {(Object.entries(THEMES) as [ThemeId, ThemeColors][]).map(([id, th], i) => (
+              <motion.button
+                key={id}
+                className={`theme-card-new${theme === id ? ' active' : ''}`}
+                style={{
+                  '--th-accent': th.accent,
+                  '--th-light': th.light,
+                  '--th-dark': th.dark,
+                } as React.CSSProperties}
+                onClick={() => handleThemeSelect(id)}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.08, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                whileHover={{ y: -4, scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <div className="theme-card-preview">
+                  <div className="theme-card-swatch-main" style={{ background: th.accent }} />
+                  <div className="theme-card-swatch-row">
+                    <span className="theme-card-swatch-sm" style={{ background: th.light }} />
+                    <span className="theme-card-swatch-sm" style={{ background: th.dark }} />
+                  </div>
+                  <div className="theme-card-preview-bg" style={{
+                    background: `linear-gradient(135deg, ${th.accent}20, ${th.dark}30)`,
+                  }} />
+                </div>
+                <span className="theme-card-name">{th.name}</span>
+                {theme === id && (
+                  <motion.div
+                    className="theme-card-check"
+                    layoutId="theme-check"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </motion.div>
+                )}
+              </motion.button>
             ))}
           </div>
           <div className="onb-step-actions"><Button className="start-button" onClick={hNextTheme}>{t('next')}</Button></div></>)}</PageWrapper>}
@@ -239,6 +300,14 @@ const App: React.FC = () => {
           {phase === 'dashboard' && <PageWrapper key="dashboard"><Dashboard lang={lang} onBack={hBackToMain} /></PageWrapper>}
         </AnimatePresence>
 
+        {burnState && (
+          <ThemeBurnTransition
+            isActive={isBurning}
+            oldColors={burnState.old}
+            newColors={burnState.new}
+            onComplete={handleBurnComplete}
+          />
+        )}
         <UpdateModal state={updateModal} theme={theme} lang={lang} onClose={hCloseModal} onDownload={hInstallUpdate} onRestart={hRestart} />
         <Footer version={version} updateAvailable={updateAvailable} />
       </div>

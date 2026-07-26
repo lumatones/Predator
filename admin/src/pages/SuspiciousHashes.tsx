@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, useRef, type ReactNode, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../App'
 import {
@@ -9,6 +9,7 @@ import {
 import HashRow from '../components/HashRow'
 import { Search, ShieldAlert, Clock, Check, X } from 'lucide-react'
 import { SkeletonTable } from '../components/Skeleton'
+import { smoothEase } from '../constants'
 
 interface TabDef {
   key: string
@@ -23,9 +24,7 @@ const TABS: TabDef[] = [
   { key: 'scan_results', label: 'Из сканов', icon: <Search size={14} /> },
 ]
 
-const smoothEase = [0.16, 1, 0.3, 1] as const
-
-export default function SuspiciousHashes() {
+export default memo(function SuspiciousHashes() {
   const { auth } = useAuth()
   const [tab, setTab] = useState<string>('pending')
   const [hashes, setHashes] = useState<(SuspiciousHash | ScanResultHash)[]>([])
@@ -35,6 +34,17 @@ export default function SuspiciousHashes() {
   const [confettiId, setConfettiId] = useState<string | number | null>(null)
   const [glowId, setGlowId] = useState<string | number | null>(null)
   const [rejectingId, setRejectingId] = useState<string | number | null>(null)
+  const confettiTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const glowTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const rejectTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  useEffect(() => {
+    return () => {
+      if (confettiTimer.current) clearTimeout(confettiTimer.current)
+      if (glowTimer.current) clearTimeout(glowTimer.current)
+      if (rejectTimer.current) clearTimeout(rejectTimer.current)
+    }
+  }, [])
 
   const load = async (status: string) => {
     if (!auth) return
@@ -61,13 +71,13 @@ export default function SuspiciousHashes() {
   const triggerConfetti = (id: string | number) => {
     setConfettiId(id)
     setGlowId(id)
-    setTimeout(() => setConfettiId(null), 800)
-    setTimeout(() => setGlowId(null), 1200)
+    confettiTimer.current = setTimeout(() => setConfettiId(null), 800)
+    glowTimer.current = setTimeout(() => setGlowId(null), 1200)
   }
 
   const triggerReject = (id: string | number) => {
     setRejectingId(id)
-    setTimeout(() => setRejectingId(null), 600)
+    rejectTimer.current = setTimeout(() => setRejectingId(null), 600)
   }
 
   const handleApprove = async (id: number) => {
@@ -230,4 +240,4 @@ export default function SuspiciousHashes() {
       </AnimatePresence>
     </div>
   )
-}
+})

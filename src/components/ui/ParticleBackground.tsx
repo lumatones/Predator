@@ -40,14 +40,18 @@ export default function ParticleBackground({
     fullScreen: false,
     fpsLimit: 60,
     particles: {
-      number: { value: 60, density: { enable: true } },
-      color: { value: [accentColor, lightColor] },
+      number: { value: 90, density: { enable: true } },
+      color: { value: [accentColor, lightColor, '#ffffff'] },
       shape: { type: 'circle' },
-      opacity: { value: 0.25, random: true },
-      size: { value: { min: 1, max: 3 }, random: true },
+      opacity: {
+        value: { min: 0.15, max: 0.45 },
+        random: true,
+        animation: { enable: true, speed: 0.3, sync: false },
+      },
+      size: { value: { min: 1, max: 3.5 }, random: true },
       move: {
         enable: true,
-        speed: 0.5,
+        speed: 0.6,
         direction: 'none',
         random: true,
         straight: false,
@@ -56,8 +60,9 @@ export default function ParticleBackground({
       links: {
         enable: true,
         color: accentColor,
-        opacity: 0.08,
-        distance: 150,
+        opacity: 0.12,
+        distance: 160,
+        width: 1,
       },
     },
     interactivity: {
@@ -65,7 +70,7 @@ export default function ParticleBackground({
         onHover: { enable: true, mode: 'repulse' },
       },
       modes: {
-        repulse: { distance: 100, duration: 0.4 },
+        repulse: { distance: 120, duration: 0.4 },
       },
     },
     detectRetina: true,

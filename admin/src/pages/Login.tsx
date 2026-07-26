@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, User, Lock, Loader2 } from 'lucide-react'
 import { login as apiLogin } from '../api'
@@ -8,7 +8,7 @@ interface LoginProps {
   onLogin: (token: string, admin: { id: number; username: string; role: string }) => void
 }
 
-export default function Login({ onLogin }: LoginProps) {
+export default memo(function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -120,4 +120,4 @@ export default function Login({ onLogin }: LoginProps) {
       </motion.form>
     </div>
   )
-}
+})

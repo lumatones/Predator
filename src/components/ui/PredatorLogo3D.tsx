@@ -18,8 +18,11 @@ function Shield({ accent, light, dark, rotate }: ShieldProps) {
 
   useFrame((state, delta) => {
     if (meshRef.current && rotate && reducedMotion === false) {
-      meshRef.current.rotation.y += delta * 0.5
-      meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.5) * 0.05
+      meshRef.current.rotation.y += delta * 0.6
+      meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.6) * 0.08
+      // Pulsing scale
+      const s = 1 + Math.sin(state.clock.elapsedTime * 1.2) * 0.04
+      meshRef.current.scale.setScalar(s)
     }
   })
 
@@ -46,7 +49,7 @@ function Shield({ accent, light, dark, rotate }: ShieldProps) {
       <meshStandardMaterial
         color={dark}
         emissive={accent}
-        emissiveIntensity={0.5}
+        emissiveIntensity={0.7}
         metalness={0.7}
         roughness={0.25}
       />

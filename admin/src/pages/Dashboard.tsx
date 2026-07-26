@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { useAuth } from '../App'
 import { getDashboardStats, getScanStats, type DashboardStats, type ScanStats } from '../api'
 import { io, Socket } from 'socket.io-client'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
   PieChart, Pie, Cell, ResponsiveContainer,
@@ -14,76 +14,22 @@ import {
 } from 'lucide-react'
 import AnimatedNumber from '../components/AnimatedNumber'
 import { SkeletonStatCard, SkeletonTable } from '../components/Skeleton'
+import { useToasts, ToastContainer, type ToastType } from '../components/Toast'
+import { springEase } from '../constants'
 
-const WS_BASE = `http://${window.location.hostname}:3001`
+const DEV = import.meta.env.DEV
 
-const springEase = [0.16, 1, 0.3, 1] as const
-
-// ── Toast system ──
-
-type ToastType = 'success' | 'warning' | 'info'
-
-interface Toast {
-  id: number
-  type: ToastType
-  message: string
-}
-
-const toastConfig: Record<ToastType, { border: string; glow: string; iconColor: string }> = {
-  success: { border: 'rgba(34,197,94,0.35)', glow: 'rgba(34,197,94,0.2)', iconColor: '#22c55e' },
-  warning: { border: 'rgba(234,179,8,0.35)', glow: 'rgba(234,179,8,0.2)', iconColor: '#eab308' },
-  info: { border: 'rgba(59,130,246,0.35)', glow: 'rgba(59,130,246,0.2)', iconColor: '#3B82F6' },
-}
-
-// ── Toast item with auto-dismiss ──
-
-function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: number) => void }) {
-  useEffect(() => {
-    const timer = setTimeout(() => onRemove(toast.id), 5000)
-    return () => clearTimeout(timer)
-  }, [toast.id, onRemove])
-
-  return (
-    <motion.div
-      className="toast glass-toast"
-      layout
-      role="button"
-      tabIndex={0}
-      style={{ borderLeft: `3px solid ${toastConfig[toast.type].border}` }}
-      initial={{ x: 80, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 80, opacity: 0 }}
-      transition={{ duration: 0.25, ease: springEase }}
-      onClick={() => onRemove(toast.id)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onRemove(toast.id) }}
-      aria-label="Закрыть уведомление"
-    >
-      <span className="toast-glow" style={{ background: toastConfig[toast.type].glow }} />
-      <span className="toast-message" style={{ color: toastConfig[toast.type].iconColor }}>{toast.message}</span>
-    </motion.div>
-  )
-}
-
-// ── Dashboard ──
-
-export default function Dashboard() {
+export default memo(function Dashboard() {
   const { auth } = useAuth()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [scanStats, setScanStats] = useState<ScanStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [scanLoading, setScanLoading] = useState(true)
   const [error, setError] = useState('')
-  const [toasts, setToasts] = useState<Toast[]>([])
+  const { toasts, addToast, removeToast } = useToasts()
   const [wsConnected, setWsConnected] = useState(false)
 
-  const addToast = useCallback((type: ToastType, message: string) => {
-    const id = Date.now() + Math.random()
-    setToasts(prev => [...prev, { id, type, message }])
-  }, [])
-
-  const removeToast = useCallback((id: number) => {
-    setToasts(prev => prev.filter(t => t.id !== id))
-  }, [])
+  const WS_BASE = `http://${window.location.hostname}:3001`
 
   // ── Initial data load ──
 
@@ -129,7 +75,7 @@ export default function Dashboard() {
       })
 
       socket.on('connect', () => {
-        console.log('🔌 WebSocket connected:', socket?.id)
+        if (DEV) console.log('🔌 WebSocket connected:', socket?.id)
         setWsConnected(true)
         socket?.emit('join-admin')
         load()
@@ -137,12 +83,12 @@ export default function Dashboard() {
       })
 
       socket.on('disconnect', (reason) => {
-        console.log('🔌 WebSocket disconnected:', reason)
+        if (DEV) console.log('🔌 WebSocket disconnected:', reason)
         setWsConnected(false)
       })
 
       socket.on('connect_error', (err) => {
-        console.log('🔌 WebSocket error:', err.message)
+        if (DEV) console.log('🔌 WebSocket error:', err.message)
         setWsConnected(false)
       })
 
@@ -529,16 +475,10 @@ export default function Dashboard() {
       </motion.div>
 
       {/* ── Toasts ── */}
-      <div className="toast-container">
-        <AnimatePresence>
-          {toasts.map(t => (
-            <ToastItem key={t.id} toast={t} onRemove={removeToast} />
-          ))}
-        </AnimatePresence>
-      </div>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
-}
+})
 
 // ── Empty state helper ──
 

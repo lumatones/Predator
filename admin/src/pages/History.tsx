@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { motion } from 'framer-motion'
 import { useAuth } from '../App'
 import { getHistory, type HistoryItem } from '../api'
 import { Key, User, RefreshCw, Search, List } from 'lucide-react'
 import { SkeletonStatCard, SkeletonTimeline, SkeletonText } from '../components/Skeleton'
-
-const springEase = [0.34, 1.56, 0.64, 1] as const
-const smoothEase = [0.16, 1, 0.3, 1] as const
+import { springBounce as springEase, smoothEase } from '../constants'
 
 const filters = [
   { key: 'all', label: 'Все' },
@@ -14,7 +12,7 @@ const filters = [
   { key: 'request', label: 'Запросы' },
 ] as const
 
-export default function History() {
+export default memo(function History() {
   const { auth } = useAuth()
   const [items, setItems] = useState<HistoryItem[]>([])
   const [stats, setStats] = useState({ totalTokensUsed: 0, totalRequestsProcessed: 0 })
@@ -121,7 +119,7 @@ export default function History() {
 
       {/* Stats */}
       <div className="stats-grid">
-        <motion.div className="stat-card" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: springEase }}>
+        <motion.div className="stat-card" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}          transition={{ duration: 0.4, ease: springEase }}>
           <div className="stat-card-icon red"><Key size={20} /></div>
           <div className="stat-card-value">{stats.totalTokensUsed}</div>
           <div className="stat-card-label">Токенов использовано</div>
@@ -251,4 +249,4 @@ export default function History() {
       </div>
     </div>
   )
-}
+})

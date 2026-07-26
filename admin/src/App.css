@@ -130,7 +130,8 @@ body {
 
 .login-card {
   position: relative;
-  width: 420px;
+  width: 100%;
+  max-width: 420px;
   background: rgba(12, 12, 26, 0.85);
   border: 1px solid rgba(255, 59, 59, 0.15);
   border-radius: 16px;
@@ -372,7 +373,7 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   background: radial-gradient(circle at 20% 80%, rgba(255, 59, 59, 0.06) 0%, transparent 40%),
               radial-gradient(circle at 80% 20%, rgba(255, 107, 53, 0.05) 0%, transparent 40%);
   pointer-events: none;
@@ -782,17 +783,34 @@ body {
 }
 
 .stat-card {
+  position: relative;
+  overflow: hidden;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px;
-  transition: border-color 0.2s, transform 0.2s;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
   cursor: default;
 }
 
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  transform: translate(-50%, -50%) scale(0);
+  background: radial-gradient(circle, rgba(255, 59, 59, 0.08) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: pulse-ring 4s ease-in-out infinite;
+  opacity: 0;
+}
+
 .stat-card:hover {
-  border-color: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
+  border-color: rgba(255, 59, 59, 0.25);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 30px rgba(255, 59, 59, 0.06);
 }
 
 .stat-card-icon {
@@ -1077,36 +1095,6 @@ tbody tr:hover {
 /* ═══ TOAST ═══ */
 
 /* ═══ DASHBOARD UPGRADES ══ */
-
-.stat-card-icon.blue {
-  background: rgba(59, 130, 246, 0.15);
-  color: #3B82F6;
-}
-
-.stat-card {
-  position: relative;
-  overflow: hidden;
-}
-
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100px;
-  height: 100px;
-  transform: translate(-50%, -50%) scale(0);
-  background: radial-gradient(circle, rgba(255, 59, 59, 0.08) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
-  animation: pulse-ring 4s ease-in-out infinite;
-  opacity: 0;
-}
-
-.stat-card:hover {
-  border-color: rgba(255, 59, 59, 0.25);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 30px rgba(255, 59, 59, 0.06);
-}
 
 @keyframes pulse-ring {
   0%, 100% { transform: translate(-50%, -50%) scale(0); opacity: 0; }

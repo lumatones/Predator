@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { motion } from 'framer-motion'
 import { useAuth } from '../App'
 import { getTokens, generateTokens, revokeToken, type Token } from '../api'
@@ -17,11 +17,11 @@ import {
   ShieldCheck,
   Zap,
 } from 'lucide-react'
+import { springEase } from '../constants'
 
-const springEase = [0.16, 1, 0.3, 1] as const
 const AUTO_HIDE_MS = 8000
 
-export default function Tokens() {
+export default memo(function Tokens() {
   const { auth } = useAuth()
   const [tokens, setTokens] = useState<Token[]>([])
   const [loading, setLoading] = useState(true)
@@ -123,7 +123,7 @@ export default function Tokens() {
   }
 
   function handleCopy(code: string, id: number) {
-    navigator.clipboard.writeText(code)
+    try { navigator.clipboard.writeText(code) } catch { /* clipboard unavailable */ }
     setCopiedId(id)
     if (copyTimeout.current) clearTimeout(copyTimeout.current)
     copyTimeout.current = setTimeout(() => setCopiedId(null), 2000)
@@ -387,4 +387,4 @@ export default function Tokens() {
       )}
     </div>
   )
-}
+})

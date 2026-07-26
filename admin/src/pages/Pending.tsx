@@ -1,60 +1,21 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, User, Check, X } from 'lucide-react'
 import { useAuth } from '../App'
 import { getPending, approveRequest, rejectRequest, PendingRequest } from '../api'
 import CountdownCircle from '../components/CountdownCircle'
 import { SkeletonPendingCard } from '../components/Skeleton'
+import { useToasts, ToastContainer, type ToastType } from '../components/Toast'
+import { springEase } from '../constants'
 
-// ── Toast helpers ──
-
-type ToastType = 'success' | 'error'
-
-interface Toast {
-  id: number
-  type: ToastType
-  message: string
-}
-
-const springEase = [0.16, 1, 0.3, 1] as const
-
-function ToastItem({ toast, onDone }: { toast: Toast; onDone: () => void }) {
-  useEffect(() => {
-    const timer = setTimeout(onDone, 4000)
-    return () => clearTimeout(timer)
-  }, [onDone])
-
-  return (
-    <motion.div
-      className={`toast toast-${toast.type}`}
-      initial={{ x: 80, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 80, opacity: 0 }}
-      transition={{ duration: 0.25, ease: springEase }}
-    >
-      {toast.message}
-    </motion.div>
-  )
-}
-
-export default function Pending() {
+export default memo(function Pending() {
   const { auth } = useAuth()
   const [requests, setRequests] = useState<PendingRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [toasts, setToasts] = useState<Toast[]>([])
+  const { toasts, addToast, removeToast } = useToasts()
   const [actionId, setActionId] = useState<number | null>(null)
   const [exitAction, setExitAction] = useState<{ id: number; action: 'approve' | 'reject' } | null>(null)
-  const toastId = useRef(0)
-
-  const showToast = (type: ToastType, message: string) => {
-    const id = ++toastId.current
-    setToasts(prev => [...prev, { id, type, message }])
-  }
-
-  const removeToast = (id: number) => {
-    setToasts(prev => prev.filter(t => t.id !== id))
-  }
 
   async function load() {
     if (!auth) return
@@ -78,10 +39,10 @@ export default function Pending() {
     setExitAction({ id, action: 'approve' })
     try {
       await approveRequest(auth.token, id)
-      showToast('success', 'Запрос одобрен')
+      addToast('success', 'Запрос одобрен')
       setRequests(prev => prev.filter(r => r.id !== id))
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Ошибка')
+      addToast('error', err instanceof Error ? err.message : 'Ошибка')
     } finally {
       setActionId(null)
       setExitAction(null)
@@ -94,10 +55,10 @@ export default function Pending() {
     setExitAction({ id, action: 'reject' })
     try {
       await rejectRequest(auth.token, id)
-      showToast('success', 'Запрос отклонён')
+      addToast('success', 'Запрос отклонён')
       setRequests(prev => prev.filter(r => r.id !== id))
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Ошибка')
+      addToast('error', err instanceof Error ? err.message : 'Ошибка')
     } finally {
       setActionId(null)
       setExitAction(null)
@@ -224,13 +185,7 @@ export default function Pending() {
       )}
 
       {/* Toasts */}
-      <div className="toast-container">
-        <AnimatePresence>
-          {toasts.map(t => (
-            <ToastItem key={t.id} toast={t} onDone={() => removeToast(t.id)} />
-          ))}
-        </AnimatePresence>
-      </div>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
-}
+})
