@@ -53,12 +53,12 @@ function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0, 
 
   const shape = useMemo(() => {
     const s = new Shape()
-    s.moveTo(0, 1.4)
-    s.lineTo(1.1, 0.5)
-    s.lineTo(1.1, -0.4)
-    s.lineTo(0, -1.4)
-    s.lineTo(-1.1, -0.4)
-    s.lineTo(-1.1, 0.5)
+    s.moveTo(0, 1.1)
+    s.lineTo(0.85, 0.38)
+    s.lineTo(0.85, -0.32)
+    s.lineTo(0, -1.1)
+    s.lineTo(-0.85, -0.32)
+    s.lineTo(-0.85, 0.38)
     s.closePath()
     return s
   }, [])
@@ -68,7 +68,7 @@ function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0, 
       <extrudeGeometry
         args={[
           shape,
-          { depth: 0.15, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 2 }
+          { depth: 0.12, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 1 }
         ]}
       />
       <meshStandardMaterial
@@ -78,7 +78,7 @@ function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0, 
         metalness={0.7}
         roughness={0.25}
       />
-      <Edges color={reactiveLight} lineWidth={1.5} threshold={15} />
+      <Edges color={reactiveLight} lineWidth={1.2} threshold={15} />
     </mesh>
   )
 }
@@ -178,7 +178,7 @@ export default function PredatorLogo3D({
       onMouseLeave={() => interactive && setHovered(false)}
     >
       <Canvas
-        camera={{ position: [0, 0, 4.5], fov: 45 }}
+        camera={{ position: [0, 0, 5.5], fov: 45 }}
         dpr={[1, Math.max(window.devicePixelRatio || 2, 2)]}
         gl={{ antialias: true, alpha: true }}
         style={{ width: '100%', height: '100%' }}
