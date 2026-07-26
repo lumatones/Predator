@@ -153,6 +153,31 @@ export const ALL_CHEAT_KEYWORDS = [
   'devtools', 'remote debugging', 'chromium embedded',
   'js executor', 'dotnet inject', 'compiled resource',
   'dump', 'dumper', 'decompiler', 'deobfuscator',
+  // DMA hardware specifics from research
+  'pcileech', 'leechcore', 'vmm', 'memprocfs',
+  'ftd3xx', 'ft601', 'ft2232', 'ftdibus',
+  'xc7a35t', 'xc7a75t', 'xc7a100t', 'artix-7',
+  'xilinx fpga', 'altera fpga', 'pcie leech',
+  'dma card', 'dma firmware', 'fpga firmware',
+  'captaindma', 'leetch', 'enigma x1', 'screamer m2',
+  'raptor dma', 'zdma', 'gbox',
+  // CEF/Chromium exploit patterns
+  'cef_browser', 'chromium embedded framework',
+  'remote debugging port', 'devtools protocol',
+  'natives handler', 'native invoker',
+  'get_native_handler', 'crossmap',
+  // ALT:V specific
+  'alt-client', 'alt_server', 'bytecode module',
+  'js bytecode', 'resource cache', 'client_packages',
+  // HWID spoofing
+  'hwid spoofer', 'volumeid', 'mac spoof',
+  'disk serial', 'smbios', 'motherboard serial',
+  'permanent spoof', 'perm spoof',
+  // RAM disk evasion
+  'ram disk', 'memory disk', 'imdisk',
+  'tmpfs', 'ramdrive', 'virtual drive',
+  // ADS (Alternate Data Streams)
+  'alternate data stream', ':zone.identifier',
 ]
 
 export const SUSPICIOUS_PATTERNS = [
@@ -187,6 +212,32 @@ export const SUSPICIOUS_PATTERNS = [
   /[Ss]poof(?:er|ing)/i,
   /[Cc]lean(?:er|ing)\s*(?:trace|log)/i,
   /[Hh][Ww][Ii][Dd]\s*[Ss]poof/i,
+  // DMA hardware specifics
+  /[Xx][Cc]7[Aa]\d{1,3}[Tt]/i,
+  /[Aa]rtix-?\s*7/i,
+  /[Ff][Tt]60[01]/i,
+  /[Ff][Tt]2232/i,
+  /[Ll]eech[Dd][Mm][Aa]/i,
+  /[Cc]aptain[Dd][Mm][Aa]/i,
+  /[Ee]nigma\s*[Xx]1/i,
+  /[Ss]creamer\s*[Mm]2/i,
+  /[Rr]aptor\s*[Dd][Mm][Aa]/i,
+  // CEF / Chromium exploit patterns
+  /remote-?\s*debugging-?\s*port/i,
+  /chrome\.devtools/i,
+  /native\s*invoker/i,
+  /get_native_handler/i,
+  // RAM disk / memory evasion
+  /[Rr][Aa][Mm]\s*[Dd](isk|rive)/i,
+  /[Ii][Mm][Dd]isk/i,
+  /[Tt][Mm][Pp][Ff][Ss]/i,
+  // Alternate Data Streams (NTFS ADS)
+  /:zone\.identifier/i,
+  /alternate\s*data\s*stream/i,
+  // Permanent HWID spoofers
+  /[Pp]erm(?:anent)?\s*[Ss]poof/i,
+  /[Ee][Ff][Ii]\s*[Ss]poof/i,
+  /[Ss][Mm][Bb][Ii][Oo][Ss]\s*[Ss]poof/i,
 ]
 
 // Protected paths — game mod directories where files should not be

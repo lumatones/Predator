@@ -15,6 +15,18 @@ const KNOWN_DMA_VENDORS = [
   { name: 'Xilinx (alt class)', ids: ['dada'] },
 ]
 
+// FTDI FT601 USB IDs — the standard USB bridge on ALL DMA cheat cards
+const FTDI_USB_IDS = ['0403:601e', '0403:601f', '0403:6010', '0403:6011', '0403:6014']
+
+// Known DMA cheat card FPGA chip strings
+const DMA_FPGA_CHIPS = ['xc7a35t', 'xc7a75t', 'xc7a100t', 'xc7a200t', 'artix-7', 'artix7', 'kintex', 'virtex']
+
+// PCILeech ecosystem files
+const PCILEECH_FILES = ['leechcore.dll', 'vmm.dll', 'ftd3xx.dll', 'pcileech.dll', 'pcileech_core.dll', 'leechsvc.dll', 'memprocfs.exe']
+
+// Thunderbolt-specific DMA attack indicators
+const THUNDERBOLT_VENDORS = ['8086'] // Intel Thunderbolt controllers — check for unauthorized devices behind them
+
 // PCI Class Codes for suspicious generic bridges (possible spoofed FPGA devices)
 const SUSPICIOUS_PCI_CLASSES = ['0604', '0600', '0680'] // PCI Bridge, Host Bridge, Other Bridge
 
@@ -130,8 +142,36 @@ export function scanDmaDevices(): ScanResult[] {
   // 1b. PCI fingerprinting (new — catches spoofed devices)
   results.push(...scanPciFingerprints())
 
+  // 1c. FTDI FT601 USB detection (all DMA cards use this USB bridge)
+  try {
+    const usbOut = execSync(
+      'powershell -NoProfile -Command "Get-PnpDevice -PresentOnly -Class USB | Where-Object { $_.InstanceId -match \'0403\' } | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress"',
+      { encoding: 'utf-8' as BufferEncoding, timeout: 8000, windowsHide: true },
+    ).trim()
+    if (usbOut && usbOut.length > 5) {
+      for (const ftid of FTDI_USB_IDS) {
+        if (usbOut.toLowerCase().includes(ftid.toLowerCase())) {
+          results.push({
+            path: 'USB Devices',
+            fileName: `⚠ DMA USB Bridge: FTDI FT601 (${ftid})`,
+            type: 'hardware',
+            risk: 'high',
+            matches: [
+              `ftdi-usb:${ftid}`,
+              `⚠ FTDI FT601 is THE standard USB bridge for DMA cheat cards`,
+              `⚠ Used by: LeetDMA, Enigma X1, Screamer M2, Raptor, CaptainDMA, ZDMA, GBOX`,
+            ],
+            size: 0,
+            modifiedAt: new Date().toISOString(),
+          })
+          break
+        }
+      }
+    }
+  } catch { /* FTDI USB check optional */ }
+
   // 2. Software: DMA-related files in scan paths
-  const dmaKeywords = ['dma', 'fpga', 'pcileech', 'fuser', 'screamer', 'leechcore', 'memprocfs', 'vmm', 'kmem', 'coremap', 'ftd3', 'ftd2']
+  const dmaKeywords = ['dma', 'fpga', 'pcileech', 'fuser', 'screamer', 'leechcore', 'memprocfs', 'vmm', 'kmem', 'coremap', 'ftd3', 'ftd2', 'ft601', 'leechsvc', 'xc7a']
   for (const dir of getScanPaths()) {
     if (!fs.existsSync(dir)) continue
     try {
@@ -151,7 +191,7 @@ export function scanDmaDevices(): ScanResult[] {
     } catch (_e) { /* skip */ }
   }
 
-  // 3. Drivers: DMA-related files in System32\drivers
+  // 3. Drivers: DMA-related files in System32\drivers + PCILeech ecosystem
   try {
     const sysDir = path.join(_WR, 'System32', 'drivers')
     if (fs.existsSync(sysDir)) {
@@ -159,12 +199,62 @@ export function scanDmaDevices(): ScanResult[] {
         const lower = driver.toLowerCase()
         const matches: string[] = []
         if (dmaKeywords.some(k => lower.includes(k))) matches.push(`driver:${driver}`)
+        // Check against known PCILeech ecosystem files
+        if (PCILEECH_FILES.some(f => lower === f.toLowerCase())) matches.push(`pcileech-driver:${driver}`)
         if (matches.length > 0) {
           results.push({ path: path.join(sysDir, driver), fileName: `Driver: ${driver}`, type: 'software', risk: 'high', matches, size: 0, modifiedAt: new Date().toISOString() })
         }
       }
     }
   } catch (_e) { /* skip */ }
+
+  // 3b. PCILeech ecosystem files in System32
+  const system32Dir = path.join(_WR, 'System32')
+  if (fs.existsSync(system32Dir)) {
+    try {
+      for (const file of fs.readdirSync(system32Dir)) {
+        const lower = file.toLowerCase()
+        if (PCILEECH_FILES.some(f => lower === f.toLowerCase())) {
+          results.push({
+            path: path.join(system32Dir, file),
+            fileName: `⚠ PCILeech Component: ${file}`,
+            type: 'software',
+            risk: 'high',
+            matches: [`pcileech-file:${file}`, `⚠ Core DMA memory acquisition library`],
+            size: 0,
+            modifiedAt: new Date().toISOString(),
+          })
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  // 3c. FPGA chip detection in PCI device descriptions
+  try {
+    const pciOut = execSync(
+      'powershell -NoProfile -Command "Get-PnpDevice -PresentOnly -Class System | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress"',
+      { encoding: 'utf-8' as BufferEncoding, timeout: 8000, windowsHide: true },
+    ).trim()
+    if (pciOut && pciOut.length > 5) {
+      for (const chip of DMA_FPGA_CHIPS) {
+        if (pciOut.toLowerCase().includes(chip)) {
+          results.push({
+            path: 'PCI Devices',
+            fileName: `⚠ FPGA Chip Detected: ${chip.toUpperCase()}`,
+            type: 'hardware',
+            risk: 'high',
+            matches: [
+              `fpga-chip:${chip}`,
+              `⚠ FPGA chips are the core of ALL DMA cheat cards`,
+            ],
+            size: 0,
+            modifiedAt: new Date().toISOString(),
+          })
+          break
+        }
+      }
+    }
+  } catch { /* FPGA detection optional */ }
 
   return results
 }

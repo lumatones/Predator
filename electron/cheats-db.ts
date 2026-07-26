@@ -100,6 +100,25 @@ export const KNOWN_PROCESSES: string[] = [
   'kdmapper.exe', 'drvmap.exe', 'physmem.exe',
   'rtcore.exe', 'gdrv.sys', // vulnerable driver loaders (BYOVD)
 
+  // RAM disk tools (used to hide cheats in memory)
+  'imdisk.exe', 'ramdisk.exe', 'softperfect.exe',
+  'osfmount.exe', 'primo.exe', 'ultraramdisk.exe',
+
+  // HWID spoofer tools
+  'spoofer.exe', 'hwidspoofer.exe', 'hwid.exe',
+  'serialspoofer.exe', 'macchanger.exe',
+  'volumeid.exe', 'smbiosspoofer.exe',
+  'amidespooler.exe', 'efispoofer.exe',
+
+  // Disk serial cleaners / volume ID changers
+  'diskcleaner.exe', 'serialcleaner.exe',
+  'tracecleaner.exe', 'logkiller.exe',
+
+  // PC cleaning scripts (bat/ps1 launchers)
+  'cleaner.bat', 'cleantraces.bat', 'wipeall.bat',
+  'pc_clean.bat', 'beforecheck.bat',
+  'clean_traces.ps1', 'wipe_pc.ps1',
+
   // RAGE MP specific cheat loaders
   'ragemp_loader.exe', 'rage_mp_cheat.exe', 'ragemp_hack.exe',
   'cef_injector.exe', 'cef_hook_loader.exe',
@@ -162,9 +181,15 @@ export const KNOWN_CHEAT_FILES: string[] = [
   'unlockall.dll', 'level.dll', 'rp.dll',
 
   // DMA / memory tools
+  // DMA-related drivers
   'leechcore.dll', 'leechcore64.dll',
   'vmm.dll', 'vmm64.dll',
   'FTD3XX.dll', 'ftd2xx.dll',
+  'ftdibus.sys', 'ftser2k.sys',
+  // PCILeech specific
+  'pcileech.dll', 'pcileech_core.dll',
+  'leechcore.dll', 'leechsvc.dll',
+  'fpga.dll', 'dma_access.dll',
 
   // RAGE MP cheat loaders (CEF-based + resource injectors)
   'ragemp_hook.dll', 'ragemp_inject.dll',
@@ -322,10 +347,24 @@ export const KNOWN_BINARY_SIGNATURES: Buffer[] = [
   // Spoofers
   B('rpchanger'), B('hwid spoofer'), B('mac spoofer'),
 
-  // DMA
-  B('pcileech'), B('fuser'), B('screamer'),
-  B('leechcore'), B('memprocfs'), B('vmm.dll'),
-  B('fpga'), B('ftdi'), B('dma memory'),
+  // FTDI FT601 USB driver (DMA bridge)
+  B('ftdibus'), B('ftser2k'), B('ftd3xx'),
+  B('ft601'), B('ft600'), B('ft2232'),
+
+  // PCILeech memory acquisition
+  B('leechcore'), B('pcileech'),
+  B('vmm_dll'), B('memprocfs'),
+  B('fpga_memory'), B('dma_device'),
+  B('pcie_leech'), B('dma_attack'),
+
+  // FPGA chip model strings (found in firmware/config)
+  B('xc7a35t'), B('xc7a75t'), B('xc7a100t'), B('xc7a200t'),
+  B('xilinx'), B('artix-7'), B('artix7'),
+  B('kintex'), B('virtex'), B('spartan6'),
+
+  // RAM disk / memory-only cheat storage
+  B('imdisk'), B('ramdisk'), B('aimp'),
+  B('softperfect'), B('osfmount'), B('primo'),
 
   // RAGE MP cheat signatures (CEF + resource injection)
   B('ragemp_hook'), B('ragemp_inject'),
