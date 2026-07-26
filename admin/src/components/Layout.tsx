@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import { LayoutDashboard, ClipboardCheck, Key, History, Activity, LogOut, Home } from 'lucide-react'
+import { LayoutDashboard, ClipboardCheck, Key, History, Activity, ShieldCheck, LogOut, Home } from 'lucide-react'
 import { useAuth } from '../App'
 import { ReactNode, useState, useEffect } from 'react'
 import ParticleBackground from './ParticleBackground'
@@ -112,6 +112,11 @@ export default function Layout({ children }: LayoutProps) {
           <NavLink to="/hashes" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Подозрительные сигнатуры">
             <Activity size={18} />
             <span>Сигнатуры</span>
+          </NavLink>
+
+          <NavLink to="/safe-files" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Безопасные файлы">
+            <ShieldCheck size={18} />
+            <span>Безопасные</span>
           </NavLink>
         </nav>
 

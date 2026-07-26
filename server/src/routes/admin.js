@@ -520,4 +520,40 @@ router.post('/hashes/confirm-from-scan', async (req, res) => {
   }
 })
 
+// ── GET /api/admin/safe-files-stats ──────────────
+router.get('/safe-files-stats', async (req, res) => {
+  try {
+    const total = await query('SELECT COUNT(*) AS cnt FROM safe_files')
+    const totalConfirm50 = await query('SELECT COUNT(*) AS cnt FROM safe_files WHERE confirm_count >= 50')
+    const totalConfirm10 = await query('SELECT COUNT(*) AS cnt FROM safe_files WHERE confirm_count >= 10')
+
+    const recent = await query(`
+      SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS fileSize,
+             confirm_count AS confirmCount, created_at AS createdAt, last_seen AS lastSeen
+      FROM safe_files
+      ORDER BY last_seen DESC
+      LIMIT 30
+    `)
+
+    const topConfirmed = await query(`
+      SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS fileSize,
+             confirm_count AS confirmCount, last_seen AS lastSeen
+      FROM safe_files
+      ORDER BY confirm_count DESC
+      LIMIT 10
+    `)
+
+    return res.json({
+      totalFiles: total[0]?.cnt || 0,
+      highConfidence: totalConfirm50[0]?.cnt || 0,
+      mediumConfidence: totalConfirm10[0]?.cnt || 0,
+      recent,
+      topConfirmed,
+    })
+  } catch (err) {
+    console.error('Safe files stats error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
 module.exports = router

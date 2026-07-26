@@ -232,6 +232,29 @@ export function getScanResultHashes(token: string, limit: number = 100) {
   return request<ScanResultHashesResponse>(`/admin/scan-result-hashes?limit=${limit}`, { token })
 }
 
+// ── Safe Files (Community Whitelist) ──
+
+export interface SafeFileEntry {
+  partialHash: string
+  fileName: string
+  fileSize: number
+  confirmCount: number
+  createdAt: string
+  lastSeen: string
+}
+
+export interface SafeFilesStats {
+  totalFiles: number
+  highConfidence: number
+  mediumConfidence: number
+  recent: SafeFileEntry[]
+  topConfirmed: SafeFileEntry[]
+}
+
+export function getSafeFilesStats(token: string) {
+  return request<SafeFilesStats>('/admin/safe-files-stats', { token })
+}
+
 export function confirmHashFromScan(token: string, sha256: string, file_name?: string, file_size?: number) {
   return request<{ success: boolean; message: string }>('/admin/hashes/confirm-from-scan', {
     method: 'POST',

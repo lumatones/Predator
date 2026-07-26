@@ -9,6 +9,7 @@ import Pending from './pages/Pending'
 import Tokens from './pages/Tokens'
 import History from './pages/History'
 import SuspiciousHashes from './pages/SuspiciousHashes'
+import SafeFiles from './pages/SafeFiles'
 
 interface AuthState {
   token: string
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/tokens" element={<Tokens />} />
           <Route path="/history" element={<History />} />
           <Route path="/hashes" element={<SuspiciousHashes />} />
+          <Route path="/safe-files" element={<SafeFiles />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
