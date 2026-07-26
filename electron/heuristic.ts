@@ -649,7 +649,15 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       riskScore += 15
     }
 
-    // Whitelist check — reduce score for trusted paths
+    // ── FAST PATH: skip expensive binary analysis for trusted system paths ──
+    // Files in C:\Windows, C:\Program Files are signed by Microsoft/vendors.
+    // If there are NO name/extension signals, they're safe — no need for
+    // entropy/strings/PE analysis which costs 500ms+ per file.
+    if (isTrustedPath(filepath) && riskScore === 0) {
+      return null
+    }
+
+    // Whitelist check — reduce score for remaining trusted-path files with signals
     if (isTrustedPath(filepath)) {
       riskScore = Math.max(riskScore - 30, 0)
     }
@@ -860,8 +868,9 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
         }
       }
 
-      // Hash check against known cheat database
-      if (KNOWN_CHEAT_HASHES.length > 0) {
+      // Hash check against known cheat database (only if already suspicious)
+      // Streaming SHA256 of entire file is expensive — skip for clean files
+      if (KNOWN_CHEAT_HASHES.length > 0 && riskScore > 30) {
         try {
           const h = crypto.createHash('sha256')
           const fd2 = fs.openSync(filepath, 'r')

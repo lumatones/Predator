@@ -7,7 +7,7 @@
 
 import fs from 'fs'
 
-export function scanStrings(filepath: string, maxSize = 5 * 1024 * 1024): string[] {
+export function scanStrings(filepath: string, maxSize = 512 * 1024): string[] {
   const strings: string[] = []
   try {
     const stat = fs.statSync(filepath)
