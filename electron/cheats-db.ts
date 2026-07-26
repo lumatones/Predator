@@ -72,6 +72,10 @@ export const KNOWN_PROCESSES: string[] = [
   '2take1.exe', '2take1menu.exe',
   'modest.exe', 'modestmenu.exe',
   'kiddions.exe', 'kiddion.exe', 'kiddionsmenu.exe',
+  'susano.exe', 'susanomenu.exe', // newer FiveM menu
+  'lambda.exe', 'lambdamenu.exe', 'vmenu.exe',
+  'absolute.exe', 'nightfall.exe', 'aurora.exe',
+  'hydrogen.exe', 'oxide.exe', 'havoc.exe', 'revolution.exe',
 
   // GTA 5 mod menus (asi loaders — SP only, but used in MP)
   'gta5modmenu.exe', 'menyoo.exe',
@@ -93,6 +97,19 @@ export const KNOWN_PROCESSES: string[] = [
   'dma.exe', 'dma64.exe', 'fpga.exe',
   'kmem.exe', 'memprocfs.exe', 'winpmem.exe',
   'coremap.exe',
+  'kdmapper.exe', 'drvmap.exe', 'physmem.exe',
+  'rtcore.exe', 'gdrv.sys', // vulnerable driver loaders (BYOVD)
+
+  // RAGE MP specific cheat loaders
+  'ragemp_loader.exe', 'rage_mp_cheat.exe', 'ragemp_hack.exe',
+  'cef_injector.exe', 'cef_hook_loader.exe',
+  'server_executor.exe', 'resource_injector.exe',
+  'ragemp_spoofer.exe', 'rage_spoofer.exe',
+
+  // ALT:V specific cheat tools
+  'altv_executor.exe', 'altv_js_injector.exe', 'altv_dotnet_loader.exe',
+  'altv_resource_dumper.exe', 'altv_client_hook.exe',
+  'altv_bypass.exe', 'altv_esp.exe', 'altv_menu.exe',
 
   // Known cheat loaders masquerading as legit software
   'epicgameslauncher.exe', // detected cheat loader
@@ -118,7 +135,12 @@ export const KNOWN_CHEAT_FILES: string[] = [
   'eulen.dll', 'redengine.dll',
   'skript.dll', 'impulse.dll', 'luna.dll',
   'paragon.dll', 'ozark.dll', 'cherax.dll',
-  'stand.dll', '2take1.dll', 'modest.dll', 'kiddions.dll',
+  'stand.dll',  '2take1.dll', 'modest.dll', 'kiddions.dll',
+
+  // Newer FiveM menus
+  'susano.dll', 'lambda.dll', 'vmenu.dll',
+  'absolute.dll', 'nightfall.dll', 'aurora.dll',
+  'hydrogen.dll', 'oxide.dll', 'havoc.dll', 'revolution.dll',
 
   // Majestic RP
   'majesty.dll', 'rpchanger.dll',
@@ -271,13 +293,15 @@ export const KNOWN_CHEAT_FOLDERS: string[] = [
   'rage mp cheat', 'rage mp hack',
   'server executor', 'resource injector',
   'cef exploit', 'cef devtools',
-
+  'cef injector', 'cef hook', 'cef loader',
+  'ragemp luas', 'ragemp scripts',
   // ALT:V cheats
   'altv cheat', 'altv hack', 'altv menu',
   'altv bypass', 'altv injector', 'altv loader',
   'altv executor', 'altv esp',
   'altv resource', 'altv client',
-  'js executor', 'altv js',
+  'js executor', 'altv js', 'altv dotnet',
+  'altv compiled', 'altv dumper',
 
   // DirectX masquerading cheat loaders
   // NOTE: potential FP on dev machines with DirectX documentation — use hash-only for zero-FP
@@ -307,17 +331,28 @@ export const KNOWN_BINARY_SIGNATURES: Buffer[] = [
   B('ragemp_hook'), B('ragemp_inject'),
   B('ragemp_menu'), B('ragemp_bypass'),
   B('cef_hook'), B('cef_devtools'),
+  B('cef_injector'), B('cef_loader'),
   B('server_resource'), B('resource_inject'),
+  B('server_executor'), B('resource_hook'),
+  B('devtools_enabled'), B('cef_browser'),
+  B('chromium_embedded'), B('remote_debugging'),
 
   // ALT:V cheat signatures (JS + .NET module injection)
   B('altv_cheat'), B('altv_menu'),
   B('altv_bypass'), B('altv_inject'),
   B('altv_resource'), B('altv_client_hook'),
   B('altv_js_executor'), B('altv_dotnet_inject'),
+  B('altv_compiled_res'), B('altv_dumper'),
+  B('altv_resource_injector'), B('altv_esp_loader'),
 
   // External cheat loader patterns
   // d3d11.dll is NOT here — too many false positives (legit games use DirectX)
   // Detected contextually via scanGameModules() platform whitelist mismatch
+
+  // BYOVD / kernel mapper signatures
+  B('kdmapper'), B('drvmap'), B('physmem'),
+  B('rtcore'), B('gdrv'), B('capcom'), // vulnerable drivers
+  B('iqvw64e'), B('nvoclock'), // exploited GPU drivers
 
   // Malware family: Gen:Variant.Barys — associated with masquerading cheat loaders (Falcon Sandbox)
   // NOTE: VMProtect strings NOT added here — already covered by SUSPICIOUS_CATEGORIES.obfuscator
@@ -450,6 +485,16 @@ export function getScanPaths(): string[] {
     path.join(HOME, 'Documents', 'Cheats'),
     path.join(HOME, 'Documents', 'Hacks'),
     path.join(HOME, 'Documents', 'Mods'),
+
+    // RAGE MP additional paths
+    path.join(HOME, 'AppData', 'Roaming', 'RAGEMP', 'server-files'),
+    path.join(HOME, 'AppData', 'Local', 'RAGEMP', 'server-files'),
+
+    // ALT:V compiled resources (potential obfuscated cheats)
+    path.join(HOME, 'AppData', 'Local', 'altv', 'client_packages'),
+
+    // Recently opened files (prefetch-like)
+    path.join(HOME, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Recent'),
   ]
 }
 

@@ -141,6 +141,18 @@ export const ALL_CHEAT_KEYWORDS = [
   'godmode', 'teleport', 'moneydrop', 'recovery', 'unlockall',
   'nightfall', 'dma', 'fpga', 'pcileech', 'fuser', 'screamer',
   'kmem', 'memprocfs', 'winpmem',
+  // New from research
+  'manual map', 'manualmap', 'reflective loader', 'reflective dll',
+  'kernel injector', 'kernel driver', 'kdmapper', 'drvmap',
+  'byovd', 'vulnerable driver', 'physmem',
+  'screenshot bypass', 'screenshare bypass', 'pc check bypass',
+  'ragemp', 'altv', 'fivem', 'gta5',
+  'executor', 'injector', 'loader', 'spoofer',
+  'resource injector', 'server executor', 'client hook',
+  'cef hook', 'cef injector', 'cef devtools',
+  'devtools', 'remote debugging', 'chromium embedded',
+  'js executor', 'dotnet inject', 'compiled resource',
+  'dump', 'dumper', 'decompiler', 'deobfuscator',
 ]
 
 export const SUSPICIOUS_PATTERNS = [
@@ -156,6 +168,25 @@ export const SUSPICIOUS_PATTERNS = [
   /[Dd][Mm][Aa]/i,
   /[Ff][Pp][Gg][Aa]/i,
   /[Pp][Cc][Ii]\s*[Ll]eech/i,
+  // New from research
+  /[Ss]usano/i,
+  /[Ll]ambda\s*[Mm]enu/i,
+  /[Vv][Mm]enu/i,
+  /[Mm]anual\s*[Mm]ap/i,
+  /[Rr]eflective\s*([Dd]ll|[Ll]oader)/i,
+  /[Kk][Dd][Mm]apper/i,
+  /[Dd][Rr][Vv][Mm]ap/i,
+  /[Bb][Yy][Oo][Vv][Dd]/i,
+  /[Cc][Ee][Ff]\s*([Hh]ook|[Ii]nject|[Dd]ev[tT]ools)/i,
+  /[Rr](esource|AGE)\s*[Ii]nject/i,
+  /[Ss]erver\s*[Ee]xec/i,
+  /[Ee]xecutor/i,
+  /[Ss]creenshot\s*[Bb]ypass/i,
+  /[Ss]creenshare\s*[Bb]ypass/i,
+  /[Pp][Cc]\s*[Cc]heck\s*[Bb]ypass/i,
+  /[Ss]poof(?:er|ing)/i,
+  /[Cc]lean(?:er|ing)\s*(?:trace|log)/i,
+  /[Hh][Ww][Ii][Dd]\s*[Ss]poof/i,
 ]
 
 // Protected paths — game mod directories where files should not be
