@@ -7,7 +7,6 @@
 
 import crypto from 'crypto'
 import fs from 'fs'
-import fsp from 'fs/promises'
 import path from 'path'
 import { execSync } from 'child_process'
 
@@ -43,6 +42,8 @@ import {
 
 import type { HeuristicResult, CheatCategory } from './types'
 import { _PF, _PF86, _HOME, _WR, ctx } from './types'
+import { calculateEntropy } from './analysis/entropy'
+import { scanStrings } from './analysis/strings'
 
 // ═══════════════════════════════════════════════════
 // CONSTANTS
@@ -188,10 +189,6 @@ export const SYSTEM_PROC_NAMES = new Set([
 
 // ═══════════════════════════════════════════════════
 // CACHES — managed by ctx (ScanContext in types.ts)
-// ═══════════════════════════════════════════════════
-
-/** @deprecated Use ctx.sigCache instead */
-export const _sigCache = ctx.sigCache
 
 // Pre-normalized arrays for fast substring matching
 const _PROC_BASES = KNOWN_PROCESSES.map(n =>
@@ -205,61 +202,11 @@ const _LUA_NAMES = KNOWN_LUA_SCRIPTS.map(n => n.toLowerCase())
 const _FOLDER_NAMES = KNOWN_CHEAT_FOLDERS.map(n => n.toLowerCase())
 
 // ═══════════════════════════════════════════════════
-// PURE FUNCTIONS
+// PURE FUNCTIONS (re-exported from analysis/)
 // ═══════════════════════════════════════════════════
 
-/** Shannon entropy (0–8). High = possibly packed / encrypted. O(n) single-pass. */
-export function calculateEntropy(data: Buffer): number {
-  if (!data || data.length === 0) return 0
-  const freq = new Array(256).fill(0)
-  for (const b of data) freq[b]++
-  const len = data.length
-  let entropy = 0
-  for (const count of freq) {
-    if (count > 0) {
-      const p = count / len
-      entropy -= p * Math.log2(p)
-    }
-  }
-  return entropy
-}
-
-/** Extract ASCII + Unicode strings from a binary file */
-export function scanStrings(filepath: string, maxSize = 5 * 1024 * 1024): string[] {
-  const strings: string[] = []
-  try {
-    const stat = fs.statSync(filepath)
-    if (stat.size > maxSize) return strings
-
-    const fd = fs.openSync(filepath, 'r')
-    const data = Buffer.alloc(Math.min(stat.size, maxSize))
-    fs.readSync(fd, data, 0, data.length, 0)
-    fs.closeSync(fd)
-
-    let ascii = ''
-    for (const b of data) {
-      if (b >= 0x20 && b <= 0x7E) {
-        ascii += String.fromCharCode(b)
-      } else {
-        if (ascii.length >= 4) strings.push(ascii)
-        ascii = ''
-      }
-    }
-    if (ascii.length >= 4) strings.push(ascii)
-
-    let uniBuf: number[] = []
-    for (let i = 0; i < data.length - 1; i += 2) {
-      if (data[i] >= 0x20 && data[i] <= 0x7E && data[i + 1] === 0x00) {
-        uniBuf.push(data[i])
-      } else {
-        if (uniBuf.length >= 4) strings.push(String.fromCharCode(...uniBuf))
-        uniBuf = []
-      }
-    }
-    if (uniBuf.length >= 4) strings.push(String.fromCharCode(...uniBuf))
-  } catch (_e) { /* skip */ }
-  return strings
-}
+export { calculateEntropy } from './analysis/entropy'
+export { scanStrings } from './analysis/strings'
 
 // ═══════════════════════════════════════════════════
 // MASQUERADING EXECUTABLE HEURISTIC

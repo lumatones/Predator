@@ -15,7 +15,9 @@
     "generate:resources": "node scripts/generate-resources.js",
     "typecheck:electron": "tsc --noEmit --project tsconfig.electron.json",
     "typecheck": "npm run typecheck:electron && cd admin && npx tsc --noEmit",
-    "lint": "npx prettier --check \"**/*.{ts,tsx,js,json,css,md}\" --ignore-unknown || echo \"Prettier not configured — run: npx prettier --write ...\"",
+    "lint": "npx eslint \"electron/**/*.ts\" \"src/**/*.{ts,tsx}\" --max-warnings 10",
+    "format": "npx prettier --write \"**/*.{ts,tsx,js,json,css,md}\" --ignore-unknown",
+    "format:check": "npx prettier --check \"**/*.{ts,tsx,js,json,css,md}\" --ignore-unknown",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('dist-electron',{recursive:true,force:true}); require('fs').rmSync('release',{recursive:true,force:true}); try{require('fs').rmSync('release_info.json',{force:true})}catch(e){}",
     "build:all": "npm run build && cd admin && npm run build",
     "release": "node scripts/release.js"

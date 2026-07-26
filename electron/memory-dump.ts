@@ -170,7 +170,7 @@ export function scanInlineHooksInDump(fileStrings: string[], rawBuffer?: Buffer)
 }
 
 /** Анализ дампа: ищем чит-строки */
-export function analyzeDump(dumpPath: string, keywords: string[], _unused?: any): DumpResult {
+export function analyzeDump(dumpPath: string, keywords: string[], _unused?: unknown): DumpResult {
   const result: DumpResult = {
     success: false,
     dumpPath,

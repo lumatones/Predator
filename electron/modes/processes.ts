@@ -92,7 +92,7 @@ export function scanRunningProcessesV2(): ScanResult[] {
     if (addFindingDedup(`proc:${r.fileName}`)) results.push(r)
   }
 
-  let processes: any[] = []
+  let processes: { Name?: string; Id?: number; Mods?: string[] }[] = []
   try {
     const psOut = execSync(
       `powershell -Command "Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3"`,
@@ -168,7 +168,7 @@ export function scanWmiPersistence(): ScanResult[] {
     if (psOut && psOut.trim().length > 10) {
       const items = parsePsJson<{ Name?: string }>(psOut)
       if (items.length > 0) {
-        const names = items.filter((i: any) => i.Name).map((i: any) => i.Name.toLowerCase().replace(/[^a-z0-9]/g, ''))
+        const names = items.filter(i => i.Name).map(i => i.Name!.toLowerCase().replace(/[^a-z0-9]/g, ''))
         for (const name of names) {
           const matches = matchKnownCheat(name)
           if (matches.length > 0 && addFindingDedup(`wmi:${name}`)) {

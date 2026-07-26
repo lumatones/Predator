@@ -24,6 +24,7 @@ Thumbs.db
 desktop.ini
 *.log
 *.lnk
+*.zip
 
 # ── User artifacts ──
 Code.zip
@@ -58,7 +59,3 @@ nul
 # ── Git credentials ──
 .git-credentials
 .gitconfig.local
-RULES.md
-CHANGELOG.md
-notes.md
-.notes.md

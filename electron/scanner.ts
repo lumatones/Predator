@@ -91,18 +91,7 @@ import { runNetworkScan, scanNetstatV2 } from './modes/network'
 import { scanRegistryDeepV2, scanPrefetchV2, scanRegistryForCheats } from './modes/registry'
 import { scanBrowserHistory } from './modes/browser'
 import { runDmaScan, scanDmaDevices, scanDmaRegistry, scanScheduledTasks, queryPnpDevices } from './modes/dma'
-
-// ═══════════════════════════════════════════════════
-// SAFE SPREAD UTILITY
-// ═══════════════════════════════════════════════════
-
-function safeSpread<T>(label: string, value: T[] | null | undefined): T[] {
-  if (!Array.isArray(value)) {
-    console.error(`[safeSpread] ${label} — expected array, got:`, typeof value, value)
-    return []
-  }
-  return [...value]
-}
+import { safeSpread } from './utils/safe-spread'
 
 // ═══════════════════════════════════════════════════
 // CHEAT SCAN
