@@ -2,7 +2,7 @@ import { execSync } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
 import { BrowserWindow } from 'electron'
-import { ScanResult, addFindingDedup, sendProgress, execCmd, _WR } from '../types'
+import { ScanResult, addFindingDedup, sendProgress, execCmd, parsePsJson, _WR } from '../types'
 import { scanBrowserHistory } from './browser'
 import { getScanPaths } from '../cheats-db'
 
@@ -152,8 +152,7 @@ Get-ScheduledTask | Where-Object {
 
     if (!out || out.length < 5) return results
 
-    const parsed = JSON.parse(out)
-    const tasks = Array.isArray(parsed) ? parsed : [parsed]
+    const tasks = parsePsJson<{ TaskName?: string; Author?: string; Actions?: string; State?: string }>(out)
 
     for (const task of tasks) {
       const name = (task.TaskName || '').trim()

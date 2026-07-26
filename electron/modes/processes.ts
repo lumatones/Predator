@@ -10,7 +10,7 @@ import fs from 'fs'
 import path from 'path'
 import type { BrowserWindow } from 'electron'
 
-import { sendProgress, yieldToEventLoop, clearFindingDedup, addFindingDedup, execCmd, _HOME, _WR, type ScanResult } from '../types'
+import { sendProgress, yieldToEventLoop, clearFindingDedup, addFindingDedup, execCmd, parsePsJson, _HOME, _WR, type ScanResult } from '../types'
 import { SUSPICIOUS_CATEGORIES, matchKnownCheat, checkDigitalSignature, heuristicFileScan } from '../heuristic'
 import { isTrustedPath } from '../cheat-rules'
 
@@ -98,10 +98,7 @@ export function scanRunningProcessesV2(): ScanResult[] {
       `powershell -Command "Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3"`,
       { encoding: 'utf-8', timeout: 10000 },
     )
-    if (psOut && psOut.trim().length >= 5) {
-      const parsed = JSON.parse(psOut)
-      processes = Array.isArray(parsed) ? parsed : [parsed]
-    }
+      processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
   } catch (_e) { /* PowerShell failed */ }
 
   if (processes.length === 0) return results
@@ -169,8 +166,7 @@ export function scanWmiPersistence(): ScanResult[] {
       { encoding: 'utf-8', timeout: 8000 },
     ).toString()
     if (psOut && psOut.trim().length > 10) {
-      const parsed = JSON.parse(psOut)
-      const items = Array.isArray(parsed) ? parsed : [parsed]
+      const items = parsePsJson<{ Name?: string }>(psOut)
       if (items.length > 0) {
         const names = items.filter((i: any) => i.Name).map((i: any) => i.Name.toLowerCase().replace(/[^a-z0-9]/g, ''))
         for (const name of names) {

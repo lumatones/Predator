@@ -1,5 +1,123 @@
 # Changelog
 
+## v0.0.21 — Рефакторинг, типизация, новый релизный скрипт (2026-07-26)
+
+### 🧹 Рефакторинг
+
+**ScanContext класс** — изоляция состояния между сканированиями:
+- `ctx.findingDedup`, `ctx.sigCache`, `ctx.peHeaderCache`, `ctx.cheatNameCache`
+- Метод `ctx.clear()` для сброса всех кешей
+- Глобальный `ctx` — единая точка доступа
+
+**parsePsJson<T>()** — безопасный парсинг PowerShell JSON:
+- Обрабатывает одиночный объект и массив
+- Защита от пустого вывода и ошибок парсинга
+- Применён в dma.ts, games.ts, processes.ts, disk-vs-memory.ts, scanner.ts
+
+**CFG конфиг** — единый источник системных путей:
+- `PF`, `PF86`, `WR`, `HOME`, `PD`
+- Используется в cheats-db.ts, browser-history.ts
+
+**Константы вынесены** в `constants.ts`:
+- `CHEAT_SOFTWARE_NAMES`, `EXTENDED_CHEAT_KEYWORDS`, `EXTENDED_SCAN_PATHS`
+
+**Cloud sync вынесен** в `cloud-sync.ts`:
+- `fetchCheatHashes()`, `startCloudSync()`, `stopCloudSync()`
+
+**Типизация улучшена**:
+- Убраны `any` в scanner.ts, disk-vs-memory.ts, rwx-scanner.ts
+- Добавлен интерфейс `ScanOptions`
+
+### 🔧 Новый скрипт релиза
+- `npm run release` — полный цикл: typecheck → build → latest.yml → GitHub Release
+- Автоматическое чтение `GITHUB_TOKEN` из `.env`
+
+### 🎨 UI
+- Обновлён тёмный интерфейс, добавлен hero-блок
+
+---
+
+## v0.0.20 — CI typecheck fix (2026-07-25)
+
+### 🔧 Исправления
+- 10 typecheck ошибок в `tsconfig.electron.json`
+
+---
+
+## v0.0.19 — Тесты Vitest + API_BASE env + Сканер модулей (2026-07-25)
+
+### ✨ Новые возможности
+- **Vitest** — тестовый фреймворк (`heuristic.test.ts`)
+- **API_BASE** — переменная окружения для настройки URL сервера
+- Удалена **Statistics** страница
+
+---
+
+## v0.0.18 — Layout fix + ErrorBoundary (2026-07-25)
+
+### 🔧 Исправления
+- Фикс лейаута
+- Удалена Statistics
+- Добавлен ErrorBoundary компонент
+
+---
+
+## v0.0.17 — Layout fix + ErrorBoundary (2026-07-25)
+
+(См. v0.0.18)
+
+---
+
+## v0.0.16 — Баг-фиксы + UI улучшения (2026-07-25)
+
+### 🔧 Исправления
+- `safeSpread` — защита от «a is not iterable»
+- try-catch в сканере
+
+### 🎨 UI
+- Группы риска (CRITICAL / HIGH / MEDIUM / WARNING)
+- Анимация строк результатов
+
+---
+
+## v0.0.15 — SVG-дизайн-система (2026-07-25)
+
+### 🎨 UI
+- 14 векторных иконок (`src/icons/`)
+- Idle-анимации
+- Полная замена эмодзи на SVG-иконки
+
+---
+
+## v0.0.14 — React UI fixes + Server security (2026-07-25)
+
+### 🔧 Исправления
+- Фиксы React UI
+- Усиление безопасности сервера
+
+---
+
+## v0.0.13 — RWX scanner fixes (2026-07-25)
+
+### 🔧 Исправления
+- `rwx-scanner` template inside function
+- Add-Type PowerShell guard
+- PID scope fix
+- tsconfig.electron fix
+- IPC try-catch
+
+---
+
+## v0.0.12 — Auto-YARA, Memory Dumper, ETW/AMSI, Дизайн-система (2026-07-24)
+
+### ✨ Новые возможности
+- **Auto-YARA** (`auto-yara.ts`) — самообучающиеся YARA-правила
+- **Memory Dumper** (`memory-dump.ts`) — MiniDumpWriteDump + анализ строк
+- **ETW/AMSI Patch Detector** (`etw-amsi-patch.ts`) — обнаружение обхода защит
+- **Дизайн-система** — иконки и компоненты
+
+---
+
 ## v0.0.11 — WebSocket + JWT-защита + Графики (2026-07-24)
 
 ### ✨ Новые возможности

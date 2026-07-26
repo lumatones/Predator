@@ -42,7 +42,7 @@ import {
 } from './api-hashing'
 
 import type { HeuristicResult, CheatCategory } from './types'
-import { _PF, _PF86, _HOME, _WR } from './types'
+import { _PF, _PF86, _HOME, _WR, ctx } from './types'
 
 // ═══════════════════════════════════════════════════
 // CONSTANTS
@@ -187,13 +187,11 @@ export const SYSTEM_PROC_NAMES = new Set([
 ])
 
 // ═══════════════════════════════════════════════════
-// CACHES
+// CACHES — managed by ctx (ScanContext in types.ts)
 // ═══════════════════════════════════════════════════
 
-const _peHeaderCache = new Map<string, { peInfo: any; secEntropy: any[]; mtime: number; filepath: string }>()
-const PE_CACHE_MAX = 500
-export const _sigCache = new Map<string, boolean>()
-const _cheatNameCache = new Map<string, string[]>()
+/** @deprecated Use ctx.sigCache instead */
+export const _sigCache = ctx.sigCache
 
 // Pre-normalized arrays for fast substring matching
 const _PROC_BASES = KNOWN_PROCESSES.map(n =>
@@ -368,7 +366,7 @@ export function checkMasqueradingExecutable(
 
 /** Cached digital signature check via PowerShell Get-AuthenticodeSignature */
 export function checkDigitalSignature(filepath: string): boolean {
-  const cached = _sigCache.get(filepath)
+  const cached = ctx.sigCache.get(filepath)
   if (cached !== undefined) return cached
   try {
     const out = execSync(
@@ -376,10 +374,10 @@ export function checkDigitalSignature(filepath: string): boolean {
       { encoding: 'utf-8', timeout: 5000 },
     )
     const valid = out.includes('Valid')
-    _sigCache.set(filepath, valid)
+    ctx.sigCache.set(filepath, valid)
     return valid
   } catch (_e) {
-    _sigCache.set(filepath, false)
+    ctx.sigCache.set(filepath, false)
     return false
   }
 }
@@ -390,7 +388,7 @@ export function checkDigitalSignature(filepath: string): boolean {
  */
 export function matchKnownCheat(name: string): string[] {
   const lower = name.toLowerCase()
-  const cached = _cheatNameCache.get(lower)
+  const cached = ctx.cheatNameCache.get(lower)
   if (cached !== undefined) return cached
 
   const matches: string[] = []
@@ -406,7 +404,7 @@ export function matchKnownCheat(name: string): string[] {
   for (const folder of _FOLDER_NAMES) {
     if (lower.includes(folder)) matches.push(`folder:${folder}`)
   }
-  _cheatNameCache.set(lower, matches)
+  ctx.cheatNameCache.set(lower, matches)
   return matches
 }
 
@@ -534,7 +532,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       let peInfo: any = null
       let secEntropy: any[] = []
 
-      const cachedPe = _peHeaderCache.get(peCacheKey)
+      const cachedPe = ctx.peHeaderCache.get(peCacheKey)
       if (cachedPe) {
         peInfo = cachedPe.peInfo
         secEntropy = cachedPe.secEntropy
@@ -543,10 +541,10 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
         try {
           secEntropy = analyzeSectionEntropy(filepath)
         } catch (_e) { /* skip */ }
-        _peHeaderCache.set(peCacheKey, { peInfo, secEntropy, mtime: stat.mtimeMs, filepath })
-        if (_peHeaderCache.size > PE_CACHE_MAX) {
-          const firstKey = _peHeaderCache.keys().next().value
-          if (firstKey) _peHeaderCache.delete(firstKey)
+        ctx.peHeaderCache.set(peCacheKey, { peInfo, secEntropy, mtime: stat.mtimeMs, filepath })
+        if (ctx.peHeaderCache.size > ctx.PE_CACHE_MAX) {
+          const firstKey = ctx.peHeaderCache.keys().next().value
+          if (firstKey) ctx.peHeaderCache.delete(firstKey)
         }
       }
 

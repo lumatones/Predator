@@ -359,6 +359,20 @@ const App: React.FC = () => {
       <div className="container">
         <Logo accent={c.accent} light={c.light} dark={c.dark} subtitle={subtitle} />
 
+        <MotionDiv
+          className="hero-copy"
+          style={{ y: heroY, opacity: heroOpacity }}
+        >
+          <p className="hero-kicker">Dark analytics suite</p>
+          <h2 className="hero-title">
+            <span>Your insights.</span>
+            <span>One clear overview.</span>
+          </h2>
+          <p className="hero-subtitle">
+            Neuralyn helps teams track metrics, goals,<br />and progress with precision.
+          </p>
+        </MotionDiv>
+
         {/* Loading */}
         {phase === 'loading' && renderCard(
           <><div className="spinner"><div className="spinner-ring" /></div>
@@ -518,7 +532,7 @@ const App: React.FC = () => {
           </>
         )}
 
-        {/* ── MAIN SCREEN ── */}
+        {/* MAIN SCREEN */}
         {phase === 'main' && renderCard(
           <><div className="ready-icon">
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -528,22 +542,22 @@ const App: React.FC = () => {
             <p className="ready-text">{t('ready')}</p>
             <div className="main-cards">
               <button className="main-card" onClick={hStartChecker}>
-                <div className="main-card-icon" style={{ background: 'rgba(255,68,68,0.08)' }}>
-                  <IconShield size={24} color="#ff4444" />
+                <div className="main-card-icon" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <IconShield size={24} color="#fff" />
                 </div>
                 <div className="main-card-body">
                   <span className="main-card-title">{t('startCheck')}</span>
-                  <span className="main-card-desc">Сканирование файлов, процессов, реестра и сети на наличие читов</span>
+                  <span className="main-card-desc">Deep scan for files, processes, registry, network, and memory anomalies.</span>
                 </div>
                 <span className="main-card-arrow">→</span>
               </button>
               <button className="main-card" onClick={hStartDashboard}>
-                <div className="main-card-icon" style={{ background: 'rgba(59,130,246,0.08)' }}>
-                  <IconDashboard size={24} color="#3B82F6" />
+                <div className="main-card-icon" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <IconDashboard size={24} color="#fff" />
                 </div>
                 <div className="main-card-body">
                   <span className="main-card-title">{t('dashboard')}</span>
-                  <span className="main-card-desc">Мониторинг CPU, памяти, температуры и запущенных процессов</span>
+                  <span className="main-card-desc">Live system overview with streaming snapshots and runtime telemetry.</span>
                 </div>
                 <span className="main-card-arrow">→</span>
               </button>

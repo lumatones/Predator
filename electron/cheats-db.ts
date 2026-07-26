@@ -10,13 +10,9 @@
  */
 
 import path from 'path'
-import os from 'os'
+import { CFG } from './config'
 
-function _pf(): string { return process.env.ProgramFiles || 'C:\\Program Files' }
-function _pf86(): string { return process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)' }
-function _pd(): string { return process.env.ProgramData || 'C:\\ProgramData' }
-function _wr(): string { return process.env.SystemRoot || 'C:\\Windows' }
-const home = os.homedir()
+const { PF, PF86, HOME, PD, WR } = CFG
 
 // ═══════════════════════════════════════════════════
 // 0. GAME PROCESSES — what we protect
@@ -383,43 +379,43 @@ export function getScanPaths(): string[] {
   return [
     // System temp
     process.env.TEMP || 'C:\\Windows\\Temp',
-    path.join(home, 'AppData', 'Local', 'Temp'),
-    path.join(home, 'Downloads'),
-    path.join(home, 'Desktop'),
+    path.join(HOME, 'AppData', 'Local', 'Temp'),
+    path.join(HOME, 'Downloads'),
+    path.join(HOME, 'Desktop'),
 
     // GTA 5 (Rockstar / Steam / Epic)
-    path.join(_pf(), 'Rockstar Games', 'Grand Theft Auto V'),
-    path.join(_pf86(), 'Rockstar Games', 'Grand Theft Auto V'),
-    path.join(_pf(), 'Steam', 'steamapps', 'common', 'Grand Theft Auto V'),
-    path.join(_pf86(), 'Steam', 'steamapps', 'common', 'Grand Theft Auto V'),
+    path.join(PF, 'Rockstar Games', 'Grand Theft Auto V'),
+    path.join(PF86, 'Rockstar Games', 'Grand Theft Auto V'),
+    path.join(PF, 'Steam', 'steamapps', 'common', 'Grand Theft Auto V'),
+    path.join(PF86, 'Steam', 'steamapps', 'common', 'Grand Theft Auto V'),
 
     // FiveM
-    path.join(home, 'AppData', 'Local', 'FiveM'),
-    path.join(home, 'AppData', 'Local', 'FiveM', 'FiveM.app'),
-    path.join(home, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'mods'),
-    path.join(home, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'plugins'),
-    path.join(home, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'cache'),
-    path.join(home, 'AppData', 'Roaming', 'CitizenFX'),
+    path.join(HOME, 'AppData', 'Local', 'FiveM'),
+    path.join(HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app'),
+    path.join(HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'mods'),
+    path.join(HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'plugins'),
+    path.join(HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'cache'),
+    path.join(HOME, 'AppData', 'Roaming', 'CitizenFX'),
 
     // RAGE MP
-    path.join(_pf(), 'RAGEMP'),
-    path.join(_pf86(), 'RAGEMP'),
-    path.join(home, 'RAGEMP'),
-    path.join(home, 'AppData', 'Roaming', 'RAGEMP'),
-    path.join(home, 'AppData', 'Local', 'RAGEMP'),
+    path.join(PF, 'RAGEMP'),
+    path.join(PF86, 'RAGEMP'),
+    path.join(HOME, 'RAGEMP'),
+    path.join(HOME, 'AppData', 'Roaming', 'RAGEMP'),
+    path.join(HOME, 'AppData', 'Local', 'RAGEMP'),
 
     // ALT:V
-    path.join(_pf(), 'altv'),
-    path.join(_pf86(), 'altv'),
-    path.join(home, 'AppData', 'Local', 'altv'),
-    path.join(home, 'AppData', 'Local', 'altv', 'resources'),
-    path.join(home, 'AppData', 'Local', 'altv', 'modules'),
-    path.join(home, 'AppData', 'Roaming', 'altv'),
+    path.join(PF, 'altv'),
+    path.join(PF86, 'altv'),
+    path.join(HOME, 'AppData', 'Local', 'altv'),
+    path.join(HOME, 'AppData', 'Local', 'altv', 'resources'),
+    path.join(HOME, 'AppData', 'Local', 'altv', 'modules'),
+    path.join(HOME, 'AppData', 'Roaming', 'altv'),
 
     // Common cheat directories
-    path.join(home, 'Documents', 'Cheats'),
-    path.join(home, 'Documents', 'Hacks'),
-    path.join(home, 'Documents', 'Mods'),
+    path.join(HOME, 'Documents', 'Cheats'),
+    path.join(HOME, 'Documents', 'Hacks'),
+    path.join(HOME, 'Documents', 'Mods'),
   ]
 }
 

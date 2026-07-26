@@ -4,9 +4,14 @@
 
 ```
 Predator/
-├── electron/          # Electron main process (Node.js)
+├── electron/          # Electron main process (Node.js) — 20 файлов
 │   ├── main.ts        # App entry, IPC handlers, auto-updater
-│   ├── scanner.ts     # Core scan engine (files, processes, memory)
+│   ├── config.ts      # API config, CFG paths, theme, language
+│   ├── constants.ts   # Cheat names, keywords, scan paths
+│   ├── cloud-sync.ts  # Cloud hash sync (fetchCheatHashes, start/stop)
+│   ├── scanner.ts     # Core scan orchestrator + IPC handlers
+│   ├── types.ts       # Types, ScanContext, parsePsJson, utilities
+│   ├── heuristic.ts   # Heuristic analysis: PE, entropy, signatures
 │   ├── cheat-rules.ts # YARA-like rules, PE analysis, whitelist
 │   ├── cheats-db.ts   # Known cheat signatures, hashes, paths
 │   ├── auto-yara.ts   # Self-learning rule engine
@@ -18,15 +23,21 @@ Predator/
 │   ├── behavior-profile.ts  # Process behavior profiling
 │   ├── browser-history.ts   # SQLite browser history parser
 │   ├── system-info.ts     # System dashboard data
-│   └── preload.ts         # Context bridge
+│   ├── preload.ts         # Context bridge
+│   ├── modes/         # Scan modes (7 files)
+│   │   ├── browser.ts, dma.ts, files.ts, games.ts
+│   │   ├── network.ts, processes.ts, registry.ts
+│   └── __tests__/     # Unit tests
+│       └── heuristic.test.ts
 ├── src/               # Renderer process (React + Vite)
-│   ├── pages/         # UI pages (Checker, Dashboard, etc.)
-│   ├── utils/         # Stats store, report export
-│   └── types/         # Shared TypeScript types
+│   ├── pages/         # UI pages (Checker, Dashboard)
+│   ├── components/    # ErrorBoundary, ServerStatus
+│   ├── icons/         # 14 SVG icons
+│   └── utils/         # Report export
 ├── admin/             # Admin panel (React + Vite, separate)
 ├── server/            # Backend API (Express + MySQL + Socket.IO)
 ├── resources/         # Icons, installer assets
-├── scripts/           # Build/release helpers
+├── scripts/           # Build/release helpers (release.js, etc.)
 └── release/           # electron-builder output
 ```
 
@@ -81,32 +92,55 @@ Typecheck is also run automatically before `npm run build` via the `prebuild` sc
 
 ## 🧪 Testing
 
-Currently no automated test framework is set up. To add tests:
+**Vitest** настроен для unit-тестов.
 
-- **Unit tests**: Vitest (recommended, aligns with Vite)
+```bash
+# Запуск тестов
+npx vitest run
+
+# Watch mode
+npx vitest
+```
+
+Текущие тесты:
+- `electron/__tests__/heuristic.test.ts` — тесты эвристического анализа
+
+Для добавления новых тестов:
+- **Unit tests**: Vitest (уже настроен в `vitest.config.ts`)
 - **Electron tests**: Playwright + electron (spectron alternative)
 - **Integration**: Manual via dev server (`npm run dev`)
 
 ## 📦 Release
 
-### Manual release (current process):
+### Автоматический релиз (единый скрипт):
 ```bash
-# 1. Bump version
-#    Edit package.json version field
+npm run release
+```
+Скрипт делает всё автоматически:
+1. Typecheck (Electron)
+2. Clean + Build .exe
+3. Generate latest.yml (SHA512 checksum)
+4. GitHub Release (create or update) + Upload assets
+
+Требуется `GITHUB_TOKEN` в `.env` файле.
+
+### Ручной релиз (по шагам):
+```bash
+# 1. Bump version в package.json
 
 # 2. Build
 npm run electron:build:win
 
-# 3. Upload to GitHub
+# 3. Upload
 node scripts/upload-release.js
 
-# 4. Commit & push
+# 4. Git
 git add -A && git commit -m "vX.Y.Z — description"
 git tag vX.Y.Z && git push origin main --tags
 ```
 
-### Automated release (once CI is fully set up):
-Push a tag `v*` to trigger the GitHub Actions release workflow:
+### CI авто-релиз:
+Push тега `v*` → GitHub Actions (`release.yml`) соберёт и опубликует .exe автоматически:
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
 ```

@@ -1,4 +1,6 @@
 import type { BrowserWindow } from 'electron'
+import { execSync } from 'child_process'
+import os from 'os'
 
 // ═══════════════════════════════════════════════════
 // SCANNER — Shared Types & Utilities
@@ -52,18 +54,43 @@ export interface CheatCategory {
   risk: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'WARNING'
 }
 
-// ── Dedup set — shared across all scan modes ──
+// ── ScanContext — shared mutable state across scan modes ──
 
-export const _findingDedup = new Set<string>()
+export class ScanContext {
+  findingDedup = new Set<string>()
+  sigCache = new Map<string, boolean>()
+  peHeaderCache = new Map<string, { peInfo: Record<string, unknown>; secEntropy: Record<string, unknown>[]; mtime: number; filepath: string }>()
+  cheatNameCache = new Map<string, string[]>()
+
+  readonly PE_CACHE_MAX = 500
+
+  addFinding(key: string): boolean {
+    if (this.findingDedup.has(key)) return false
+    this.findingDedup.add(key)
+    return true
+  }
+
+  clear() {
+    this.findingDedup.clear()
+    this.sigCache.clear()
+    this.peHeaderCache.clear()
+    this.cheatNameCache.clear()
+  }
+}
+
+/** Global scan context instance */
+export const ctx = new ScanContext()
+
+// ── Backward compatibility aliases (deprecated, use ctx instead) ──
+
+export const _findingDedup = ctx.findingDedup
 
 export function addFindingDedup(key: string): boolean {
-  if (_findingDedup.has(key)) return false
-  _findingDedup.add(key)
-  return true
+  return ctx.addFinding(key)
 }
 
 export function clearFindingDedup() {
-  _findingDedup.clear()
+  ctx.findingDedup.clear()
 }
 
 // ── Shared utilities ──
@@ -106,7 +133,6 @@ export async function processBatch<T, R>(
 }
 
 export function execCmd(cmd: string, psCmd: string, opts = {}): string {
-  const { execSync } = require('child_process')
   try {
     return execSync(cmd, { encoding: 'utf-8', timeout: 8000, ...opts })
   } catch (_e) {
@@ -118,10 +144,23 @@ export function execCmd(cmd: string, psCmd: string, opts = {}): string {
   }
 }
 
-// ── System paths (lazy-loaded to avoid top-level require issues) ──
+// ── System paths ──
 
 export const _PF = process.env.ProgramFiles || 'C:\\Program Files'
 export const _PF86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'
 export const _PD = process.env.ProgramData || 'C:\\ProgramData'
 export const _WR = process.env.SystemRoot || 'C:\\Windows'
-export const _HOME = require('os').homedir()
+export const _HOME = os.homedir()
+
+// ── PowerShell JSON utility ──
+
+/** Parse PowerShell JSON output: handles single object vs array, empty output */
+export function parsePsJson<T>(out: string): T[] {
+  if (!out || out.trim().length < 5) return []
+  try {
+    const parsed = JSON.parse(out)
+    return Array.isArray(parsed) ? parsed : [parsed]
+  } catch {
+    return []
+  }
+}

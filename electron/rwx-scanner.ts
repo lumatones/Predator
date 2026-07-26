@@ -9,6 +9,7 @@
  */
 
 import { execSync } from 'child_process'
+import { parsePsJson } from './types'
 
 // ── Types ──────────────────────────────────────
 
@@ -235,11 +236,11 @@ Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProp
 
     if (!out || out.trim().length < 5) return anomalies
 
-    const parsed = JSON.parse(out)
-    const threads = Array.isArray(parsed) ? parsed : [parsed]
+    const threads = parsePsJson<{ Id?: number; StartAddr?: string }>(out)
 
     for (const thread of threads) {
       const tid = thread.Id
+      if (tid === undefined) continue
       const startAddr: string = thread.StartAddr || ''
       if (!startAddr) continue
 

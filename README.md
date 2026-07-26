@@ -20,6 +20,8 @@
 
 Predator — десктопное приложение для обнаружения следов стороннего ПО (читов) на компьютере пользователя. Проводит комплексную проверку в **6 режимах**: файлы, процессы, поиск читов, DMA-устройства, расширенное сканирование и сеть.
 
+**Версия**: 0.0.21 | **Стек**: Electron 33 + React 19 + TypeScript 5.7 + Vite 6
+
 Полная экосистема: десктопное приложение → API-сервер → админ-панель.
 
 ---
@@ -167,13 +169,26 @@ cd admin
 npm run dev
 ```
 
+### Тестирование
+
+```bash
+npm run typecheck      # Проверка типов (electron + admin)
+npm run typecheck:electron  # Только electron
+npx vitest run         # Unit-тесты
+npm run lint           # Проверка форматирования
+```
+
 ### Сборка релиза
 
 ```bash
+npm run release        # Полный цикл: typecheck → build → latest.yml → GitHub Release
+# или по шагам:
 npm run electron:build:win     # Собрать .exe
 node scripts/generate-latest-yml.js  # latest.yml
 node scripts/upload-release.js       # Загрузить на GitHub
 ```
+
+> Требуется `GITHUB_TOKEN` в `.env` файле для загрузки релиза.
 
 ---
 

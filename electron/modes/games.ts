@@ -10,7 +10,7 @@ import fs from 'fs'
 import path from 'path'
 import type { BrowserWindow } from 'electron'
 
-import { sendProgress, clearFindingDedup, addFindingDedup, _PF, _PF86, _HOME, _WR, type ScanResult, type GamePid } from '../types'
+import { sendProgress, clearFindingDedup, addFindingDedup, parsePsJson, _PF, _PF86, _HOME, _WR, type ScanResult, type GamePid } from '../types'
 import { SUSPICIOUS_CATEGORIES, SYSTEM_PROC_NAMES, matchKnownCheat, checkDigitalSignature, heuristicFileScan } from '../heuristic'
 import { isTrustedPath } from '../cheat-rules'
 import { isPlatformWhitelisted } from '../cheats-db'
@@ -58,22 +58,23 @@ export function scanGameModules(): ScanResult[] {
       const ps = `Get-Process -Id ${pid} | Select-Object -ExpandProperty Modules | Select-Object ModuleName,FileName | ConvertTo-Json -Compress`
       const out = execSync(`powershell -Command "${ps}"`, { encoding: 'utf-8', timeout: 8000 })
       if (!out.trim()) continue
-      const parsed = JSON.parse(out)
-      const modules = Array.isArray(parsed) ? parsed : [parsed]
+      const modules = parsePsJson<{ ModuleName?: string; FileName?: string }>(out)
 
       for (const mod of modules) {
         if (!mod.ModuleName) continue
-        const name = (mod.ModuleName || '').toLowerCase()
-        const modPath = (mod.FileName || '').toLowerCase()
-        const isSystem32 = modPath.includes('\\windows\\system32') || modPath.includes('\\windows\\syswow64')
-        const isProgramFiles = modPath.includes('\\program files\\') || modPath.includes('\\program files (x86)\\')
+        const modName = mod.ModuleName
+        const modPath = mod.FileName || ''
+        const name = modName.toLowerCase()
+        const filePathLower = modPath.toLowerCase()
+        const isSystem32 = filePathLower.includes('\\windows\\system32') || filePathLower.includes('\\windows\\syswow64')
+        const isProgramFiles = filePathLower.includes('\\program files\\') || filePathLower.includes('\\program files (x86)\\')
         const isTrusted = isSystem32 || isProgramFiles || isTrustedPath(modPath)
 
         if (isPlatformWhitelisted(name, platform) && !isTrusted) {
           if (addFindingDedup(`mod-whitelist:${pid}:${name}`)) {
             results.push({
-              path: mod.FileName,
-              fileName: `${mod.ModuleName} (unusual location)`,
+              path: modPath,
+              fileName: `${modName} (unusual location)`,
               type: 'process',
               risk: 'high',
               matches: [`Whitelisted module in ${platform} (PID: ${pid})`, `Expected in System32/Program Files, found elsewhere`, `Platform: ${platform}`],
@@ -85,11 +86,11 @@ export function scanGameModules(): ScanResult[] {
         }
 
         if (!isPlatformWhitelisted(name, platform) && !isTrusted) {
-          const isSigned = isSystem32 ? true : checkDigitalSignature(mod.FileName)
+          const isSigned = isSystem32 ? true : checkDigitalSignature(modPath)
           if (!isSigned && addFindingDedup(`mod-unsigned:${pid}:${name}`)) {
             results.push({
-              path: mod.FileName,
-              fileName: `${mod.ModuleName} (unsigned)`,
+              path: modPath,
+              fileName: `${modName} (unsigned)`,
               type: 'process',
               risk: 'high',
               matches: [`Unsigned module loaded in ${platform} (PID: ${pid})`, `Possibly injected cheat`],
@@ -102,8 +103,8 @@ export function scanGameModules(): ScanResult[] {
         const cheatMatches = matchKnownCheat(name)
         if (cheatMatches.length > 0 && addFindingDedup(`mod-cheat:${pid}:${name}`)) {
           results.push({
-            path: mod.FileName,
-            fileName: `${mod.ModuleName} (cheat)`,
+            path: modPath,
+            fileName: `${modName} (cheat)`,
             type: 'process',
             risk: 'high',
             matches: [...cheatMatches, `Loaded in ${platform} (PID: ${pid})`],
@@ -264,8 +265,7 @@ export function scanMasqueradingProcesses(): ScanResult[] {
     const out = execSync(psCmd, { encoding: 'utf-8', timeout: 10000 })
     if (!out || out.trim().length < 5) return results
 
-    const parsed = JSON.parse(out)
-    const processes = Array.isArray(parsed) ? parsed : [parsed]
+    const processes = parsePsJson<{ Name?: string; Id?: number; Path?: string }>(out)
     const systemDir = _WR.toLowerCase()
     const system32 = path.join(systemDir, 'system32').toLowerCase()
     const syswow64 = path.join(systemDir, 'syswow64').toLowerCase()

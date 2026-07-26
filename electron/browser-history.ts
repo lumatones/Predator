@@ -10,9 +10,8 @@
  */
 
 import path from 'path'
-import os from 'os'
 import fs from 'fs'
-import fsp from 'fs/promises'
+import { CFG } from './config'
 // sql.js singleton — initialized once, reused across all scans
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js'
 
@@ -29,9 +28,7 @@ async function getSqlJs(): Promise<SqlJsStatic> {
   return _SQL!
 }
 
-// ── Constants ────────────────────────────────
-
-const _HOME = os.homedir()
+const { HOME } = CFG
 
 const CHROMIUM_EPOCH_DELTA = 11644473600000000n // microseconds
 
@@ -75,8 +72,8 @@ function webkitTimeToDate(webkitTime: number): Date {
  * Checks each path for existence.
  */
 function getBrowserProfiles(): BrowserProfile[] {
-  const localData = path.join(_HOME, 'AppData', 'Local')
-  const roamingData = path.join(_HOME, 'AppData', 'Roaming')
+  const localData = path.join(HOME, 'AppData', 'Local')
+  const roamingData = path.join(HOME, 'AppData', 'Roaming')
 
   const profiles: BrowserProfile[] = [
     {

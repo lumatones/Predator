@@ -14,6 +14,7 @@
 
 import fs from 'fs'
 import { execSync } from 'child_process'
+import { parsePsJson } from './types'
 
 // ── Types ──────────────────────────────────────
 
@@ -308,11 +309,10 @@ export function scanDiskVsMemory(pid: number, processName: string): DiskVsMemRes
     }).trim()
 
     if (out && out.length > 5) {
-      const parsed = JSON.parse(out)
-      const rawModules = Array.isArray(parsed) ? parsed : [parsed]
+      const rawModules = parsePsJson<{ ModuleName?: string; FileName?: string; BaseAddr?: number }>(out)
       modules = rawModules
-        .filter((m: any) => m.ModuleName && m.FileName)
-        .map((m: any) => ({
+        .filter((m) => m.ModuleName && m.FileName)
+        .map((m) => ({
           name: m.ModuleName as string,
           path: m.FileName as string,
           baseAddr: typeof m.BaseAddr === 'number' ? m.BaseAddr : 0,

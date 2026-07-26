@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 
 export type AppLang = 'ru' | 'en'
@@ -11,6 +12,16 @@ export interface PredatorConfig {
   lang: AppLang
   theme: AppTheme
   onboardingComplete: boolean
+}
+
+// ── System paths (single source of truth) ──
+
+export const CFG = {
+  PF: process.env.ProgramFiles || 'C:\\Program Files',
+  PF86: process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+  WR: process.env.SystemRoot || 'C:\\Windows',
+  HOME: os.homedir(),
+  PD: process.env.ProgramData || 'C:\\ProgramData',
 }
 
 const DEFAULT_CONFIG: PredatorConfig = {

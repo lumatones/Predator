@@ -7,6 +7,8 @@ import path from 'path'
 import { execSync } from 'child_process'
 
 import { getApiBase, getApiEndpoint } from './config'
+import { fetchCheatHashes, startCloudSync, stopCloudSync } from './cloud-sync'
+import { CHEAT_SOFTWARE_NAMES, EXTENDED_CHEAT_KEYWORDS, EXTENDED_SCAN_PATHS } from './constants'
 
 import {
   KNOWN_CHEAT_HASHES,
@@ -65,7 +67,8 @@ import {
   sendProgress,
   yieldToEventLoop,
   clearFindingDedup,
-  _findingDedup,
+  parsePsJson,
+  ctx,
 } from './types'
 
 import {
@@ -74,7 +77,6 @@ import {
   SUSPICIOUS_CATEGORIES,
   SUSPICIOUS_PATTERNS,
   ALL_CHEAT_KEYWORDS,
-  _sigCache,
   checkDigitalSignature,
   scanStrings,
   matchKnownCheat,
@@ -91,41 +93,9 @@ import { scanBrowserHistory } from './modes/browser'
 import { runDmaScan, scanDmaDevices, scanDmaRegistry, scanScheduledTasks, queryPnpDevices } from './modes/dma'
 
 // ═══════════════════════════════════════════════════
-// CONSTANTS (used by remaining orchestration)
+// SAFE SPREAD UTILITY
 // ═══════════════════════════════════════════════════
 
-const CHEAT_SOFTWARE_NAMES: Record<string, string[]> = {
-  'Nightfall': ['nightfall', 'nightfall cheat', 'nightfall loader'],
-  'DMA': ['dma', 'dma card', 'dma cheat', 'dma firmware'],
-  '0XCheat': ['0xcheat', '0x cheat', 'oxcheat'],
-  '1337 Cheat': ['1337', '1337 cheat', 'leet cheat'],
-  'NoleetCheats': ['noleet', 'noleetcheats', 'noleet cheat'],
-}
-
-const EXTENDED_CHEAT_KEYWORDS: string[] = [
-  'eulen', 'redengine', 'skript.gg', 'impulse.one',
-  'luna', 'paragon', 'ozark', 'cherax', 'stand.gg',
-  '2take1.menu', 'modest', 'kiddions', 'majesty.rp',
-  'menyoo', 'simpletrainer', 'nativeui',
-  'xenos', 'extremeinjector', 'manualmap',
-  'fivem bypass', 'rockstar bypass', 'ac bypass',
-  'rpchanger', 'hwid spoofer', 'mac spoofer',
-  'dma', 'fpga', 'pcileech', 'fuser', 'screamer',
-  'leechcore', 'memprocfs', 'vmm', 'kmem', 'winpmem',
-  'process hacker', 'dnspy', 'ollydbg', 'x64dbg', 'ida',
-  'aimbot', 'wallhack', 'esp', 'triggerbot',
-  'norecoil', 'godmode', 'teleport', 'moneydrop',
-  'inject', 'hook', 'bypass', 'obfuscator', 'vmprotect',
-  'themida', 'enigma protector', 'obsidium',
-  'eac bypass', 'battleye bypass', 'vanguard bypass',
-  'faceit bypass', 'esportal bypass',
-  'process hollowing', 'reflective dll',
-  'kill process', 'protect process', 'hide process',
-]
-
-const EXTENDED_SCAN_PATHS: string[] = getScanPaths()
-
-// ── Safe spread — prevents "a is not iterable" crashes ──
 function safeSpread<T>(label: string, value: T[] | null | undefined): T[] {
   if (!Array.isArray(value)) {
     console.error(`[safeSpread] ${label} — expected array, got:`, typeof value, value)
@@ -135,7 +105,7 @@ function safeSpread<T>(label: string, value: T[] | null | undefined): T[] {
 }
 
 // ═══════════════════════════════════════════════════
-// MODE: CHEAT SCAN
+// CHEAT SCAN
 // ═══════════════════════════════════════════════════
 
 async function runCheatScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
@@ -166,7 +136,7 @@ async function runCheatScan(win: BrowserWindow | null): Promise<{ results: ScanR
 }
 
 // ═══════════════════════════════════════════════════
-// MODE: EXTENDED SCAN (8-phase deep scan)
+// EXTENDED SCAN
 // ═══════════════════════════════════════════════════
 
 async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
@@ -174,9 +144,7 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
   let filesScanned = 0
 
   clearFindingDedup()
-  _sigCache.clear()
-
-  // Phase 1 — processes
+  ctx.sigCache.clear()
   await sendProgress(win, { phase: 'scanning', currentDir: 'Advanced process scanning...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 1 })
   results.push(...safeSpread('scanRunningProcessesV2', scanRunningProcessesV2()))
 
@@ -237,10 +205,8 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
       `powershell -Command "Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3"`,
       { encoding: 'utf-8', timeout: 10000 },
     )
-    if (psOut && psOut.trim().length >= 5) {
-      const parsed = JSON.parse(psOut)
-      const processes = Array.isArray(parsed) ? parsed : [parsed]
-      for (const proc of processes) {
+    const processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
+    for (const proc of processes) {
         const mods: string[] = proc.Mods || []
         const skipAmsi = await scanProcessForAmsiEtw(Number(proc.Id), (proc.Name || '').toLowerCase())
         if (skipAmsi) {
@@ -277,7 +243,6 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
           }
         } catch (_e) { /* skip */ }
       }
-    }
   } catch (_e) { /* PowerShell AMSI scan failed */ }
 
   // Phase 6 — DMA + scheduled tasks
@@ -299,62 +264,26 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
 }
 
 // ═══════════════════════════════════════════════════
-// CLOUD SYNC
-// ═══════════════════════════════════════════════════
-
-let _syncTimer: ReturnType<typeof setInterval> | null = null
-
-export async function fetchCheatHashes() {
-  try {
-    const base = getApiBase()
-    const url = new URL('/api/auth/fetch-hashes', base)
-    url.searchParams.set('after', '2000-01-01')
-
-    const data = await new Promise<string>((resolve, reject) => {
-      const transport = url.protocol === 'https:' ? https : http
-      const req = transport.get(url, (res) => {
-        let body = ''
-        res.on('data', (chunk: string) => body += chunk)
-        res.on('end', () => resolve(body))
-        res.on('error', reject)
-      })
-      req.on('error', reject)
-      req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')) })
-    })
-    const parsed = JSON.parse(data)
-    if (parsed?.hashes && Array.isArray(parsed.hashes)) {
-      mergeCheatHashes(parsed.hashes.map((h: any) => h.sha256).filter(Boolean))
-      console.log(`  ☁️  Synced ${parsed.hashes.length} cheat hashes from cloud`)
-    }
-  } catch (_e) { /* cloud sync optional */ }
-}
-
-export function startCloudSync() {
-  fetchCheatHashes()
-  _syncTimer = setInterval(fetchCheatHashes, 5 * 60 * 1000)
-}
-
-export function stopCloudSync() {
-  if (_syncTimer) {
-    clearInterval(_syncTimer)
-    _syncTimer = null
-  }
-}
-
-// ═══════════════════════════════════════════════════
 // MAIN IPC HANDLER
 // ═══════════════════════════════════════════════════
 
+export { startCloudSync, stopCloudSync, fetchCheatHashes } from './cloud-sync'
+
+interface ScanOptions {
+  token_id?: number
+  tokenId?: number
+  pc_username?: string
+  pcUsername?: string
+}
+
 export function registerScanHandlers() {
-  ipcMain.handle('start-scan', async (event, mode: ScanMode, options?: any) => {
+  ipcMain.handle('start-scan', async (event, mode: ScanMode, options?: ScanOptions) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const tokenId = options?.token_id ?? options?.tokenId ?? 0
     const pcUsername = options?.pc_username ?? options?.pcUsername ?? 'unknown'
 
     // Internal state cleanup
-    _findingDedup.clear()
-    _sigCache.clear()
-    clearFindingDedup()
+    ctx.clear()
 
     try {
       const startTime = Date.now()

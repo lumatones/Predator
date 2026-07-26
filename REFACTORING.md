@@ -1,15 +1,17 @@
 # Refactoring Plan — Predator
 
-## Метрики текущего кода
+> **Прогресс:** 6 из 8 задач выполнено ✅
+> Последнее обновление: 2026-07-26 (v0.0.21)
 
-| Метрика | Значение |
-|---------|----------|
-| Файлов electron/ | 14 |
-| Всего строк electron/ | 6,646 |
-| scanner.ts | 2,735 строк (41% всего кода) |
-| Использований `any` | 26 (scanner.ts: 9) |
-| module-level `const _` (глобальное состояние) | 8 в scanner.ts |
-| `require()` CJS-стиль | 2 (`require('http')`) |
+## Метрики текущего кода (обновлено)
+
+| Метрика | Было | Стало |
+|---------|------|-------|
+| Файлов electron/ | 14 | 20 (+ modes/, tests, новые модули) |
+| scanner.ts | 2,735 строк (41%) | ~1,500 строк (константы/cloud sync/parsing вынесены) |
+| Использований `any` | 26 | ~5 (остались только в краевых случаях) |
+| module-level `const _` (глобальное состояние) | 8 | 0 ✅ (ScanContext) |
+| `require()` CJS-стиль | 2 | 0 ✅ (все ESM import) |
 
 ---
 
@@ -48,139 +50,77 @@ electron/
 
 ---
 
-## 🟡 Priority 2 — Глобальное состояние (module-level mutables)
+## 🟡 Priority 2 — Глобальное состояние (module-level mutables) ✅ ВЫПОЛНЕНО
 
-### Проблема
-8 module-level переменных в scanner.ts, которые изменяются в рантайме:
-- `_sigCache` — кеш подписей (Map<string, boolean>)
-- `_findingDedup` — дедупликация (Set<string>)
-- `_peHeaderCache` — кеш PE заголовков (Map)
-- `_cheatNameCache` — кеш имён читов (Map)
-- `_prevCpuTimes` — в system-info.ts
-
-### Решение
+### Решение реализовано
+`ScanContext` класс в `electron/types.ts`:
 ```ts
-// Вместо module-level Map:
-class ScanContext {
-  sigCache = new Map<string, boolean>()
+export class ScanContext {
   findingDedup = new Set<string>()
-  peHeaderCache = new Map<string, ...>()
+  sigCache = new Map<string, boolean>()
+  peHeaderCache = new Map<...>()
   cheatNameCache = new Map<string, string[]>()
-
-  clear() {
-    this.findingDedup.clear()
-    this.sigCache.clear()
-    this.peHeaderCache.clear()
-  }
+  readonly PE_CACHE_MAX = 500
+  addFinding(key: string): boolean { ... }
+  clear() { ... }
 }
+export const ctx = new ScanContext()
 ```
+- Глобальный `ctx` используется во всех модулях
+- `ctx.clear()` вызывается перед каждым новым сканом
+- Старые алиасы (`_findingDedup`, `addFindingDedup`, `clearFindingDedup`) сохранены для обратной совместимости
 
-**Трудоёмкость**: 1-2 часа
-**Риск**: Средний
-**Профит**: Изоляция между сканами, возможность параллельных сканов
+**Статус**: ✅ Выполнено в v0.0.21
 
 ---
 
-## 🟡 Priority 3 — CJS require() → ESM import
+## 🟡 Priority 3 — CJS require() → ESM import ✅ ВЫПОЛНЕНО
 
-### Проблема
-2 места в scanner.ts используют `require('http')` вместо `import http from 'http'`:
+### Решение реализовано
+- `require('http')` заменён на `import http from 'http'` в `cloud-sync.ts`
+- `require('child_process')` / `require('os')` заменены на импорты в `types.ts`
 
-```ts
-// line 2609 + 2705 — нужно заменить на:
-import http from 'http'
-```
-
-### Решение
-Заменить на import в начале файла. Тривиально.
-
-**Трудоёмкость**: 5 минут
-**Риск**: Низкий
-**Профит**: Единый стиль импортов, tree-shaking
+**Статус**: ✅ Выполнено в v0.0.21
 
 ---
 
-## 🟡 Priority 4 — Типизация `any`
+## 🟡 Priority 4 — Типизация `any` ✅ ЧАСТИЧНО ВЫПОЛНЕНО
 
-### Проблема
-26 использований `any` по electron/:
-- scanner.ts: `processes: any[]`, `proc: any`, `mods: any[]`
-- cheat-rules.ts: return types без generic
-- disk-vs-memory.ts: PowerShell JSON парсинг
-- rwx-scanner.ts: thread types
+### Решение реализовано
+- Все `any[]` в scanner.ts заменены на дженерик `parsePsJson<T>()`
+- `ScanOptions` интерфейс для опций сканирования
+- Типизированные параметры в disk-vs-memory.ts, rwx-scanner.ts, dma.ts, games.ts, processes.ts
+- Осталось ~5 `any` в краевых случаях (cheat-rules.ts return types)
 
-### Решение
-```ts
-// Вместо:
-const processes: any[] = JSON.parse(psOut)
-
-// Создать тип:
-interface ProcessInfo {
-  Name: string
-  Id: number
-  Mods?: string[]
-}
-
-// Использовать:
-const processes: ProcessInfo[] = JSON.parse(psOut)
-```
-
-**Трудоёмкость**: 2-3 часа
-**Риск**: Средний (PowerShell JSON может вернуть неожиданную структуру)
-**Профит**: Полная type safety, IDE autocomplete
+**Статус**: ✅ Выполнено на 80% в v0.0.21
 
 ---
 
-## 🟢 Priority 5 — PowerShell JSON парсинг
+## 🟢 Priority 5 — PowerShell JSON парсинг ✅ ВЫПОЛНЕНО
 
-### Проблема
-PowerShell возвращает JSON в разных форматах:
-- `ConvertTo-Json -Compress` — массив или один объект
-- `ConvertTo-Json -Depth 3` — вложенные структуры
-- Старый `wmic` — CSV
-
-По всему коду разбросаны:
+### Решение реализовано
+`parsePsJson<T>()` в `electron/types.ts`:
 ```ts
-const parsed = JSON.parse(out)
-const items = Array.isArray(parsed) ? parsed : [parsed]
-```
-
-### Решение: Утилита
-```ts
-function parsePsJson<T>(out: string): T[] {
+export function parsePsJson<T>(out: string): T[] {
   if (!out || out.trim().length < 5) return []
   try {
     const parsed = JSON.parse(out)
     return Array.isArray(parsed) ? parsed : [parsed]
-  } catch {
-    return []
-  }
+  } catch { return [] }
 }
 ```
+- Используется в: dma.ts, games.ts, processes.ts, disk-vs-memory.ts, rwx-scanner.ts, scanner.ts
+- ~20 строк дублирования убрано
 
-**Трудоёмкость**: 30 минут
-**Риск**: Низкий
-**Профит**: ~20 строк дублирования убрано
+**Статус**: ✅ Выполнено в v0.0.21
 
 ---
 
-## 🟢 Priority 6 — const _PATH = process.env (конфиг)
+## 🟢 Priority 6 — const _PATH = process.env (конфиг) ✅ ВЫПОЛНЕНО
 
-### Проблема
-В 3 файлах определены одни и те же константы путей:
+### Решение реализовано
+`CFG` объект в `electron/config.ts`:
 ```ts
-// scanner.ts
-const _PF = process.env.ProgramFiles || 'C:\\Program Files'
-const _HOME = os.homedir()
-
-// cheats-db.ts
-const home = os.homedir()
-function _pf(): string { ... }
-```
-
-### Решение: Вынести в config.ts
-```ts
-// electron/config.ts
 export const CFG = {
   PF: process.env.ProgramFiles || 'C:\\Program Files',
   PF86: process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
@@ -189,10 +129,10 @@ export const CFG = {
   PD: process.env.ProgramData || 'C:\\ProgramData',
 }
 ```
+- Используется в cheats-db.ts, browser-history.ts
+- Старые алиасы (`_PF`, `_PF86`, `_HOME`, `_WR`) в types.ts для обратной совместимости
 
-**Трудоёмкость**: 20 минут
-**Риск**: Низкий
-**Профит**: Единый источник правды для путей
+**Статус**: ✅ Выполнено в v0.0.21
 
 ---
 
@@ -260,17 +200,17 @@ export enum ResultType { File = 'file', Browser = 'browser', /* ... */ }
 
 ---
 
-## 📊 Итоговый приоритет
+## 📊 Итоговый приоритет (обновлено v0.0.21)
 
-| # | Задача | Трудоёмкость | Риск | Эффект |
-|---|--------|-------------|------|--------|
-| 🔴 | Разделить scanner.ts | 2-3ч | Высокий | Архитектура |
-| 🟡 | ScanContext class | 1-2ч | Средний | Изоляция |
-| 🟡 | Типизировать `any` | 2-3ч | Средний | Type safety |
-| 🟡 | require() → import | 5 мин | Низкий | Стиль |
-| 🟢 | PowerShell JSON утилита | 30 мин | Низкий | DRY |
-| 🟢 | config.ts | 20 мин | Низкий | DRY |
-| 🟢 | HTTP клиент | 1ч | Низкий | DRY |
-| 🟢 | Enum для типов | 30 мин | Средний | Safe refactor |
-
-**Рекомендация**: Начать с `require('http')` → import (5 мин) + config.ts (20 мин) + PowerShell JSON утилита (30 мин). Это 55 мин низкорисковых улучшений, которые сразу дадут более чистый код. scanner.ts разделение — самое важное, но требует тестов перед собой.
+| # | Задача | Трудоёмкость | Статус |
+|---|--------|-------------|--------|
+| ✅ | ScanContext class | 1-2ч | **Выполнено** |
+| ✅ | Типизировать `any` | 2-3ч | **Выполнено (80%)** |
+| ✅ | require() → import | 5 мин | **Выполнено** |
+| ✅ | PowerShell JSON утилита | 30 мин | **Выполнено** |
+| ✅ | config.ts (CFG) | 20 мин | **Выполнено** |
+| ✅ | Константы → constants.ts | 15 мин | **Выполнено** |
+| ✅ | Cloud sync → cloud-sync.ts | 20 мин | **Выполнено** |
+| 🔴 | Разделить scanner.ts | 2-3ч | **В планах** |
+| 🟢 | HTTP клиент | 1ч | **В планах** |
+| 🟢 | Enum для типов | 30 мин | **В планах** |

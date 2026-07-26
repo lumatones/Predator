@@ -1,6 +1,6 @@
 {
   "name": "predator",
-  "version": "0.0.20",
+  "version": "0.0.22",
   "description": "Predator — Cheat checker for GTA 5 RP (Majestic)",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -17,7 +17,8 @@
     "typecheck": "npm run typecheck:electron && cd admin && npx tsc --noEmit",
     "lint": "npx prettier --check \"**/*.{ts,tsx,js,json,css,md}\" --ignore-unknown || echo \"Prettier not configured — run: npx prettier --write ...\"",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true}); require('fs').rmSync('dist-electron',{recursive:true,force:true}); require('fs').rmSync('release',{recursive:true,force:true}); try{require('fs').rmSync('release_info.json',{force:true})}catch(e){}",
-    "build:all": "npm run build && cd admin && npm run build"
+    "build:all": "npm run build && cd admin && npm run build",
+    "release": "node scripts/release.js"
   },
   "build": {
     "appId": "com.predator.anticheat",
