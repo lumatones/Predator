@@ -1,6 +1,6 @@
 {
   "name": "predator",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "description": "Predator — Cheat checker for GTA 5 RP (Majestic)",
   "main": "dist-electron/main.js",
   "scripts": {

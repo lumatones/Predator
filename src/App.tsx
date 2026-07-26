@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { motion, useScroll, useTransform, useReducedMotion } from 'framer-motion'
 import { validateToken, useToken, requestAccess, checkRequestStatus } from './api'
 import Checker from './pages/Checker'
 import Dashboard from './pages/Dashboard'
@@ -64,11 +63,6 @@ const App: React.FC = () => {
   const [requestId, setRequestId] = useState<number | null>(null)
   const [requestStatus, setRequestStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
-  const reduceMotion = useReducedMotion()
-  const heroRef = useRef<HTMLDivElement | null>(null)
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
-  const heroY = useTransform(scrollYProgress, [0, 1], [0, reduceMotion ? 0 : -200])
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.5, 1], [1, 0.2, 0])
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [updateModal, setUpdateModal] = useState<UpdateModalState>({ show: false, version: '', state: 'available', percent: 0, speed: '', size: '', errorMsg: '' })
 
@@ -93,17 +87,34 @@ const App: React.FC = () => {
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
   useEffect(() => {
+    // Fallback: always move past loading after 5s max, even if everything breaks
+    const forceTimer = setTimeout(() => setPhase(p => p === 'loading' ? 'onboarding-lang' : p), 5000)
+
     const api = window.electronAPI
-    if (!api) { setPhase('onboarding-lang'); return }
+    if (!api) { setPhase('onboarding-lang'); clearTimeout(forceTimer); return }
+
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null
-    api.getAppVersion().then(setVersion)
-    api.onUpdateAvailable(info => { setUpdateAvailable(true); setUpdateModal(p => ({ ...p, show: true, version: info.version, state: 'available' })); setPhase('onboarding-lang'); if (fallbackTimer) clearTimeout(fallbackTimer) })
-    api.onUpdateNotAvailable(() => { setPhase('onboarding-lang'); if (fallbackTimer) clearTimeout(fallbackTimer) })
-    api.onDownloadProgress(data => { setUpdateModal(p => ({ ...p, show: true, state: 'downloading', percent: data.percent, speed: data.bytesPerSecond > 0 ? `${(data.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : '', size: `${(data.transferred / 1024 / 1024).toFixed(1)} / ${(data.total / 1024 / 1024).toFixed(1)} MB` })); if (fallbackTimer) clearTimeout(fallbackTimer) })
-    api.onUpdateDownloaded(() => { setUpdateModal(p => ({ ...p, show: true, state: 'done' })); if (fallbackTimer) clearTimeout(fallbackTimer) })
-    api.onUpdateError(msg => { setUpdateModal(p => ({ ...p, state: 'error', errorMsg: msg })); if (fallbackTimer) clearTimeout(fallbackTimer) })
-    fallbackTimer = setTimeout(() => setPhase('onboarding-lang'), 4000)
-    return () => { if (fallbackTimer) clearTimeout(fallbackTimer) }
+
+    try { api.getAppVersion().then(setVersion).catch(() => setVersion('unknown')) } catch { setVersion('unknown') }
+
+    try {
+      api.onUpdateAvailable(info => { setUpdateAvailable(true); setUpdateModal(p => ({ ...p, show: true, version: info.version, state: 'available' })); setPhase('onboarding-lang'); if (fallbackTimer) clearTimeout(fallbackTimer) })
+    } catch { /* listener failed, continue */ }
+
+    try {
+      api.onUpdateNotAvailable(() => { setPhase('onboarding-lang'); if (fallbackTimer) clearTimeout(fallbackTimer) })
+    } catch { /* listener failed, continue */ }
+
+    try { api.onDownloadProgress(data => { setUpdateModal(p => ({ ...p, show: true, state: 'downloading', percent: data.percent, speed: data.bytesPerSecond > 0 ? `${(data.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : '', size: `${(data.transferred / 1024 / 1024).toFixed(1)} / ${(data.total / 1024 / 1024).toFixed(1)} MB` })); if (fallbackTimer) clearTimeout(fallbackTimer) }) } catch { /* skip */ }
+    try { api.onUpdateDownloaded(() => { setUpdateModal(p => ({ ...p, show: true, state: 'done' })); if (fallbackTimer) clearTimeout(fallbackTimer) }) } catch { /* skip */ }
+    try { api.onUpdateError(msg => { setUpdateModal(p => ({ ...p, state: 'error', errorMsg: msg })); if (fallbackTimer) clearTimeout(fallbackTimer) }) } catch { /* skip */ }
+
+    fallbackTimer = setTimeout(() => { setPhase(p => p === 'loading' ? 'onboarding-lang' : p); clearTimeout(forceTimer) }, 4000)
+
+    return () => {
+      clearTimeout(forceTimer)
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+    }
   }, [])
 
   const hInstallUpdate = useCallback(() => { setUpdateModal(p => ({ ...p, state: 'downloading', percent: 0 })); window.electronAPI?.startDownload() }, [])
@@ -152,7 +163,6 @@ const App: React.FC = () => {
 
   const c = THEMES[theme]
   const subtitle = t('title')
-  const MotionDiv = motion.div
 
   return (
     <div className="app">
@@ -162,12 +172,7 @@ const App: React.FC = () => {
       <div className="scan-line" />
       <div className="container">
         <Logo accent={c.accent} light={c.light} dark={c.dark} subtitle={subtitle} />
-        <MotionDiv className="hero-copy" style={{ y: heroY, opacity: heroOpacity }}>
-          <p className="hero-kicker">Dark analytics suite</p>
-          <h2 className="hero-title"><span>Your insights.</span><span>One clear overview.</span></h2>
-          <p className="hero-subtitle">Neuralyn helps teams track metrics, goals,<br />and progress with precision.</p>
-        </MotionDiv>
-
+        {/* Loading */}
         {phase === 'loading' && renderCard(<><div className="spinner"><div className="spinner-ring" /></div><p className="status-text">Загрузка...</p><div className="progress-bar indeterminate"><div className="progress-fill" /></div></>)}
 
         {(phase.startsWith('onboarding-') || phase === 'requesting-access') && (
