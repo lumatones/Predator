@@ -42,6 +42,7 @@ import { runEtwScan } from './etw-provider'
 import { runForensicScan } from './forensic-traces'
 import { runAntiForensicScan } from './anti-forensic'
 import { runPcCleanerScan } from './pc-cleaner-detection'
+import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb } from './safe-files-db'
 
 // ═══════════════════════════════════════════════════
 // FULL SCAN (was extended) — 9-phase deep scan
@@ -90,14 +91,30 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
           }
         }
         if (hr && riskScore > 20) {
+          const risk = riskScore > 80 ? 'high' : riskScore > 50 ? 'medium' : 'low'
+          // Compute SHA256 for HIGH-risk files (for cloud signature database)
+          let sha256Hash: string | undefined
+          if (risk === 'high' && (ext === '.exe' || ext === '.dll' || ext === '.sys')) {
+            try {
+              const h = crypto.createHash('sha256')
+              const fd = fs.openSync(filePath, 'r')
+              const stat2 = fs.statSync(filePath)
+              const hashBuf = Buffer.alloc(Math.min(stat2.size, 50 * 1024 * 1024))
+              fs.readSync(fd, hashBuf, 0, hashBuf.length, 0)
+              fs.closeSync(fd)
+              h.update(hashBuf)
+              sha256Hash = h.digest('hex')
+            } catch (_e) { /* hash computation optional */ }
+          }
           results.push({
             path: filePath,
             fileName: path.basename(filePath),
             type: 'file',
-            risk: riskScore > 80 ? 'high' : riskScore > 50 ? 'medium' : 'low',
+            risk,
             matches: hr.suspicions.slice(0, 5),
             size: 0,
             modifiedAt: new Date().toISOString(),
+            sha256: sha256Hash,
           })
         }
         await yieldToEventLoop()
@@ -139,8 +156,8 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
     const processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
     for (const proc of processes) {
         const mods: string[] = proc.Mods || []
-        const skipAmsi = await scanProcessForAmsiEtw(Number(proc.Id), (proc.Name || '').toLowerCase())
-        if (skipAmsi) {
+        const patchResult = await scanProcessForAmsiEtw(Number(proc.Id), (proc.Name || '').toLowerCase())
+        if (patchResult && (patchResult.amsiPatched || patchResult.etwPatched) && patchResult.riskScore > 20) {
           results.push({
             path: `process:${proc.Name} (PID: ${proc.Id})`,
             fileName: `${proc.Name} — AMSI/ETW patch detected`,
@@ -355,7 +372,7 @@ export function registerScanHandlers() {
           lowRiskCount: result.results.filter(r => r.risk === 'low').length,
           topFindings: result.results.filter(r => r.risk === 'high').slice(0, 5).map(r => r.fileName),
         })
-      } catch { /* persistent scoring optional */ }
+      } catch (_e) { /* persistent scoring optional */ }
 
       // Submit shadow findings silently (never flags user — telemetry only)
       if (ctx.shadowFindings.length > 0) {
@@ -378,50 +395,94 @@ export function registerScanHandlers() {
             headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(shadowBody) },
           })
           shadowReq.write(shadowBody)
-          shadowReq.end()
-        } catch { /* shadow submission optional */ }
+          shadowReq.end()          } catch (_e) { /* shadow submission optional */ }
       }
 
-      // Fire-and-forget cloud submission of top findings
-      const highRisk = result.results.filter(r => r.risk === 'high').slice(0, 10)
-      if (highRisk.length > 0) {
-        const payload = {
-          token_id: tokenId,
-          pc_username: pcUsername,
-          hashes: await Promise.all(highRisk.map(async (r) => {
-            let sha256 = ''
-            if (r.path && fs.existsSync(r.path)) {
-              const hash = crypto.createHash('sha256')
-              try {
-                const stream = fs.createReadStream(r.path)
-                for await (const chunk of stream) hash.update(chunk as Buffer)
-                sha256 = hash.digest('hex')
-              } catch { /* skip */ }
-            }
-          return {
-            sha256: sha256 || r.matches.find(m => m.startsWith('sha256:'))?.replace('sha256:', '') || '',
-            file_name: r.fileName,
-            pc_username: pcUsername,
-            file_size: r.size,
-            risk_score: r.risk === 'high' ? 80 : r.risk === 'medium' ? 50 : 20,
-          }
-          })),
+      // ── Auto-whitelist LOW-risk files ──
+      // Files that got LOW risk are almost certainly safe.
+      // Auto-adding them to safe DB prevents re-scanning on next run.
+      try {
+        loadSafeFilesDb()
+        const lowRiskFiles = result.results
+          .filter(r => r.risk === 'low' && fs.existsSync(r.path))
+          .map(r => {
+            try {
+              const st = fs.statSync(r.path)
+              return { filepath: r.path, size: st.size, mtimeMs: st.mtimeMs }
+            } catch (_e) { return null }
+          })
+          .filter(Boolean) as { filepath: string; size: number; mtimeMs: number }[]
+        if (lowRiskFiles.length > 0) {
+          markFilesSafe(lowRiskFiles, 'auto')
         }
+        saveSafeFilesDb()
+      } catch (_e) { /* safe-db optional */ }
 
+      // ── Submit SHA256 hashes for HIGH-risk files ──
+      // These populate the cloud signature database (admin panel "На проверке")
+      const highRiskWithHash = result.results
+        .filter(r => r.risk === 'high' && r.sha256 && r.type === 'file')
+      if (highRiskWithHash.length > 0) {
         try {
-          const body = JSON.stringify(payload)
+          const hashesPayload = JSON.stringify({
+            token_id: tokenId,
+            pc_username: pcUsername,
+            hashes: highRiskWithHash.map(r => ({
+              sha256: r.sha256,
+              file_name: r.fileName,
+              file_size: r.size || 0,
+              risk_score: 80,
+            })),
+          })
+          const { hostname, port, protocol } = getApiEndpoint()
+          const transport = protocol === 'https:' ? https : http
+          const hashReq = transport.request({
+            hostname, port,
+            path: '/api/auth/submit-hashes',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(hashesPayload),
+            },
+          })
+          hashReq.write(hashesPayload)
+          hashReq.end()
+          console.log(`  ☁️  Submitted ${highRiskWithHash.length} HIGH-risk hashes to cloud`)
+        } catch (_e) { /* hash submission optional */ }
+      }
+
+      // ── Upload scan results to server ──
+      if (result.results.length > 0) {
+        try {
+          const payload = JSON.stringify({
+            token_id: tokenId,
+            pc_username: pcUsername,
+            mode: mode,
+            total_scanned: summary.totalScanned,
+            suspicious_files: summary.suspiciousFiles,
+            high_risk_count: summary.highRiskCount,
+            scan_time_ms: summary.scanTimeMs,
+            results: result.results.slice(0, 100).map(r => ({
+              file_name: r.fileName,
+              path: r.path,
+              type: r.type,
+              risk: r.risk,
+              matches: r.matches.slice(0, 3),
+              sha256: r.sha256 || undefined,
+            })),
+          })
           const { hostname, port, protocol } = getApiEndpoint()
           const transport = protocol === 'https:' ? https : http
           const req = transport.request({
             hostname,
             port,
-            path: '/api/auth/submit-hashes',
+            path: '/api/auth/submit-scan',
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
           })
-          req.write(body)
+          req.write(payload)
           req.end()
-        } catch { /* cloud submission optional */ }
+        } catch (_e) { /* upload optional */ }
       }
 
       return { results: result.results, summary } satisfies ScanResponse

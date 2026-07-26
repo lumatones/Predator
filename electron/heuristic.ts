@@ -43,6 +43,7 @@ import {
 import type { HeuristicResult, CheatCategory } from './types'
 import type { PeAnalysisResult, SectionEntropy } from './cheat-rules'
 import { _PF, _PF86, _HOME, _WR, ctx } from './types'
+import { isFileSafe } from './safe-files-db'
 import { calculateEntropy } from './analysis/entropy'
 import { scanStrings } from './analysis/strings'
 
@@ -59,7 +60,7 @@ export const SUSPICIOUS_CATEGORIES: Record<string, CheatCategory> = {
     risk: 'CRITICAL',
   },
   debugger: {
-    names: ['debug', 'debugger', 'cheatengine', 'ce', 'x64dbg', 'ollydbg', 'ida'],
+    names: ['debug', 'debugger', 'cheatengine', 'x64dbg', 'ollydbg'],
     strings: [Buffer.from('IsDebuggerPresent'), Buffer.from('CheckRemoteDebuggerPresent'), Buffer.from('NtQueryInformationProcess')],
     description: 'Debugger / memory hacking tool',
     risk: 'CRITICAL',
@@ -71,37 +72,37 @@ export const SUSPICIOUS_CATEGORIES: Record<string, CheatCategory> = {
     risk: 'HIGH',
   },
   driver: {
-    names: ['.sys', 'driver', 'kernel', 'km', 'ring0'],
-    strings: [Buffer.from('\\Device\\'), Buffer.from('\\DosDevices\\'), Buffer.from('IoCreateDevice'), Buffer.from('PsSetCreateProcessNotifyRoutine')],
+    names: ['driver', 'kernel', 'km'],
+    strings: [Buffer.from('\\\\Device\\\\'), Buffer.from('\\\\DosDevices\\\\'), Buffer.from('IoCreateDevice'), Buffer.from('PsSetCreateProcessNotifyRoutine')],
     description: 'Kernel-level driver',
     risk: 'CRITICAL',
   },
   spoofer: {
-    names: ['spoofer', 'spoof', 'hwid', 'mac', 'serial', 'disk'],
+    names: ['spoofer', 'spoof', 'hwid', 'serial', 'diskid'],
     strings: [Buffer.from('HardwareID'), Buffer.from('MACAddress'), Buffer.from('DiskSerial'), Buffer.from('SMBIOS')],
     description: 'Hardware ID spoofing',
     risk: 'HIGH',
   },
   bypass: {
-    names: ['bypass', 'evade', 'anti', 'block', 'disable'],
+    names: ['bypass', 'evade', 'block', 'disable'],
     strings: [Buffer.from('bypass'), Buffer.from('evade'), Buffer.from('anti-cheat'), Buffer.from('anti cheat')],
     description: 'Security mechanism bypass',
     risk: 'CRITICAL',
   },
   menu: {
-    names: ['menu', 'gui', 'overlay', 'imgui', 'd3d'],
-    strings: [Buffer.from('ImGui'), Buffer.from('Direct3D'), Buffer.from('OpenGL'), Buffer.from('overlay'), Buffer.from('esp'), Buffer.from('aimbot')],
+    names: ['menu', 'overlay', 'imgui', 'd3d'],
+    strings: [Buffer.from('ImGui'), Buffer.from('Direct3D'), Buffer.from('OpenGL'), Buffer.from('overlay'), Buffer.from('aimbot')],
     description: 'Game menu / overlay',
     risk: 'HIGH',
   },
   network: {
-    names: ['proxy', 'vpn', 'socks', 'mitm', 'packet'],
+    names: ['proxy', 'socks', 'mitm', 'packet'],
     strings: [Buffer.from('WSASocket'), Buffer.from('connect'), Buffer.from('send'), Buffer.from('recv'), Buffer.from('socks'), Buffer.from('proxy')],
     description: 'Network manipulation tools',
     risk: 'MEDIUM',
   },
   obfuscator: {
-    names: ['obf', 'pack', 'crypt', 'protect', 'vm', 'virtual'],
+    names: ['obfusc', 'packer', 'crypt', 'protect', 'vmprotect'],
     strings: [Buffer.from('VMProtect'), Buffer.from('Themida'), Buffer.from('Enigma'), Buffer.from('Obsidium'), Buffer.from('Armadillo')],
     description: 'Code obfuscation / packing (hides malicious code)',
     risk: 'HIGH',
@@ -115,8 +116,7 @@ export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
   '.luac': 'Compiled Lua script',
   '.exe': 'Executable file',
   '.sys': 'System driver',
-  '.bin': 'Binary file (may contain cheat config)',
-  '.dat': 'Data file',
+  // '.bin' and '.dat' removed — handled by skippable extensions
   '.cfg': 'Configuration file',
   '.ini': 'Configuration file',
   '.js': 'JavaScript (may contain cheat loader)',
@@ -125,6 +125,39 @@ export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
   '.rar': 'Archive (may contain cheat files)',
   '.7z': 'Archive (may contain cheat files)',
   '.msi': 'Installer (may contain cheat)',
+}
+
+/** Minimum keyword length for name matching — prevents false positives from short substrings
+ *  like "ce" matching in "process", "ice", "voice", etc. */
+export const MIN_KEYWORD_LENGTH = 4
+
+/** Known Electron/Chromium DLLs that are bundled unsigned with Electron apps.
+ *  These should NEVER be flagged by the combo-detector. */
+export const KNOWN_ELECTRON_DLLS = new Set([
+  'd3dcompiler_47.dll', 'ffmpeg.dll', 'libegl.dll', 'libglesv2.dll',
+  'vk_swiftshader.dll', 'vulkan-1.dll', 'vulkaninfo.exe',
+  'elevate.exe', 'nsis7z.dll', 'nsprocess.dll', 'stdutils.dll',
+  'system.dll', '7zr.exe',
+])
+
+/** Extensions to skip entirely (noise files with no cheat value). */
+export const SKIPPABLE_EXTENSIONS = new Set([
+  '.d.ts', '.d.ts.map', '.js.map', '.css.map', '.map',
+  '.tsbuildinfo', '.woff', '.woff2', '.ttf', '.otf', '.eot',
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.bmp', '.webp',
+  '.mp4', '.mp3', '.wav', '.ogg', '.flac', '.avi', '.mkv', '.mov',
+  '.pak', '.bin', '.dat',
+])
+
+/** Check if filename is a known Electron bundled DLL (never flag these) */
+export function isKnownElectronDll(fileName: string): boolean {
+  return KNOWN_ELECTRON_DLLS.has(fileName.toLowerCase())
+}
+
+/** Check if extension is skippable (noise/asset files) */
+export function isSkippableExtension(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase()
+  return SKIPPABLE_EXTENSIONS.has(ext)
 }
 
 export const SCAN_CONFIG = {
@@ -145,7 +178,6 @@ export const ALL_CHEAT_KEYWORDS = [
   'godmode', 'teleport', 'moneydrop', 'recovery', 'unlockall',
   'nightfall', 'dma', 'fpga', 'pcileech', 'fuser', 'screamer',
   'kmem', 'memprocfs', 'winpmem',
-  // New from research
   'manual map', 'manualmap', 'reflective loader', 'reflective dll',
   'kernel injector', 'kernel driver', 'kdmapper', 'drvmap',
   'byovd', 'vulnerable driver', 'physmem',
@@ -157,7 +189,6 @@ export const ALL_CHEAT_KEYWORDS = [
   'devtools', 'remote debugging', 'chromium embedded',
   'js executor', 'dotnet inject', 'compiled resource',
   'dump', 'dumper', 'decompiler', 'deobfuscator',
-  // DMA hardware specifics from research
   'pcileech', 'leechcore', 'vmm', 'memprocfs',
   'ftd3xx', 'ft601', 'ft2232', 'ftdibus',
   'xc7a35t', 'xc7a75t', 'xc7a100t', 'artix-7',
@@ -165,30 +196,24 @@ export const ALL_CHEAT_KEYWORDS = [
   'dma card', 'dma firmware', 'fpga firmware',
   'captaindma', 'leetch', 'enigma x1', 'screamer m2',
   'raptor dma', 'zdma', 'gbox',
-  // 0xCheats / LeetCheats / Unicore / Vanish / Nightfall (research confirmed)
   '0xcheats', '0xcheat', 'oxcheat', 'oxcheats',
   'leetcheats', 'leetcheat', 'noleet', 'noleetcheats',
   '1337 cheat', '1337cheat',
   'unicore', 'unicorecheat', 'unicoremenu',
   'vanish', 'vanishcheat', 'vanish spoofer',
   'nightfall', 'nightfallmenu', 'nightfall loader',
-  'kernel cheat', 'vanish driver', // Vanish uses kernel driver injection
-  // CEF/Chromium exploit patterns
+  'kernel cheat', 'vanish driver',
   'cef_browser', 'chromium embedded framework',
   'remote debugging port', 'devtools protocol',
   'natives handler', 'native invoker',
   'get_native_handler', 'crossmap',
-  // ALT:V specific
   'alt-client', 'alt_server', 'bytecode module',
   'js bytecode', 'resource cache', 'client_packages',
-  // HWID spoofing
   'hwid spoofer', 'volumeid', 'mac spoof',
   'disk serial', 'smbios', 'motherboard serial',
   'permanent spoof', 'perm spoof',
-  // RAM disk evasion
   'ram disk', 'memory disk', 'imdisk',
   'tmpfs', 'ramdrive', 'virtual drive',
-  // ADS (Alternate Data Streams)
   'alternate data stream', ':zone.identifier',
 ]
 
@@ -205,7 +230,6 @@ export const SUSPICIOUS_PATTERNS = [
   /[Dd][Mm][Aa]/i,
   /[Ff][Pp][Gg][Aa]/i,
   /[Pp][Cc][Ii]\s*[Ll]eech/i,
-  // New from research
   /[Ss]usano/i,
   /[Ll]ambda\s*[Mm]enu/i,
   /[Vv][Mm]enu/i,
@@ -224,7 +248,6 @@ export const SUSPICIOUS_PATTERNS = [
   /[Ss]poof(?:er|ing)/i,
   /[Cc]lean(?:er|ing)\s*(?:trace|log)/i,
   /[Hh][Ww][Ii][Dd]\s*[Ss]poof/i,
-  // DMA hardware specifics
   /[Xx][Cc]7[Aa]\d{1,3}[Tt]/i,
   /[Aa]rtix-?\s*7/i,
   /[Ff][Tt]60[01]/i,
@@ -234,23 +257,18 @@ export const SUSPICIOUS_PATTERNS = [
   /[Ee]nigma\s*[Xx]1/i,
   /[Ss]creamer\s*[Mm]2/i,
   /[Rr]aptor\s*[Dd][Mm][Aa]/i,
-  // CEF / Chromium exploit patterns
   /remote-?\s*debugging-?\s*port/i,
   /chrome\.devtools/i,
   /native\s*invoker/i,
   /get_native_handler/i,
-  // RAM disk / memory evasion
   /[Rr][Aa][Mm]\s*[Dd](isk|rive)/i,
   /[Ii][Mm][Dd]isk/i,
   /[Tt][Mm][Pp][Ff][Ss]/i,
-  // Alternate Data Streams (NTFS ADS)
   /:zone\.identifier/i,
   /alternate\s*data\s*stream/i,
-  // Permanent HWID spoofers
   /[Pp]erm(?:anent)?\s*[Ss]poof/i,
   /[Ee][Ff][Ii]\s*[Ss]poof/i,
   /[Ss][Mm][Bb][Ii][Oo][Ss]\s*[Ss]poof/i,
-  // 0xCheats / LeetCheats / Unicore / Vanish / Nightfall
   /0x[Cc]heats?/i,
   /[Oo]x[Cc]heat/i,
   /[Ll]eet[Cc]heats?/i,
@@ -317,18 +335,6 @@ export { scanStrings } from './analysis/strings'
 // MASQUERADING EXECUTABLE HEURISTIC
 // ═══════════════════════════════════════════════════
 
-/**
- * Check if a file is a masquerading executable — a cheat loader disguised
- * as a legitimate utility (e.g., dxwebsetup.exe, epicgameslauncher.exe).
- *
- * Detection logic:
- *   1. Filename is in MASQUERADING_FILENAMES (known masquerading targets)
- *   2. File is NOT in a trusted Windows/system path
- *   3. File has NO digital signature (legitimate versions always have one)
- *   4. Optional: file is packed (high entropy, many sections, no PE metadata)
- *
- * Returns: { isMasquerading, signals } where signals explains why.
- */
 export function checkMasqueradingExecutable(
   fileName: string,
   filepath: string,
@@ -341,14 +347,12 @@ export function checkMasqueradingExecutable(
   const signals: string[] = []
   const lowerName = fileName.toLowerCase()
 
-  // Step 1: Check if filename is a known masquerading target
   if (!MASQUERADING_FILENAMES.has(lowerName)) {
     return { isMasquerading: false, signals }
   }
 
   signals.push(`Filename matches masquerading target: ${fileName}`)
 
-  // Step 2: Check location — system32/syswow64 is fine (legit Windows files live there)
   const systemPaths = [
     path.join(_WR, 'System32').toLowerCase(),
     path.join(_WR, 'SysWOW64').toLowerCase(),
@@ -358,7 +362,6 @@ export function checkMasqueradingExecutable(
   const inSystemDir = systemPaths.some(p => fpLower.startsWith(p))
 
   if (inSystemDir) {
-    // If it's in System32 with a legitimate Windows filename, it's likely legit
     const winSysFiles = new Set(['conhost.exe', 'rundll32.exe', 'svchost.exe', 'lsass.exe', 'services.exe', 'winlogon.exe', 'explorer.exe', 'notepad.exe'])
     if (winSysFiles.has(lowerName)) {
       signals.push(`Located in System32 — legitimate Windows component, not flagged`)
@@ -366,10 +369,8 @@ export function checkMasqueradingExecutable(
     }
   }
 
-  // Step 3: Digital signature check (most important signal)
   if (sigValid) {
     signals.push(`Has valid digital signature — likely legitimate version`)
-    // Still suspicious if packed even with valid sig — reduce severity
     if (entropy > 7.0 || (peInfo && peInfo.sectionCount >= 7)) {
       signals.push('But file is packed/obfuscated despite valid signature — suspicious')
     } else {
@@ -379,7 +380,6 @@ export function checkMasqueradingExecutable(
     signals.push('No digital signature — legitimate versions of this software ALWAYS have one')
   }
 
-  // Step 4: PE structure anomalies
   if (peInfo) {
     if (peInfo.sectionCount >= 7) {
       signals.push(`Suspicious: ${peInfo.sectionCount} PE sections (expected 3-5 for legitimate tool)`)
@@ -392,7 +392,6 @@ export function checkMasqueradingExecutable(
     }
   }
 
-  // Step 5: Section entropy anomalies
   if (secEntropy.length > 0) {
     const highEntropySections = secEntropy.filter(s => s.entropy > 7.5)
     for (const sec of highEntropySections) {
@@ -400,12 +399,10 @@ export function checkMasqueradingExecutable(
     }
   }
 
-  // Step 6: File entropy (overall sample)
   if (entropy > 7.2) {
     signals.push(`Overall entropy ${entropy.toFixed(2)} > 7.2 — packed/encrypted`)
   }
 
-  // Step 7: Size check — known masquerading cheat loaders are typically 16-30 MB
   if (stat.size >= 15 * 1024 * 1024 && stat.size <= 35 * 1024 * 1024) {
     signals.push(`File size ${(stat.size / 1024 / 1024).toFixed(1)} MB — matches masquerading loader range`)
   }
@@ -413,7 +410,10 @@ export function checkMasqueradingExecutable(
   return { isMasquerading: signals.length >= 2, signals }
 }
 
-/** Cached digital signature check via PowerShell Get-AuthenticodeSignature */
+// ═══════════════════════════════════════════════════
+// DIGITAL SIGNATURE CHECK
+// ═══════════════════════════════════════════════════
+
 export function checkDigitalSignature(filepath: string): boolean {
   const cached = ctx.sigCache.get(filepath)
   if (cached !== undefined) return cached
@@ -431,10 +431,10 @@ export function checkDigitalSignature(filepath: string): boolean {
   }
 }
 
-/**
- * Match a name against the known cheat database.
- * Uses cached lookups for performance.
- */
+// ═══════════════════════════════════════════════════
+// CHEAT NAME MATCHING
+// ═══════════════════════════════════════════════════
+
 export function matchKnownCheat(name: string): string[] {
   const lower = name.toLowerCase()
   const cached = ctx.cheatNameCache.get(lower)
@@ -482,24 +482,6 @@ export function getFileRiskLevel(fileName: string, matches: string[]): 'high' | 
 // COMBO DETECTOR — Universal unsigned binary heuristic
 // ═══════════════════════════════════════════════════
 
-/**
- * Universal combo-detector for unsigned .exe/.dll files.
- *
- * Catches cheat loaders REGARDLESS of filename — no name matching needed.
- * Uses 5 behavioral signals:
- *   1. Strange size (5–100 MB) — too big for a utility, too small for a game
- *   2. High entropy (> 7.0) — packed/encrypted (VMProtect, Themida)
- *   3. Few readable strings (< 10) — fully obfuscated binary
- *   4. Suspicious directory — Downloads/Desktop/Temp
- *   5. Many PE sections (>= 7) — typical for packed binaries
- *
- * Scoring:
- *   >= 2 signals → HIGH risk (+70)
- *   >= 1 signal + suspicious dir → MEDIUM risk (+40)
- *   1 signal → LOW risk (+15)
- *
- * Legitimate software is NEVER all of: unsigned + packed + no strings + wrong size.
- */
 export function comboScoreUnsignedBinary(
   ext: string,
   sizeBytes: number,
@@ -509,12 +491,10 @@ export function comboScoreUnsignedBinary(
   sectionCount: number,
   sigValid: boolean,
 ): { signals: string[]; riskBonus: number } {
-  // Only applies to PE files
   if (ext !== '.exe' && ext !== '.dll') {
     return { signals: [], riskBonus: 0 }
   }
 
-  // Signed = trust (legitimate vendors sign their software)
   if (sigValid) {
     return { signals: [], riskBonus: 0 }
   }
@@ -526,42 +506,31 @@ export function comboScoreUnsignedBinary(
   const inSuspiciousDir = fpLow.includes('downloads') || fpLow.includes('download') ||
     fpLow.includes('desktop') || fpLow.includes('temp') || fpLow.includes('загрузки')
 
-  // Signal 1: Strange size (5–100 MB)
-  // Legitimate: small utils < 5MB, big games > 100MB. Cheat loaders: 5–100MB.
   if (sizeBytes >= 5 * 1024 * 1024 && sizeBytes <= 100 * 1024 * 1024) {
     signalCount++
     reasons.push(`Strange size: ${(sizeBytes / 1024 / 1024).toFixed(1)} MB (unsigned binary of this size is unusual)`)
   }
 
-  // Signal 2: High entropy (> 7.0) — packed/encrypted
   if (entropy > 7.0) {
     signalCount++
     reasons.push(`Entropy ${entropy.toFixed(2)} > 7.0 — packed/encrypted (VMProtect/Themida/obsufcation)`)
   }
 
-  // Signal 3: Few readable strings (< 10) — fully obfuscated
-  // Legitimate EXEs always have readable strings (error messages, resource names, etc.)
   if (stringCount < 10) {
     signalCount++
     reasons.push(`Only ${stringCount} readable strings — fully obfuscated binary`)
   }
 
-  // Signal 4: Suspicious directory
   if (inSuspiciousDir) {
     signalCount++
     reasons.push('Located in user directory (Downloads/Desktop/Temp)')
   }
 
-  // Signal 5: Many PE sections (>= 7) — packing signature
   if (sectionCount >= 7) {
     signalCount++
     reasons.push(`${sectionCount} PE sections — typical for packed/VMProtected binaries (normal: 3–5)`)
   }
 
-  // ── Scoring ──
-
-  // Count "strong" signals (entropy, strings, sections) — requiring at least one
-  // prevents false positives on legitimate unsigned utilities (e.g. open-source tools)
   const strongSignals = [entropy > 7.0, stringCount < 10, sectionCount >= 7].filter(Boolean).length
 
   if (signalCount >= 2 && strongSignals >= 1) {
@@ -579,7 +548,10 @@ export function comboScoreUnsignedBinary(
   return { signals: [], riskBonus: 0 }
 }
 
-/** Check if a file matches any known hash (SHA256) in the database. Streams the file. */
+// ═══════════════════════════════════════════════════
+// HASH CHECK
+// ═══════════════════════════════════════════════════
+
 export async function checkFileHash(filePath: string): Promise<{ matched: boolean; hash: string }> {
   if (KNOWN_CHEAT_HASHES.length === 0) return { matched: false, hash: '' }
   try {
@@ -597,10 +569,6 @@ export async function checkFileHash(filePath: string): Promise<{ matched: boolea
 // HEURISTIC FILE SCAN (core business logic)
 // ═══════════════════════════════════════════════════
 
-/**
- * Heuristic file analysis — entropy, signatures, name, age, protected paths.
- * This is the primary function that decides whether a file is suspicious.
- */
 export function heuristicFileScan(filepath: string): HeuristicResult | null {
   try {
     const stat = fs.statSync(filepath)
@@ -614,16 +582,35 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
     const suspicions: string[] = []
     let riskScore = 0
 
+    // ── Skip files that produce zero signal (noise) ──
+    // Asset files, map files, etc. have no cheat value.
+    if (isSkippableExtension(filepath)) {
+      return null
+    }
+
     // 1. Extension check
     if (SUSPICIOUS_EXTENSIONS[ext]) {
       suspicions.push(`Extension ${ext}: ${SUSPICIOUS_EXTENSIONS[ext]}`)
       riskScore += 20
     }
 
-    // 2. Name check against categories
+    // ── Check safe-files database ──
+    try {
+      if (isFileSafe(filepath, stat.size, stat.mtimeMs)) {
+        return null
+      }
+    } catch (_e) { /* safe-db optional */ }
+
+    // ── Known Electron DLLs ──
+    if (isKnownElectronDll(fileName)) {
+      return null
+    }
+
+    // 2. Name check against categories (min length 4 chars to avoid false positives)
     for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
-      for (const name of cat.names) {
-        if (fileName.includes(name)) {
+      for (const nm of cat.names) {
+        if (nm.length < MIN_KEYWORD_LENGTH) continue
+        if (fileName.includes(nm)) {
           suspicions.push(`Name → [${catName}]: ${cat.description}`)
           riskScore += 40
           break
@@ -650,9 +637,6 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
     }
 
     // ── FAST PATH: skip expensive binary analysis for trusted system paths ──
-    // Files in C:\Windows, C:\Program Files are signed by Microsoft/vendors.
-    // If there are NO name/extension signals, they're safe — no need for
-    // entropy/strings/PE analysis which costs 500ms+ per file.
     if (isTrustedPath(filepath) && riskScore === 0) {
       return null
     }
@@ -672,14 +656,15 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
         const content = fs.readFileSync(filepath, 'utf-8').toLowerCase()
         let contentMatches = 0
         for (const keyword of ALL_CHEAT_KEYWORDS) {
+          // Skip short, generic keywords (< 4 chars) that falsely match everywhere
+          if (keyword.length < MIN_KEYWORD_LENGTH) continue
           if (content.includes(keyword.toLowerCase())) {
             suspicions.push(`content:${keyword}`)
             contentMatches++
             riskScore += 25
-            if (contentMatches >= 5) break // cap at 5 keyword matches
+            if (contentMatches >= 5) break
           }
         }
-        // Check for suspicious patterns in content
         for (const pattern of SUSPICIOUS_PATTERNS) {
           if (pattern.test(content)) {
             suspicions.push(`content-pattern:${pattern.source}`)
@@ -745,16 +730,9 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       const sigValid = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? checkDigitalSignature(filepath) : false
 
       // ── UNIVERSAL COMBO DETECTOR ──
-      // Catches ANY unsigned .exe/.dll with 2+ suspicious signals, regardless of filename.
-      // Replaces the old catch-all that only worked in Downloads + known names.
       const comboResult = comboScoreUnsignedBinary(
-        ext,
-        stat.size,
-        entropy,
-        strings.length,
-        filepath,
-        peInfo?.sectionCount ?? 0,
-        sigValid,
+        ext, stat.size, entropy, strings.length, filepath,
+        peInfo?.sectionCount ?? 0, sigValid,
       )
       if (comboResult.riskBonus > 0) {
         for (const signal of comboResult.signals) {
@@ -765,6 +743,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
         riskScore += comboResult.riskBonus
       }
 
+      // ── PE-specific analysis ──
       if (ext === '.exe' || ext === '.dll' || ext === '.sys') {
         if (peInfo && peInfo.isValidPe && peInfo.isSuspicious) {
           if (peInfo.suspiciousSections.length > 0) {
@@ -812,48 +791,9 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
           }
         }
 
-        // Fuzzy loader match — only if combo-detector didn't already flag it
-        // (combo-detector checks the same signals; avoid double-counting)
-        if (comboResult.riskBonus === 0) {
-        const FUZZY_SIZE_LOWER_MB = 16
-        const FUZZY_SIZE_UPPER_MB = 28
-        const FUZZY_ENTROPY_THRESHOLD = 7.2
-        const FUZZY_SECTION_MIN = 7
-
-        if (ext === '.exe' || ext === '.dll') {
-          let fuzzyScore = 0
-          const fuzzySignals: string[] = []
-
-          if (stat.size >= FUZZY_SIZE_LOWER_MB * 1024 * 1024 && stat.size <= FUZZY_SIZE_UPPER_MB * 1024 * 1024) {
-            fuzzyScore += 25
-            fuzzySignals.push(`Size ${(stat.size / 1024 / 1024).toFixed(1)} MB (loader range ${FUZZY_SIZE_LOWER_MB}–${FUZZY_SIZE_UPPER_MB} MB)`)
-          }
-          if (entropy > FUZZY_ENTROPY_THRESHOLD) {
-            fuzzyScore += 20
-            fuzzySignals.push(`Entropy ${entropy.toFixed(2)} > ${FUZZY_ENTROPY_THRESHOLD} (packed/obfuscated)`)
-          }
-          if (peInfo && peInfo.sectionCount >= FUZZY_SECTION_MIN) {
-            fuzzyScore += 25
-            fuzzySignals.push(`${peInfo.sectionCount} PE sections ≥ ${FUZZY_SECTION_MIN} (packing)`)
-          }
-          if (peInfo && peInfo.subsystem !== '' && peInfo.subsystem !== 'WINDOWS_GUI' && peInfo.subsystem !== 'WINDOWS_CUI' && peInfo.subsystem !== 'NATIVE') {
-            fuzzyScore += 15
-            fuzzySignals.push(`PE subsystem: ${peInfo.subsystem} (unusual for EXE)`)
-          }
-          if (!sigValid) {
-            fuzzyScore += 15
-            fuzzySignals.push('Unsigned executable (no digital signature)')
-          }
-
-          if (fuzzyScore >= 50) {
-            suspicions.push(`🧬 Fuzzy loader match (score ${fuzzyScore}/100): ${fuzzySignals.join('; ')}`)
-            riskScore += Math.min(fuzzyScore, 60)
-          }
-        }
-        } // end fuzzy loader match gate
       }
 
-      // Category signature analysis
+      // ── Signature analysis (applies to all binary files) ──
       for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
         const found: string[] = []
         for (const sigBuf of cat.strings) {
@@ -868,8 +808,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
         }
       }
 
-      // Hash check against known cheat database (only if already suspicious)
-      // Streaming SHA256 of entire file is expensive — skip for clean files
+      // ── Hash check against known cheat database ──
       if (KNOWN_CHEAT_HASHES.length > 0 && riskScore > 30) {
         try {
           const h = crypto.createHash('sha256')
@@ -921,12 +860,6 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       } catch (_e) { /* skip */ }
     }
 
-    // Dev-mode logging: trace why a file was or wasn't flagged
-    if (process.env.NODE_ENV === 'development' && (riskScore > 0 || (ext === '.exe' && stat.size > 1024 * 1024))) {
-      const label = riskScore > 0 ? `FLAGGED (score=${riskScore})` : 'SKIPPED (score=0)'
-      console.log(`[Heuristic] ${label}: ${fileName} (${(stat.size / 1024 / 1024).toFixed(1)}MB, ${ext}) — ${suspicions.slice(0, 3).join(' | ') || 'no signals'}`)
-    }
-
     if (riskScore === 0) return null
 
     return { riskScore, suspicions }
@@ -941,7 +874,6 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
 
 const ARCHIVE_EXTS = new Set(['.zip', '.rar', '.7z'])
 
-/** Peek into archives and check filenames against cheat patterns. Returns suspicions if found. */
 export function scanArchiveContents(filepath: string): string[] {
   const matches: string[] = []
   const ext = path.extname(filepath).toLowerCase()
@@ -950,14 +882,12 @@ export function scanArchiveContents(filepath: string): string[] {
   try {
     let output = ''
     if (ext === '.zip') {
-      // PowerShell Expand-Archive -WhatIf for .zip listing
       const shell = spawnSync('powershell', [
         '-NoProfile', '-Command',
         `[System.IO.Compression.ZipFile]::OpenRead('${filepath.replace(/'/g, "''")}').Entries | Select-Object -ExpandProperty FullName`,
       ], { encoding: 'utf-8', timeout: 10000 })
       output = shell.stdout || ''
     } else {
-      // .rar and .7z — try 7zip if installed
       const sevenZip = spawnSync('7z', ['l', '-slt', filepath], { encoding: 'utf-8', timeout: 10000 })
       output = sevenZip.stdout || ''
     }
@@ -965,39 +895,35 @@ export function scanArchiveContents(filepath: string): string[] {
     if (!output) return matches
 
     const lower = output.toLowerCase()
-    // Check filenames inside archive
     const lines = lower.split(/[\r\n]+/)
     for (const line of lines) {
-      const fileName = path.basename(line.trim())
-      if (!fileName || fileName.length < 3) continue
-      // Check against known cheat names
+      const fName = path.basename(line.trim())
+      if (!fName || fName.length < 3) continue
       for (const base of _PROC_BASES) {
-        if (fileName.includes(base)) {
-          matches.push(`archive:${fileName} → ${base}`)
+        if (fName.includes(base)) {
+          matches.push(`archive:${fName} → ${base}`)
           break
         }
       }
       for (const file of _FILE_NAMES) {
-        if (fileName.includes(file)) {
-          matches.push(`archive:${fileName} → ${file}`)
+        if (fName.includes(file)) {
+          matches.push(`archive:${fName} → ${file}`)
           break
         }
       }
-      // Check against ALL_CHEAT_KEYWORDS
       for (const kw of ALL_CHEAT_KEYWORDS) {
-        if (kw.length >= 4 && fileName.includes(kw.toLowerCase())) {
-          matches.push(`archive-kw:${fileName} → ${kw}`)
+        if (kw.length >= 4 && fName.includes(kw.toLowerCase())) {
+          matches.push(`archive-kw:${fName} → ${kw}`)
           break
         }
       }
-      // Check SUSPICIOUS_PATTERNS
       for (const pat of SUSPICIOUS_PATTERNS) {
-        if (pat.test(fileName)) {
+        if (pat.test(fName)) {
           matches.push(`archive-pat:${pat.source}`)
           break
         }
       }
-      if (matches.length >= 5) break // cap
+      if (matches.length >= 5) break
     }
   } catch (_e) { /* archive scanning optional */ }
   return matches

@@ -287,4 +287,19 @@ router.get('/fetch-hashes', async (req, res) => {
   }
 })
 
+// ── GET /api/auth/safe-hashes ─────────────────
+router.get('/safe-hashes', async (req, res) => {
+  try {
+    const after = req.query.after || '2000-01-01'
+    const rows = await query(
+      'SELECT sha256, file_name AS fileName, file_size AS fileSize, created_at AS addedAt FROM suspicious_hashes WHERE status = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500',
+      ['confirmed', after]
+    )
+    return res.json(rows.map(r => r.sha256))
+  } catch (err) {
+    console.error('Safe hashes error:', err)
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+  }
+})
+
 module.exports = router

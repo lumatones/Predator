@@ -17,6 +17,8 @@ export interface ScanResult {
   matches: string[]
   size: number
   modifiedAt: string
+  /** SHA256 hash of the file (only for HIGH-risk file results) */
+  sha256?: string
 }
 
 export interface ScanProgress {

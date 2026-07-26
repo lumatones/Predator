@@ -264,6 +264,165 @@
   50% { transform: scale(1.4); opacity: 1; box-shadow: 0 0 14px var(--accent-red); }
 }
 
+/* ═══ GLASS EYE (creepy cursor-tracking) ═══ */
+
+.glass-eye {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.glass-eye--br { bottom: 32px; right: 32px; }
+.glass-eye--bl { bottom: 32px; left: 32px; }
+.glass-eye--tr { top: 32px; right: 32px; }
+.glass-eye--center { top: 50%; left: 50%; }
+
+.glass-eye-card {
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px) saturate(120%);
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.5s ease;
+}
+
+.glass-eye:hover .glass-eye-card {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Eye globe */
+.glass-eye-eye {
+  border-radius: 50%;
+  background: radial-gradient(circle at 60% 35%, #1a0a0a 0%, #0a0000 50%, #000000 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow:
+    inset 0 0 12px rgba(255, 40, 40, 0.15),
+    0 0 8px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+/* Iris — gradient from accent-red to dark */
+.glass-eye-iris {
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%,
+    var(--accent-red) 0%,
+    #8b0000 30%,
+    #3d0000 60%,
+    #1a0000 100%
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Iris texture ring */
+.glass-eye-iris-ring {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 180, 140, 0.15);
+  opacity: 0.5;
+}
+
+/* Pupil */
+.glass-eye-pupil {
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #0a0000 0%, #000000 100%);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  position: absolute;
+  z-index: 1;
+}
+
+/* Eye shine / reflection dot */
+.glass-eye-shine {
+  position: absolute;
+  top: 18%;
+  left: 22%;
+  width: 22%;
+  height: 22%;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(255, 255, 255, 0.7) 0%,
+    rgba(255, 255, 255, 0.2) 40%,
+    transparent 70%
+  );
+  z-index: 2;
+  animation: eyeShinePulse 4s ease-in-out infinite;
+}
+
+@keyframes eyeShinePulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* Scan line overlay */
+.glass-eye-scanline {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  border-radius: 24px;
+}
+
+.glass-eye-scanline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255, 68, 68, 0.3) 20%,
+    rgba(255, 68, 68, 0.5) 50%,
+    rgba(255, 68, 68, 0.3) 80%,
+    transparent 100%
+  );
+  animation: eyeScanline 5s linear infinite;
+}
+
+@keyframes eyeScanline {
+  0% { top: -1px; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* Ambient red glow behind the card */
+.glass-eye-glow {
+  position: absolute;
+  inset: -16px;
+  border-radius: 32px;
+  background: radial-gradient(circle at center,
+    rgba(255, 68, 68, 0.12) 0%,
+    rgba(255, 68, 68, 0.04) 50%,
+    transparent 70%
+  );
+  z-index: -1;
+  animation: eyeGlowBreath 3.5s ease-in-out infinite;
+}
+
+@keyframes eyeGlowBreath {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
 /* ═══ THEME BURN TRANSITION ═══ */
 .theme-burn-overlay {
   position: fixed;

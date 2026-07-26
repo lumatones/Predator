@@ -101,9 +101,15 @@ function scanPciFingerprints(): ScanResult[] {
       }
 
       if (signals.length > 0 && addFindingDedup(`pci-fp:${instanceId}`)) {
+        // Sanitize FriendlyName — PowerShell may return non-ASCII/garbled text
+        // that looks like "⠭��� ������" in the Electron renderer
+        const safeName = (dev.FriendlyName || '')
+          .replace(/[^\x20-\x7E]/g, '') // strip non-ASCII
+          .trim()
+          || `PCI Device (${dev.Class || 'System'})`
         results.push({
           path: 'PCI Config Space',
-          fileName: `DMA Fingerprint: ${dev.FriendlyName || 'Unknown Device'}`,
+          fileName: `DMA Fingerprint: ${safeName}`,
           type: 'hardware',
           risk: signals.length >= 2 ? 'high' : 'medium',
           matches: signals,
