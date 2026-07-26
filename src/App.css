@@ -216,6 +216,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: logoFloat 4s ease-in-out infinite;
+}
+
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-6px) scale(1.05); }
+  60% { transform: translateY(-2px) scale(1.02); }
 }
 
 .logo-3d {
@@ -2075,9 +2082,17 @@ body {
 /* ═══ ACTION ROW (export, server msg) ═══ */
 .checker-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
-  justify-content: center;
+  justify-content: space-between;
   margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.checker-export-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .checker-action-btn {
