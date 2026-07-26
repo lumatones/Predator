@@ -3,6 +3,7 @@ import { useState, useEffect, createContext, useContext } from 'react'
 import Layout from './components/Layout'
 import ParticleBackground from './components/ParticleBackground'
 import Login from './pages/Login'
+import HomePage from './pages/HomePage'
 import Dashboard from './pages/Dashboard'
 import Pending from './pages/Pending'
 import Tokens from './pages/Tokens'
@@ -59,7 +60,8 @@ export default function App() {
     <AuthContext.Provider value={{ auth, login, logout }}>
       <Layout>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/pending" element={<Pending />} />
           <Route path="/tokens" element={<Tokens />} />
           <Route path="/history" element={<History />} />

@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import { LayoutDashboard, ClipboardCheck, Key, History, Activity, LogOut } from 'lucide-react'
+import { LayoutDashboard, ClipboardCheck, Key, History, Activity, LogOut, Home } from 'lucide-react'
 import { useAuth } from '../App'
 import { ReactNode, useState, useEffect } from 'react'
 import ParticleBackground from './ParticleBackground'
@@ -84,7 +84,12 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         <nav className="sidebar-nav">
-          <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Dashboard">
+          <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Главная">
+            <Home size={18} />
+            <span>Главная</span>
+          </NavLink>
+
+          <NavLink to="/dashboard" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Dashboard">
             <LayoutDashboard size={18} />
             <span>Dashboard</span>
           </NavLink>
