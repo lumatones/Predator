@@ -451,6 +451,31 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
 
     // 4. Binary analysis
     const binaryExts = new Set(['.exe', '.dll', '.asi', '.sys', '.drv'])
+    const textExts = new Set(['.js', '.lua', '.cs', '.bat', '.ps1', '.vbs', '.ahk', '.cfg', '.ini', '.json', '.xml'])
+
+    // Content scan for text-based files (JS loaders, Lua, scripts, configs)
+    if (textExts.has(ext) && stat.size < 512 * 1024) {
+      try {
+        const content = fs.readFileSync(filepath, 'utf-8').toLowerCase()
+        let contentMatches = 0
+        for (const keyword of ALL_CHEAT_KEYWORDS) {
+          if (content.includes(keyword.toLowerCase())) {
+            suspicions.push(`content:${keyword}`)
+            contentMatches++
+            riskScore += 25
+            if (contentMatches >= 5) break // cap at 5 keyword matches
+          }
+        }
+        // Check for suspicious patterns in content
+        for (const pattern of SUSPICIOUS_PATTERNS) {
+          if (pattern.test(content)) {
+            suspicions.push(`content-pattern:${pattern.source}`)
+            riskScore += 20
+          }
+        }
+      } catch (_e) { /* binary or unreadable */ }
+    }
+
     if (binaryExts.has(ext) && stat.size >= 4096 && stat.size < 50 * 1024 * 1024) {
       const fd = fs.openSync(filepath, 'r')
       const sampleSize = Math.min(65536, stat.size)
