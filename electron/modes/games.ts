@@ -164,6 +164,7 @@ export function scanGameIntegrity(): ScanResult[] {
     for (const entry of fs.readdirSync(rageDir)) {
       const fullPath = path.join(rageDir, entry)
       const lower = entry.toLowerCase()
+      // dinput8.dll — ASI loader proxy
       if (lower === 'dinput8.dll' && addFindingDedup(`rage:${fullPath}`)) {
         try {
           const stat = fs.statSync(fullPath)
@@ -174,6 +175,7 @@ export function scanGameIntegrity(): ScanResult[] {
           })
         } catch (_e) { /* skip */ }
       }
+      // .asi files — single-player mods loaded in MP
       if (lower.endsWith('.asi') && addFindingDedup(`rage-asi:${fullPath}`)) {
         try {
           const stat = fs.statSync(fullPath)
@@ -183,6 +185,25 @@ export function scanGameIntegrity(): ScanResult[] {
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
         } catch (_e) { /* skip */ }
+      }
+    }
+    // Check client_packages subdirectory for unauthorized JS/Lua resources
+    const clientPkgDir = path.join(rageDir, 'client_packages')
+    if (fs.existsSync(clientPkgDir)) {
+      for (const entry of fs.readdirSync(clientPkgDir)) {
+        const fullPath = path.join(clientPkgDir, entry)
+        const lower = entry.toLowerCase()
+        const susKeywords = ['cheat', 'hack', 'inject', 'bypass', 'esp', 'aimbot', 'menu', 'executor', 'spoofer']
+        if (susKeywords.some(k => lower.includes(k)) && addFindingDedup(`rage-cpkg:${fullPath}`)) {
+          try {
+            const stat = fs.statSync(fullPath)
+            results.push({
+              path: fullPath, fileName: `RAGE client_packages: ${entry}`, type: 'file', risk: 'high',
+              matches: ['Suspicious resource in RAGE MP client_packages', `Name match: ${entry}`],
+              size: stat.size, modifiedAt: stat.mtime.toISOString(),
+            })
+          } catch (_e) { /* skip */ }
+        }
       }
     }
   }
@@ -208,6 +229,18 @@ export function scanGameIntegrity(): ScanResult[] {
           })
         } catch (_e) { /* skip */ }
       }
+      // Detect obfuscated module names (random hash-like names — alt:V anti-debug technique)
+      const OBFUSCATED_NAME_PATTERN = /^[a-f0-9]{20,64}\.(dll|js)$/i
+      if (OBFUSCATED_NAME_PATTERN.test(entry) && addFindingDedup(`altv-obf:${fullPath}`)) {
+        try {
+          const stat = fs.statSync(fullPath)
+          results.push({
+            path: fullPath, fileName: `ALT:V obfuscated: ${entry}`, type: 'file', risk: 'medium',
+            matches: ['Obfuscated/hash-named module (alt:V anti-debug pattern)', 'Possible renamed cheat DLL or JS payload'],
+            size: stat.size, modifiedAt: stat.mtime.toISOString(),
+          })
+        } catch (_e) { /* skip */ }
+      }
       if (lower.endsWith('.dll') && !isTrustedPath(fullPath) && addFindingDedup(`altv-unsign:${fullPath}`)) {
         const signed = checkDigitalSignature(fullPath)
         if (!signed) {
@@ -222,6 +255,28 @@ export function scanGameIntegrity(): ScanResult[] {
         }
       }
     }
+  }
+  // ALT:V compiled JS resources — check for obfuscated cheat code
+  const altvCompiledDir = path.join(_HOME, 'AppData', 'Local', 'altv', 'resources', 'compiled')
+  if (fs.existsSync(altvCompiledDir)) {
+    try {
+      for (const entry of fs.readdirSync(altvCompiledDir)) {
+        const fullPath = path.join(altvCompiledDir, entry)
+        const lower = entry.toLowerCase()
+        if (!lower.endsWith('.js')) continue
+        // Check for suspicious patterns in JS filenames
+        if (SUS_MOD_NAMES.some(k => lower.includes(k)) && addFindingDedup(`altv-cjs:${fullPath}`)) {
+          try {
+            const stat = fs.statSync(fullPath)
+            results.push({
+              path: fullPath, fileName: `ALT:V compiled JS: ${entry}`, type: 'file', risk: 'high',
+              matches: [`Suspicious compiled JS resource: ${entry}`, 'Possible obfuscated cheat code'],
+              size: stat.size, modifiedAt: stat.mtime.toISOString(),
+            })
+          } catch (_e) { /* skip */ }
+        }
+      }
+    } catch (_e) { /* skip */ }
   }
 
   for (const gtaPath of GTA5_DIRS) {

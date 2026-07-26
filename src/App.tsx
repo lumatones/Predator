@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { validateToken, useToken, requestAccess, checkRequestStatus } from './api'
+import React, { useEffect, useState, useCallback } from 'react'
 import Checker from './pages/Checker'
 import Dashboard from './pages/Dashboard'
 import { IconShield, IconDashboard } from './icons'
 import UpdateModal from './components/ui/UpdateModal'
+import { useAuth } from './hooks/useAuth'
 import type { AppPhase, ThemeId, Lang, UpdateModalState } from './types'
 import { THEMES, T } from './types'
 
@@ -54,15 +54,19 @@ const App: React.FC = () => {
   const [version, setVersion] = useState('')
   const [lang, setLang] = useState<Lang>('ru')
   const [theme, setTheme] = useState<ThemeId>('predator')
-  const [token, setToken] = useState('')
-  const [tokenId, setTokenId] = useState<number | null>(null)
-  const [tokenError, setTokenError] = useState('')
-  const [authLoading, setAuthLoading] = useState(false)
-  const [authError, setAuthError] = useState('')
-  const [pcName, setPCName] = useState('')
-  const [requestId, setRequestId] = useState<number | null>(null)
-  const [requestStatus, setRequestStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  const {
+    token, setToken,
+    tokenId,
+    tokenError, setTokenError,
+    authLoading,
+    authError, setAuthError,
+    pcName,
+    requestId, requestStatus,
+    handleAuth,
+    handleRequestAccess,
+    cancelRequest,
+  } = useAuth(lang)
+
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [updateModal, setUpdateModal] = useState<UpdateModalState>({ show: false, version: '', state: 'available', percent: 0, speed: '', size: '', errorMsg: '' })
 
@@ -78,13 +82,7 @@ const App: React.FC = () => {
     r.style.setProperty('--bg-secondary', c.card)
   }, [theme])
 
-  useEffect(() => {
-    if (window.electronAPI?.getPCName) {
-      window.electronAPI.getPCName().then(setPCName).catch(() => setPCName('unknown'))
-    } else setPCName('dev-' + Math.random().toString(36).slice(2, 8))
-  }, [])
 
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
   useEffect(() => {
     // Fallback: always move past loading after 5s max, even if everything breaks
@@ -127,39 +125,22 @@ const App: React.FC = () => {
   const hBackToMain = useCallback(() => setPhase('main'), [])
 
   const hNextAuth = useCallback(async () => {
-    const clean = token.replace(/[-\s]/g, '')
-    if (clean.length !== 32) { setTokenError(t('authError')); return }
-    setAuthLoading(true); setAuthError(''); setTokenError('')
-    try {
-      const vr = await validateToken(token)
-      if (!vr.valid) { setAuthError(vr.error || 'Токен недействителен'); setAuthLoading(false); return }
-      const ur = await useToken(token, pcName || 'unknown')
-      if (!ur.valid) { setAuthError(ur.error || 'Не удалось активировать токен'); setAuthLoading(false); return }
-      if (ur.token_id) setTokenId(ur.token_id)
-      setPhase('main')
-    } catch (err) { setAuthError(err instanceof Error ? err.message : 'Ошибка подключения к серверу') }
-    finally { setAuthLoading(false) }
-  }, [token, lang, pcName, t])
+    const success = await handleAuth()
+    if (success) setPhase('main')
+  }, [handleAuth])
+
+  // Auto-transition to main when access request is approved
+  useEffect(() => {
+    if (requestStatus === 'approved') {
+      const timer = setTimeout(() => setPhase('main'), 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [requestStatus])
 
   const hRequestAccess = useCallback(async () => {
-    setAuthLoading(true); setAuthError('')
-    try {
-      const result = await requestAccess(pcName || 'unknown')
-      if (result.success && result.request_id) {
-        setRequestId(result.request_id); setRequestStatus('pending'); setPhase('requesting-access')
-        if (pollRef.current) clearInterval(pollRef.current)
-        pollRef.current = setInterval(async () => {
-          try {
-            const status = await checkRequestStatus(result.request_id!)
-            setRequestStatus(status.status as 'pending' | 'approved' | 'rejected')
-            if (status.status === 'approved') { if (pollRef.current) clearInterval(pollRef.current); setPhase('main') }
-            else if (status.status === 'rejected') { if (pollRef.current) clearInterval(pollRef.current); setAuthError('Запрос отклонён администратором'); setRequestId(null); setRequestStatus(null); setPhase('onboarding-auth') }
-          } catch { /* retry */ }
-        }, 3000)
-      } else setAuthError(result.error || 'Ошибка отправки запроса')
-    } catch (err) { setAuthError(err instanceof Error ? err.message : 'Ошибка подключения к серверу') }
-    finally { setAuthLoading(false) }
-  }, [pcName, t])
+    const ok = await handleRequestAccess()
+    if (ok) setPhase('requesting-access')
+  }, [handleRequestAccess])
 
   const c = THEMES[theme]
   const subtitle = t('title')
@@ -216,7 +197,7 @@ const App: React.FC = () => {
           <button className="skip-button" onClick={hRequestAccess} disabled={authLoading}>{t('authAlt')}</button></>)}
 
         {phase === 'requesting-access' && renderCard(<>
-          {(!requestStatus || requestStatus === 'pending') && (<><div className="spinner"><div className="spinner-ring" /></div><p className="onb-label">{t('requestSent')}</p><p className="status-text" style={{ animation: 'textPulse 1.5s ease-in-out infinite', margin: '4px 0' }}>{t('requestPending')}</p><div className="request-id-badge">{t('requestId')}: #{requestId || '...'}</div><div className="progress-bar indeterminate" style={{ marginTop: 8 }}><div className="progress-fill" /></div><button className="skip-button" onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setPhase('onboarding-auth'); setRequestId(null); setRequestStatus(null) }}>{t('cancel')}</button></>)}
+          {(!requestStatus || requestStatus === 'pending') && (<><div className="spinner"><div className="spinner-ring" /></div><p className="onb-label">{t('requestSent')}</p><p className="status-text" style={{ animation: 'textPulse 1.5s ease-in-out infinite', margin: '4px 0' }}>{t('requestPending')}</p><div className="request-id-badge">{t('requestId')}: #{requestId || '...'}</div><div className="progress-bar indeterminate" style={{ marginTop: 8 }}><div className="progress-fill" /></div>          <button className="skip-button" onClick={() => { cancelRequest(); setPhase('onboarding-auth') }}>{t('cancel')}</button></>)}
           {requestStatus === 'approved' && (<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('requestApproved')}</p><p className="status-text" style={{ animation: 'none' }}>Перенаправление...</p></>)}
           {requestStatus === 'rejected' && (<><div className="error-icon-dl"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" /><line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /><line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /></svg></div><p className="status-text" style={{ color: '#EF4444', animation: 'none' }}>{t('requestRejected')}</p><button className="start-button" onClick={() => setPhase('onboarding-auth')}>{t('authBtn')}</button></>)}
         </>)}

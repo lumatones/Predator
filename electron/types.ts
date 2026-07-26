@@ -1,4 +1,5 @@
 import type { BrowserWindow } from 'electron'
+import type { PeAnalysisResult, SectionEntropy } from './cheat-rules'
 import { execSync } from 'child_process'
 import os from 'os'
 
@@ -6,7 +7,7 @@ import os from 'os'
 // SCANNER — Shared Types & Utilities
 // ═══════════════════════════════════════════════════
 
-export type ScanMode = 'files' | 'processes' | 'cheats' | 'dma' | 'extended' | 'network'
+export type ScanMode = 'full' | 'quick' | 'dma'
 
 export interface ScanResult {
   path: string
@@ -52,6 +53,7 @@ export interface CheatCategory {
   strings: Buffer[]
   description: string
   risk: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'WARNING'
+  shadow?: boolean
 }
 
 // ── ScanContext — shared mutable state across scan modes ──
@@ -59,8 +61,12 @@ export interface CheatCategory {
 export class ScanContext {
   findingDedup = new Set<string>()
   sigCache = new Map<string, boolean>()
-  peHeaderCache = new Map<string, { peInfo: Record<string, unknown>; secEntropy: Record<string, unknown>[]; mtime: number; filepath: string }>()
+  peHeaderCache = new Map<string, { peInfo: PeAnalysisResult | null; secEntropy: SectionEntropy[]; mtime: number; filepath: string }>()
   cheatNameCache = new Map<string, string[]>()
+  /** Shadow-mode findings: collect silently, never flag the user */
+  shadowFindings: ScanResult[] = []
+  /** Track mtime for incremental scan */
+  fileMtimeCache = new Map<string, number>()
 
   readonly PE_CACHE_MAX = 500
 
@@ -75,6 +81,7 @@ export class ScanContext {
     this.sigCache.clear()
     this.peHeaderCache.clear()
     this.cheatNameCache.clear()
+    this.shadowFindings = []
   }
 }
 
@@ -155,6 +162,21 @@ export const _HOME = os.homedir()
 // ── PowerShell JSON utility ──
 
 /** Parse PowerShell JSON output: handles single object vs array, empty output */
+/** Check if a file has changed since last scan (incremental scan support) */
+export function hasFileChanged(ctx: ScanContext, filepath: string, currentMtime: number): boolean {
+  const cached = ctx.fileMtimeCache.get(filepath)
+  if (cached === undefined) {
+    ctx.fileMtimeCache.set(filepath, currentMtime)
+    return true // first time seeing this file — scan it
+  }
+  return currentMtime !== cached
+}
+
+/** Update mtime cache for a file after scanning */
+export function markFileScanned(ctx: ScanContext, filepath: string, mtime: number): void {
+  ctx.fileMtimeCache.set(filepath, mtime)
+}
+
 export function parsePsJson<T>(out: string): T[] {
   if (!out || out.trim().length < 5) return []
   try {

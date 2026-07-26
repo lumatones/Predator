@@ -1,199 +1,224 @@
-# Predator 🦅
+# Predator
 
-**Система проверки безопасности для GTA 5 RP**
+**Anti-cheat scanner for GTA 5 RP — FiveM, RAGE MP, ALT:V**
 
 <p align="center">
   <a href="https://github.com/lumatones/Predator/releases/latest">
-    <img src="https://img.shields.io/badge/Скачать_Predator-ff4444?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a1a2e" alt="Download Predator">
+    <img src="https://img.shields.io/badge/Download_Predator-ff4444?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a1a2e" alt="Download Predator">
   </a>
   <br>
   <a href="https://github.com/lumatones/Predator/releases">
-    <img src="https://img.shields.io/github/v/release/lumatones/Predator?style=flat-square&label=Версия&color=ff4444" alt="Version">
+    <img src="https://img.shields.io/github/v/release/lumatones/Predator?style=flat-square&label=Version&color=ff4444" alt="Version">
   </a>
   <a href="https://github.com/lumatones/Predator/releases">
-    <img src="https://img.shields.io/github/downloads/lumatones/Predator/total?style=flat-square&label=Скачиваний&color=ff6b35" alt="Downloads">
+    <img src="https://img.shields.io/github/downloads/lumatones/Predator/total?style=flat-square&label=Downloads&color=ff6b35" alt="Downloads">
   </a>
   <a href="https://github.com/lumatones/Predator/actions/workflows/release.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/lumatones/Predator/release.yml?style=flat-square&label=Build&color=3B82F6" alt="Build">
+    <img src="https://img.shields.io/github/workflow/status/lumatones/Predator/release.yml?style=flat-square&label=Build&color=3B82F6" alt="Build">
   </a>
 </p>
 
-Predator — десктопное приложение для обнаружения следов стороннего ПО (читов) на компьютере пользователя. Проводит комплексную проверку в **6 режимах**: файлы, процессы, поиск читов, DMA-устройства, расширенное сканирование и сеть.
+Predator is a desktop application that scans a user's PC for traces of cheat software. It performs multi-layered analysis across files, processes, registry, network, DMA hardware, browser history, and game directories.
 
-**Версия**: 0.0.21 | **Стек**: Electron 33 + React 19 + TypeScript 5.7 + Vite 6
+**Version**: 0.0.26 | **Stack**: Electron 33 + React 19 + TypeScript 5.7 + Vite 6
 
-Полная экосистема: десктопное приложение → API-сервер → админ-панель.
+Full ecosystem: Desktop App -> API Server -> Admin Panel.
 
-Документация: [CHANGELOG](docs/CHANGELOG.md) · [DEV](docs/DEV.md) · [REFACTORING](docs/REFACTORING.md) · [RULES](docs/RULES.md)
-
----
-
-## ⬇️ Установка
-
-1. Скачайте последнюю версию из [Releases](https://github.com/lumatones/Predator/releases)
-2. Запустите скачанный `.exe` файл
-3. После первого запуска приложение само предложит обновления (auto-updater)
-
-> **Системные требования:** Windows 10/11, 64-bit
+Documentation: [CHANGELOG](docs/CHANGELOG.md) | [DEV](docs/DEV.md) | [RULES](docs/RULES.md)
 
 ---
 
-## 🚀 Первый запуск
+## Installation
 
-При первом запуске приложение проведёт вас через несколько шагов:
+1. Download the latest version from [Releases](https://github.com/lumatones/Predator/releases)
+2. Run the downloaded `.exe` file
+3. Auto-updater will notify you of new versions
 
-1. **Язык** 🇷🇺 / 🇬🇧
-2. **Тема оформления** — выберите цветовую схему (Predator Red, Ocean Blue, Stealth Black, Nebula Purple)
-3. **Авторизация** — введите токен доступа или запросите его через сайт
-
-После авторизации открывается главный экран с кнопками:
-- **Начать проверку** → открывает сканер
-- **Мониторинг** → системный дашборд (CPU/RAM/температура)
-- **Статистика** → графики по истории сканирований
+> **System requirements:** Windows 10/11, 64-bit
 
 ---
 
-## 🔍 Режимы проверки
+## First Launch
 
-| Режим | Иконка | Описание |
-|-------|--------|----------|
-| **Файлы** | 📁 | Поиск подозрительных файлов и скриптов (JS, DLL, LUA, ASI...) |
-| **Процессы** | ⚙️ | Проверка запущенных процессов, недавних элементов и Prefetch |
-| **Читы** | 🎯 | Поиск Nightfall, DMA, 0Xcheat, 1337 Cheat, Noleet и других |
-| **DMA** | 🔌 | Обнаружение DMA-карт и FPGA-устройств (Xilinx, Altera, FTDI) |
-| **Расширенный** | 🛡️ | Полное сканирование: энтропия, YARA-правила, PE-анализ, Prefetch, реестр, сеть |
-| **Сеть** | 🌐 | DNS-кеш, hosts файл, активные подключения, подозрительные IP/порты |
+On first launch, the app guides you through a short onboarding:
 
-### 🧬 Расширенный режим (8 этапов)
+1. **Language** — Russian / English
+2. **Theme** — choose from Predator Red, Ocean Blue, Stealth Black, or Nebula Purple
+3. **Authorization** — enter your 32-character access token or request one
 
-1. **Продвинутая проверка процессов** — DLL-модули, загрузчики
-2. **Эвристический анализ файлов** — энтропия, YARA (8 правил), PE-секции, digital signature
-3. **Глубокая проверка реестра** — 9 категорий угроз, Winlogon
-4. **Анализ Prefetch** — история запусков по категориям
-5. **Сетевые соединения** — прокси/VPN порты, подозрительные IP
-6. **Обнаружение DMA** — PCI-устройства, драйверы, registry
-7. **Стандартный поиск читов** — реестр
-8. **История браузера** — SQLite-парсер (Chrome, Edge, Yandex, Opera)
+After authorization, the main screen offers:
 
-После сканирования доступен:
-- 🔍 **Поиск по результатам** — фильтрация по имени, пути или совпадениям
-- 📊 **Экспорт отчёта** — HTML с Chart.js или JSON
-- 📤 **Отправка на сервер** — результаты сохраняются на бэкенде
+- **Start Check** — open the scanner
+- **Dashboard** — system monitor (CPU, RAM, temperature, processes)
 
 ---
 
-## 📡 Архитектура системы
+## Scan Modes
+
+| Mode | Description |
+|------|-------------|
+| **Full Scan** | 9-phase deep scan: processes, heuristic file analysis, registry, prefetch, network, game integrity, AMSI/ETW, behavior, RWX memory, disk-vs-memory, DMA, browser history |
+| **Quick Scan** | 6-phase fast check: processes, prefetch, registry, named pipes, network, browser history |
+| **DMA Devices** | PCI hardware detection, drivers, USB-FPGA bridges, registry services, scheduled tasks |
+
+### Full Scan Phases
+
+1. **Process scanning** — DLL modules, known cheat signatures, masquerading detection
+2. **Heuristic file analysis** — Shannon entropy, 13 YARA rules, PE header inspection, section entropy, digital signatures, fuzzy hashing (TLSH), API hashing
+3. **Registry deep scan** — Run/RunOnce, Services, Winlogon, 9 threat categories
+4. **Prefetch analysis** — execution history by category
+5. **System integration** — network connections, game integrity (FiveM/RAGE MP/ALT:V), masquerading processes, named pipes, WMI persistence, AMSI/ETW patch detection, behavior profiling, RWX memory scanning, disk-vs-memory comparison
+6. **DMA detection** — PCI devices, firmware fingerprinting
+7. **Registry cheat scan** — 8 registry paths
+8. **Browser history** — SQLite parser (Chrome, Edge, Firefox, Opera, Brave)
+9. **Cloud submission** — SHA256 and TLSH hashes sent to backend
+
+### Detection Engine
+
+| Layer | Technique |
+|-------|-----------|
+| **Signatures** | 250+ cheat names, SHA256 hashes, TLSH fuzzy hashes, binary string patterns |
+| **Heuristics** | Shannon entropy (packed/encrypted detection), PE header anomalies, section entropy, suspicious extension/name categories |
+| **YARA** | 13 rules covering: injectors, debuggers, hooks, kernel drivers, spoofers, bypasses, overlays, network tools, obfuscators |
+| **Auto-YARA** | Self-learning engine: extracts strings from high-risk files, clusters by TLSH similarity, Jaccard distance matching, false positive correction |
+| **Cloud Sync** | Real-time WebSocket + HTTP polling fallback for hash updates every 5 minutes |
+| **Shadow Rules** | New signatures deployed in silent mode — collect telemetry without flagging users until validated |
+
+### Platform Coverage
+
+| Platform | Detection |
+|----------|-----------|
+| **FiveM** | Module whitelist (14 entries), mods/plugins directory scanning, game process identification |
+| **RAGE MP** | Module whitelist (17 entries), CEF-based cheat detection, client_packages scanning, dinput8.dll detection |
+| **ALT:V** | Module whitelist (14 entries), obfuscated module naming detection, compiled JS resource scanning, .NET assembly injection |
+
+### Advanced Modules
+
+| Module | What it detects |
+|--------|----------------|
+| **AMSI/ETW Patch** | Patched Windows security hooks (byte pattern search in process memory) |
+| **Behavior Profile** | Suspicious handle patterns, unexpected parent processes, unsigned DLLs |
+| **RWX Scanner** | Shellcode in Read-Write-Execute memory regions, thread start address anomalies |
+| **Disk vs Memory** | Inline hooks — .text section differences between file on disk and memory |
+| **ETW/WMI Monitor** | Kernel-level process creation events, image load from suspicious paths |
+| **PCI Fingerprinting** | Generic bridge class codes masquerading as FPGA devices |
+| **Persistent Scoring** | Cross-session cumulative risk tracking — catches "quiet" cheaters over time |
+
+### After Scanning
+
+- Search results by filename, path, or match description
+- Filter by risk level: high, medium, low
+- Export report as HTML (with charts) or JSON
+- Results automatically submitted to backend
+
+---
+
+## System Architecture
 
 ```
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│  PREDATOR APP    │     │   BACKEND API    │     │   ADMIN SITE     │
-│  (Electron)      │◄───►│  localhost:3001  │◄───►│  localhost:5173  │
-│                  │     │                  │     │                  │
-│  ┌──────────┐    │     │  ┌────────────┐  │     │  ┌──────────┐   │
-│  │Сканер    │    │     │  │Express 4   │  │     │  │Вход      │   │
-│  │Дашборд   │    │     │  │MySQL 8     │  │     │  │Запросы   │   │
-│  │Статистика│    │     │  │Socket.IO   │◄─┼───  │  │Токены    │   │
-│  │IPC Stream│    │     │  │JWT Auth    │  │  ┌──┼──┤История   │   │
-│  └──────────┘    │     │  └────────────┘  │  │  │  │Графики   │   │
-└──────────────────┘     └──────────────────┘  │  │  └──────────┘   │
-                                                │  └────────────────┘
-                                                │
-                                        WebSocket (Socket.IO)
-                                        События: new-request,
-                                        request-update,
-                                        token-generated, scan-result
+Desktop App (Electron)       Backend API (Express)         Admin Panel (React)
+        |                          |                            |
+        |-- start-scan ----------->|                            |
+        |                          |-- Socket.IO broadcast ---->|
+        |-- submit-hashes -------->|                            |
+        |-- fetch-hashes <--------|                            |
+        |                          |                            |
+        |                          |<-- JWT auth ---------------|
+        |                          |-- pending/approve/reject ->|
 ```
 
----
-
-## 🔄 Обновления
-
-Приложение автоматически проверяет наличие новой версии:
-
-- **При запуске** — через 1.5 секунды после старта
-- **Фоном** — каждые 5 минут, даже если вы не перезапускали приложение
-- **По WebSocket** — админ-панель получает real-time уведомления
-
-Рядом с версией в футере загорается красная пульсирующая точка ●, если обновление доступно.
+- **Desktop App**: Electron 33 + React 19 + TypeScript. IPC bridge between scanner (Node.js) and UI (Vite/React)
+- **Backend**: Express 4 + MySQL 8 + Socket.IO + JWT. Token management, scan results storage, hash cloud database
+- **Admin Panel**: React 18 + TypeScript + Chart.js. Login, pending requests, token management, scan history, hash review
 
 ---
 
-## 🌐 API Endpoints
+## Updates
 
-### Auth (публичные)
-| Метод | Путь | Описание |
-|-------|------|----------|
-| POST | `/api/auth/token` | Проверить 32-символьный токен |
-| POST | `/api/auth/token/use` | Активировать токен (с именем ПК) |
-| POST | `/api/auth/request` | Создать запрос на доступ |
-| GET | `/api/auth/status/:id` | Статус запроса |
-| POST | `/api/auth/submit-scan` | Отправить результаты сканирования (`token_id` обязателен) |
-
-### Admin (требуется JWT)
-| Метод | Путь | Описание |
-|-------|------|----------|
-| POST | `/api/admin/login` | Вход администратора |
-| GET | `/api/admin/pending` | Ожидающие запросы |
-| POST | `/api/admin/approve/:id` | Одобрить запрос |
-| POST | `/api/admin/reject/:id` | Отклонить |
-| POST | `/api/admin/tokens/generate` | Создать токены (1–10) |
-| GET | `/api/admin/tokens` | Список токенов |
-| POST | `/api/admin/tokens/revoke/:id` | Отозвать токен |
-| GET | `/api/admin/history` | История событий |
-| GET | `/api/admin/scan-stats` | Статистика сканирований |
+- Auto-check on startup (1.5 second delay)
+- Background polling every 5 minutes
+- Real-time WebSocket updates in admin panel
+- Pulsing red indicator in footer when update is available
 
 ---
 
-## 🔒 Безопасность
+## API Endpoints
 
-- Все эндпоинты используют параметризованные SQL-запросы
-- `token_id` проверяется в БД перед сохранением результатов
-- Админ-эндпоинты защищены JWT (24h expiry)
-- Токены доступа — 32-символьные hex (crypto.randomBytes)
-- Пароли — bcrypt + salt
-- Приложение работает в изолированном окружении Electron
+### Public
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/auth/token` | Validate 32-character token |
+| POST | `/api/auth/token/use` | Activate token with PC name |
+| POST | `/api/auth/request` | Create access request |
+| GET | `/api/auth/status/:id` | Check request status |
+| POST | `/api/auth/submit-scan` | Submit scan results |
+| POST | `/api/auth/submit-hashes` | Submit suspicious file hashes |
+| POST | `/api/auth/submit-shadow` | Submit shadow-mode telemetry |
+| GET | `/api/auth/fetch-hashes` | Fetch latest cheat hashes |
+
+### Admin (JWT required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/admin/login` | Admin login |
+| GET | `/api/admin/pending` | Pending requests |
+| POST | `/api/admin/approve/:id` | Approve request |
+| POST | `/api/admin/reject/:id` | Reject request |
+| POST | `/api/admin/tokens/generate` | Generate tokens (1-10) |
+| GET | `/api/admin/tokens` | Token list |
+| POST | `/api/admin/tokens/revoke/:id` | Revoke token |
+| GET | `/api/admin/history` | Event history |
+| GET | `/api/admin/scan-stats` | Scan statistics |
+| GET | `/api/admin/suspicious-hashes` | Hash database |
 
 ---
 
-## 💻 Разработка
+## Security
+
+- Parameterized SQL queries throughout
+- `token_id` validated against database before saving results
+- Admin endpoints protected by JWT (24-hour expiry)
+- Access tokens: 32-character hex (crypto.randomBytes)
+- Passwords: bcrypt + salt
+- Application runs in isolated Electron environment
+
+---
+
+## Development
 
 ```bash
-# Десктопное приложение
-npm run dev            # Vite dev server
-npm run electron:dev   # Electron + Vite
+# Desktop app
+npm run dev                 # Vite dev server
+npm run electron:dev        # Electron + Vite
+npm run electron:build:win  # Build Windows .exe
 
 # Backend
-cd server
-npm start
+cd server && npm start
 
 # Admin panel
-cd admin
-npm run dev
+cd admin && npm run dev
 ```
 
-### Тестирование
+### Testing
 
 ```bash
-npm run typecheck      # Проверка типов (electron + admin)
-npm run typecheck:electron  # Только electron
-npx vitest run         # Unit-тесты
-npm run lint           # Проверка форматирования
+npm run typecheck           # Full type check (electron + admin)
+npm run typecheck:electron  # Electron only
+npx vitest run              # Unit tests
+npm run lint                # Code quality check
 ```
 
-### Сборка релиза
+### Release
 
 ```bash
-npm run release        # Полный цикл: typecheck → build → latest.yml → GitHub Release
-# или по шагам:
-npm run electron:build:win     # Собрать .exe
-node scripts/generate-latest-yml.js  # latest.yml
-node scripts/upload-release.js       # Загрузить на GitHub
+npm run release             # Full cycle: typecheck -> build -> latest.yml -> GitHub Release
 ```
 
-> Требуется `GITHUB_TOKEN` в `.env` файле для загрузки релиза.
+Requires `GITHUB_TOKEN` in `.env` file for release upload.
 
 ---
 
-## 📄 Лицензия
+## License
 
-Все права защищены. Несанкционированное копирование или распространение запрещено.
+All rights reserved. Unauthorized copying or distribution is prohibited.

@@ -26,6 +26,7 @@ export const GAME_PROCESSES = [
 
   // RAGE MP
   'ragemp_v.exe', 'ragemp.exe', 'updater.exe',
+  'server.exe', 'ragemp-server.exe',
 
   // ALT:V
   'altv.exe', 'altv-server.exe',
@@ -143,13 +144,18 @@ export const KNOWN_CHEAT_FILES: string[] = [
   'vmm.dll', 'vmm64.dll',
   'FTD3XX.dll', 'ftd2xx.dll',
 
-  // RAGE MP cheat loaders
+  // RAGE MP cheat loaders (CEF-based + resource injectors)
   'ragemp_hook.dll', 'ragemp_inject.dll',
   'ragemp_menu.dll', 'ragemp_cheat.dll',
+  'ragemp_bypass.dll', 'ragemp_loader.dll',
+  'cef_hook.dll', 'cef_inject.dll',
+  'server_inject.dll', 'resource_hook.dll',
 
-  // ALT:V cheat modules
+  // ALT:V cheat modules (JS resources + .NET assemblies)
   'altv_cheat.dll', 'altv_menu.dll',
   'altv_inject.dll', 'altv_esp.dll',
+  'altv_bypass.dll', 'altv_loader.dll',
+  'altv_resource.dll', 'altv_client_hook.dll',
 
   // EpicGames masquerading cheat loader
   'epicgameslauncher.exe',
@@ -261,9 +267,17 @@ export const KNOWN_CHEAT_FOLDERS: string[] = [
 
   // RAGE MP cheats
   'ragemp cheat', 'ragemp hack', 'ragemp menu',
+  'ragemp bypass', 'ragemp injector', 'ragemp loader',
+  'rage mp cheat', 'rage mp hack',
+  'server executor', 'resource injector',
+  'cef exploit', 'cef devtools',
 
   // ALT:V cheats
   'altv cheat', 'altv hack', 'altv menu',
+  'altv bypass', 'altv injector', 'altv loader',
+  'altv executor', 'altv esp',
+  'altv resource', 'altv client',
+  'js executor', 'altv js',
 
   // DirectX masquerading cheat loaders
   // NOTE: potential FP on dev machines with DirectX documentation — use hash-only for zero-FP
@@ -289,11 +303,17 @@ export const KNOWN_BINARY_SIGNATURES: Buffer[] = [
   B('leechcore'), B('memprocfs'), B('vmm.dll'),
   B('fpga'), B('ftdi'), B('dma memory'),
 
-  // RAGE MP cheat signatures
+  // RAGE MP cheat signatures (CEF + resource injection)
   B('ragemp_hook'), B('ragemp_inject'),
+  B('ragemp_menu'), B('ragemp_bypass'),
+  B('cef_hook'), B('cef_devtools'),
+  B('server_resource'), B('resource_inject'),
 
-  // ALT:V cheat signatures
+  // ALT:V cheat signatures (JS + .NET module injection)
   B('altv_cheat'), B('altv_menu'),
+  B('altv_bypass'), B('altv_inject'),
+  B('altv_resource'), B('altv_client_hook'),
+  B('altv_js_executor'), B('altv_dotnet_inject'),
 
   // External cheat loader patterns
   // d3d11.dll is NOT here — too many false positives (legit games use DirectX)
@@ -348,16 +368,21 @@ export const RAGE_WHITELIST = new Set([
   'ragemp_v.exe', 'gta5.exe', 'gtavlauncher.exe',
   'v8.dll', 'node.dll', 'node_64.dll',
   'libcef.dll', 'chrome_elf.dll',
+  'libegl.dll', 'libglesv2.dll',
+  'd3dcompiler_47.dll', 'dxgi.dll', 'd3d11.dll',
   'socialclub.dll', 'steamclient64.dll',
-  'bink2w64.dll',
+  'bink2w64.dll', 'xinput1_4.dll',
+  'mfplat.dll', 'mfreadwrite.dll',
 ])
 
 export const ALTV_WHITELIST = new Set([
   'altv.exe', 'gta5.exe',
   'altv-client.dll', 'coreclr.dll', 'clrjit.dll',
+  'hostfxr.dll', 'hostpolicy.dll',
   'v8.dll', 'v8_libbase.dll', 'v8_libplatform.dll',
-  'node.dll',
-  'steamclient64.dll',
+  'node.dll', 'libnode.dll',
+  'steamclient64.dll', 'socialclub.dll',
+  'd3dcompiler_47.dll', 'dxgi.dll',
 ])
 
 // Combined whitelist lookup
@@ -410,7 +435,16 @@ export function getScanPaths(): string[] {
     path.join(HOME, 'AppData', 'Local', 'altv'),
     path.join(HOME, 'AppData', 'Local', 'altv', 'resources'),
     path.join(HOME, 'AppData', 'Local', 'altv', 'modules'),
+    path.join(HOME, 'AppData', 'Local', 'altv', 'data'),
     path.join(HOME, 'AppData', 'Roaming', 'altv'),
+
+    // RAGE MP — client_packages (server resources injected client-side)
+    path.join(PF, 'RAGEMP', 'client_packages'),
+    path.join(PF86, 'RAGEMP', 'client_packages'),
+    path.join(HOME, 'RAGEMP', 'client_packages'),
+
+    // ALT:V — compiled JS resources (possible obfuscated cheats)
+    path.join(HOME, 'AppData', 'Local', 'altv', 'resources', 'compiled'),
 
     // Common cheat directories
     path.join(HOME, 'Documents', 'Cheats'),

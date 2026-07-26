@@ -334,6 +334,8 @@ export interface PeAnalysisResult {
   entryPointInSuspiciousSection: boolean
   /** v0.0.12: Overall suspicion score from PE analysis (0-100) */
   peSuspicionScore: number
+  /** Whether the PE has an import table directory (IMAGE_DIRECTORY_ENTRY_IMPORT) */
+  hasImportTable?: boolean
 }
 
 // Well-known legitimate section names

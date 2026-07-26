@@ -6,64 +6,19 @@ import https from 'https'
 import path from 'path'
 import { execSync } from 'child_process'
 
-import { getApiBase, getApiEndpoint } from './config'
-import { fetchCheatHashes, startCloudSync, stopCloudSync } from './cloud-sync'
-import { CHEAT_SOFTWARE_NAMES, EXTENDED_CHEAT_KEYWORDS, EXTENDED_SCAN_PATHS } from './constants'
+import { getApiEndpoint } from './config'
+import { startCloudSync, stopCloudSync, fetchCheatHashes } from './cloud-sync'
+import { EXTENDED_CHEAT_KEYWORDS, EXTENDED_SCAN_PATHS, QUICK_CHEAT_KEYWORDS } from './constants'
 
-import {
-  KNOWN_CHEAT_HASHES,
-  mergeCheatHashes,
-  getScanPaths,
-} from './cheats-db'
-
-import {
-  evaluateYara,
-  isTrustedPath,
-  analyzePeHeaders,
-  analyzeSectionEntropy,
-} from './cheat-rules'
-
-import {
-  checkAutoRules,
-  learnFromFile,
-} from './auto-yara'
-
-import {
-  dumpAndAnalyze,
-  dumpProcessMemory,
-} from './memory-dump'
-
-import {
-  analyzeApiHashingStatic,
-  analyzeApiHashingInDump,
-} from './api-hashing'
-
-import {
-  scanProcessForAmsiEtw,
-} from './etw-amsi-patch'
-
-import {
-  buildBehaviorProfile,
-  profileToScanResult,
-} from './behavior-profile'
-
-import {
-  scanRwxAndThreads,
-  rwxResultToScanResult,
-} from './rwx-scanner'
-
-import {
-  scanDiskVsMemory,
-  dvmResultToScanResult,
-} from './disk-vs-memory'
-
-// ── Shared types, utilities, heuristics ──
+import { scanProcessForAmsiEtw } from './etw-amsi-patch'
+import { buildBehaviorProfile, profileToScanResult } from './behavior-profile'
+import { scanRwxAndThreads, rwxResultToScanResult } from './rwx-scanner'
+import { scanDiskVsMemory, dvmResultToScanResult } from './disk-vs-memory'
 
 import {
   ScanResult,
-  ScanProgress,
-  ScanResponse,
   ScanMode,
+  ScanResponse,
   sendProgress,
   yieldToEventLoop,
   clearFindingDedup,
@@ -71,64 +26,25 @@ import {
   ctx,
 } from './types'
 
-import {
-  heuristicFileScan,
-  calculateEntropy,
-  SUSPICIOUS_CATEGORIES,
-  SUSPICIOUS_PATTERNS,
-  ALL_CHEAT_KEYWORDS,
-  checkDigitalSignature,
-  scanStrings,
-  matchKnownCheat,
-} from './heuristic'
+import { heuristicFileScan } from './heuristic'
+import { fuzzyMatchFile } from './fuzzy-hash'
+import { recordSession } from './persistent-profile'
 
-// ── Scan mode modules ──
-
-import { runFileScan, walkDirAsync, scanForCheatFiles } from './modes/files'
-import { runProcessScan, scanRunningProcessesV2, scanNamedPipes, scanWmiPersistence } from './modes/processes'
-import { scanGameIntegrity, scanGameModules, scanMasqueradingProcesses, scanOpenHandles, runGameScan } from './modes/games'
-import { runNetworkScan, scanNetstatV2 } from './modes/network'
+import { walkDirAsync } from './modes/files'
+import { scanRunningProcessesV2, scanNamedPipes, scanWmiPersistence } from './modes/processes'
+import { scanGameIntegrity, scanGameModules, scanMasqueradingProcesses, scanOpenHandles } from './modes/games'
+import { scanNetstatV2 } from './modes/network'
 import { scanRegistryDeepV2, scanPrefetchV2, scanRegistryForCheats } from './modes/registry'
 import { scanBrowserHistory } from './modes/browser'
-import { runDmaScan, scanDmaDevices, scanDmaRegistry, scanScheduledTasks, queryPnpDevices } from './modes/dma'
+import { runDmaScan, scanDmaDevices, scanScheduledTasks } from './modes/dma'
 import { safeSpread } from './utils/safe-spread'
+import { runEtwScan } from './etw-provider'
 
 // ═══════════════════════════════════════════════════
-// CHEAT SCAN
+// FULL SCAN (was extended) — 9-phase deep scan
 // ═══════════════════════════════════════════════════
 
-async function runCheatScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
-  const results: ScanResult[] = []
-  const cheatNames = Object.keys(CHEAT_SOFTWARE_NAMES)
-  let filesScanned = 0
-
-  for (let i = 0; i < cheatNames.length; i++) {
-    const cheatName = cheatNames[i]
-    const keywords = CHEAT_SOFTWARE_NAMES[cheatName]
-
-    await sendProgress(win, { phase: 'scanning', currentDir: `Searching for ${cheatName}...`, filesFound: results.length, filesScanned, totalDirs: cheatNames.length + 2, dirsDone: i + 1 })
-
-    const fileResults = scanForCheatFiles(cheatName, keywords)
-    results.push(...fileResults)
-    filesScanned += fileResults.length
-  }
-
-  const cheatKw = (Object.values(CHEAT_SOFTWARE_NAMES).flat() as string[])
-  const browserResults = await scanBrowserHistory(cheatKw)
-  results.push(...browserResults)
-
-  await sendProgress(win, { phase: 'analyzing', currentDir: 'Checking registry...', filesFound: results.length, filesScanned, totalDirs: cheatNames.length + 2, dirsDone: cheatNames.length + 1 })
-  const registryResults = scanRegistryForCheats()
-  results.push(...registryResults)
-
-  return { results, filesScanned: results.length }
-}
-
-// ═══════════════════════════════════════════════════
-// EXTENDED SCAN
-// ═══════════════════════════════════════════════════
-
-async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
   let filesScanned = 0
 
@@ -137,20 +53,32 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
   await sendProgress(win, { phase: 'scanning', currentDir: 'Advanced process scanning...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 1 })
   results.push(...safeSpread('scanRunningProcessesV2', scanRunningProcessesV2()))
 
-  // Phase 2 — heuristic file scan
+  // Phase 2 — heuristic file scan (with incremental + pre-filter + fuzzy hash)
   await sendProgress(win, { phase: 'scanning', currentDir: `Heuristic file scan (${EXTENDED_SCAN_PATHS.length} directories)...`, filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 2 })
   for (const dir of EXTENDED_SCAN_PATHS) {
     await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 2 })
     try {
       for await (const filePath of walkDirAsync(dir)) {
         filesScanned++
-        const hr = heuristicFileScan(filePath)
-        if (hr && hr.riskScore > 30) {
+        // Always run heuristic scan (expensive but thorough)
+        let hr = heuristicFileScan(filePath)
+        let riskScore = hr?.riskScore || 0
+        // Fuzzy hash check for .exe/.dll (catches polymorphic variants)
+        const ext = path.extname(filePath).toLowerCase()
+        if ((ext === '.exe' || ext === '.dll') && riskScore < 40) {
+          const fuzzyMatch = fuzzyMatchFile(filePath, 25)
+          if (fuzzyMatch && fuzzyMatch.matched) {
+            riskScore = Math.max(riskScore, 60)
+            if (!hr) hr = { riskScore: 60, suspicions: [] }
+            hr.suspicions.push(`fuzzy-hash:matched (distance=${fuzzyMatch.distance})`)
+          }
+        }
+        if (hr && riskScore > 30) {
           results.push({
             path: filePath,
             fileName: path.basename(filePath),
             type: 'file',
-            risk: hr.riskScore > 80 ? 'high' : hr.riskScore > 50 ? 'medium' : 'low',
+            risk: riskScore > 80 ? 'high' : riskScore > 50 ? 'medium' : 'low',
             matches: hr.suspicions.slice(0, 5),
             size: 0,
             modifiedAt: new Date().toISOString(),
@@ -161,20 +89,16 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
     } catch (_e) { /* skip */ }
   }
 
-  // Phase 3 — registry deep scan
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Registry deep scan...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 3 })
-  results.push(...safeSpread('scanRegistryDeepV2', scanRegistryDeepV2()))
+  // Phase 3-5: parallel execution (registry + prefetch + network are independent)
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Parallel: registry + prefetch + network...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 3 })
+  const [regResults, prefResults, netResults] = await Promise.all([
+    Promise.resolve(safeSpread('scanRegistryDeepV2', scanRegistryDeepV2())),
+    Promise.resolve(safeSpread('scanPrefetchV2', scanPrefetchV2())),
+    Promise.resolve(safeSpread('scanNetstatV2', scanNetstatV2())),
+  ])
+  results.push(...regResults, ...prefResults, ...netResults)
 
-  // Phase 4 — prefetch
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Prefetch analysis...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 4 })
-  results.push(...safeSpread('scanPrefetchV2', scanPrefetchV2()))
-
-  // Phase 5 — network + system integration
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Network connections...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
-  results.push(...safeSpread('scanNetstatV2', scanNetstatV2()))
-
-  // Phase 5a — masquerading processes
-  await sendProgress(win, { phase: 'scanning', currentDir: 'Masquerading processes...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Parallel: exec + memory + behavior...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
   results.push(...safeSpread('scanMasqueradingProcesses', scanMasqueradingProcesses()))
 
   // Phase 5b — game integrity + modules + handles
@@ -183,10 +107,12 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
   results.push(...safeSpread('scanGameModules', scanGameModules()))
   results.push(...safeSpread('scanOpenHandles', scanOpenHandles()))
 
-  // Phase 5c — named pipes + WMI + AMSI/ETW patch
+  // Phase 5c — named pipes + WMI + AMSI/ETW patch + ETW kernel monitor
   await sendProgress(win, { phase: 'scanning', currentDir: 'IPC & persistence...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
   results.push(...safeSpread('scanNamedPipes', scanNamedPipes()))
   results.push(...safeSpread('scanWmiPersistence', scanWmiPersistence()))
+  // ETW/WMI kernel-level monitoring
+  results.push(...safeSpread('runEtwScan', runEtwScan()))
 
   // AMSI/ETW patch detection
   try {
@@ -253,6 +179,43 @@ async function runExtendedScan(win: BrowserWindow | null): Promise<{ results: Sc
 }
 
 // ═══════════════════════════════════════════════════
+// QUICK SCAN — processes + prefetch + registry + browser
+// ═══════════════════════════════════════════════════
+
+async function runQuickScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+  const results: ScanResult[] = []
+  let filesScanned = 0
+
+  clearFindingDedup()
+  ctx.sigCache.clear()
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Processes...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 1 })
+  results.push(...safeSpread('scanRunningProcessesV2', scanRunningProcessesV2()))
+  results.push(...safeSpread('scanMasqueradingProcesses', scanMasqueradingProcesses()))
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Prefetch...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 2 })
+  results.push(...safeSpread('scanPrefetchV2', scanPrefetchV2()))
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Registry...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 3 })
+  results.push(...safeSpread('scanRegistryDeepV2', scanRegistryDeepV2()))
+  results.push(...safeSpread('scanRegistryForCheats', scanRegistryForCheats()))
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Pipes & persistence...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 4 })
+  results.push(...safeSpread('scanNamedPipes', scanNamedPipes()))
+  results.push(...safeSpread('scanWmiPersistence', scanWmiPersistence()))
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Network...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 5 })
+  results.push(...safeSpread('scanNetstatV2', scanNetstatV2()))
+
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Browser history...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 6 })
+  results.push(...safeSpread('scanBrowserHistory', await scanBrowserHistory(QUICK_CHEAT_KEYWORDS)))
+
+  await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 6 })
+  filesScanned = results.length
+  return { results, filesScanned }
+}
+
+// ═══════════════════════════════════════════════════
 // MAIN IPC HANDLER
 // ═══════════════════════════════════════════════════
 
@@ -280,23 +243,14 @@ export function registerScanHandlers() {
       let result: { results: ScanResult[]; filesScanned: number }
 
       switch (mode) {
-        case 'files':
-          result = await runFileScan(win)
+        case 'full':
+          result = await runFullScan(win)
           break
-        case 'processes':
-          result = await runProcessScan(win)
-          break
-        case 'cheats':
-          result = await runCheatScan(win)
+        case 'quick':
+          result = await runQuickScan(win)
           break
         case 'dma':
           result = await runDmaScan(win)
-          break
-        case 'extended':
-          result = await runExtendedScan(win)
-          break
-        case 'network':
-          result = await runNetworkScan(win)
           break
         default:
           result = { results: [], filesScanned: 0 }
@@ -321,6 +275,44 @@ export function registerScanHandlers() {
         suspiciousFiles: result.results.length,
         highRiskCount: result.results.filter(r => r.risk === 'high').length,
         scanTimeMs: Date.now() - startTime,
+      }
+
+      // Record session for persistent scoring
+      try {
+        recordSession({
+          mode,
+          scanTimeMs: summary.scanTimeMs,
+          filesScanned: summary.totalScanned,
+          highRiskCount: summary.highRiskCount,
+          mediumRiskCount: result.results.filter(r => r.risk === 'medium').length,
+          lowRiskCount: result.results.filter(r => r.risk === 'low').length,
+          topFindings: result.results.filter(r => r.risk === 'high').slice(0, 5).map(r => r.fileName),
+        })
+      } catch { /* persistent scoring optional */ }
+
+      // Submit shadow findings silently (never flags user — telemetry only)
+      if (ctx.shadowFindings.length > 0) {
+        try {
+          const shadowPayload = {
+            type: 'shadow-findings',
+            token_id: tokenId,
+            pc_username: pcUsername,
+            findings: ctx.shadowFindings.map(f => ({
+              path: f.path, fileName: f.fileName, type: f.type, matches: f.matches,
+            })),
+          }
+          const shadowBody = JSON.stringify(shadowPayload)
+          const { hostname, port, protocol } = getApiEndpoint()
+          const shadowTransport = protocol === 'https:' ? https : http
+          const shadowReq = shadowTransport.request({
+            hostname, port,
+            path: '/api/auth/submit-shadow',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(shadowBody) },
+          })
+          shadowReq.write(shadowBody)
+          shadowReq.end()
+        } catch { /* shadow submission optional */ }
       }
 
       // Fire-and-forget cloud submission of top findings

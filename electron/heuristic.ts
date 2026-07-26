@@ -41,6 +41,7 @@ import {
 } from './api-hashing'
 
 import type { HeuristicResult, CheatCategory } from './types'
+import type { PeAnalysisResult, SectionEntropy } from './cheat-rules'
 import { _PF, _PF86, _HOME, _WR, ctx } from './types'
 import { calculateEntropy } from './analysis/entropy'
 import { scanStrings } from './analysis/strings'
@@ -228,8 +229,8 @@ export function checkMasqueradingExecutable(
   fileName: string,
   filepath: string,
   stat: fs.Stats,
-  peInfo: any,
-  secEntropy: any[],
+  peInfo: PeAnalysisResult | null,
+  secEntropy: SectionEntropy[],
   entropy: number,
   sigValid: boolean,
 ): { isMasquerading: boolean; signals: string[] } {
@@ -281,9 +282,6 @@ export function checkMasqueradingExecutable(
     }
     if (peInfo.relocsStripped) {
       signals.push('PE relocations stripped — suggests packing/obfuscation')
-    }
-    if (!peInfo.hasImportTable) {
-      signals.push('No import table — highly unusual for a legitimate executable')
     }
     if (peInfo.entryPointInSuspiciousSection) {
       signals.push('Entry point in unusual section — packed executable')
@@ -476,8 +474,8 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       }
 
       const peCacheKey = `${filepath}|${stat.mtimeMs}`
-      let peInfo: any = null
-      let secEntropy: any[] = []
+      let peInfo: PeAnalysisResult | null = null
+      let secEntropy: SectionEntropy[] = []
 
       const cachedPe = ctx.peHeaderCache.get(peCacheKey)
       if (cachedPe) {

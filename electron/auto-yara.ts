@@ -12,6 +12,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import os from 'os'
+import { computeFuzzyHashFromBuffer, clusterByTlsh } from './fuzzy-hash'
 
 // ── Types ──────────────────────────────────────
 
@@ -153,7 +154,7 @@ function findSimilarRule(rules: AutoRule[], strings: string[]): AutoRule | null 
 
 // ── Core: learn & detect ───────────────────────
 
-/** Создать авто-правило из подозрительного файла */
+/** Создать авто-правило из подозрительного файла (v2: with TLSH clustering) */
 export function learnFromFile(filepath: string, riskScore: number, fileHash?: string): AutoRule | null {
   if (riskScore < DEFAULT_OPTIONS.minRiskScore) return null
 
@@ -170,6 +171,33 @@ export function learnFromFile(filepath: string, riskScore: number, fileHash?: st
   }
 
   const hash = fileHash || crypto.createHash('sha256').update(fs.readFileSync(filepath)).digest('hex')
+
+  // v2: Compute TLSH and check for clusters
+  try {
+    const buf = fs.readFileSync(filepath)
+    const tlsh = computeFuzzyHashFromBuffer(buf)
+    if (tlsh) {
+      // Check if this file is a variant of an existing rule (clustering)
+      const allTlsh = rules.map(r => r.sourceHash).filter(h => h && h.length > 10)
+      const clusters = clusterByTlsh([...allTlsh, tlsh], 30)
+      for (const cluster of clusters) {
+        if (!cluster.includes(tlsh)) continue
+        // Found a cluster — merge strings into existing rule instead of creating new
+        for (const rule of rules) {
+          if (cluster.includes(rule.sourceHash)) {
+            const newStrings = strings.filter(s => !rule.strings.includes(s))
+            if (newStrings.length > 0) {
+              rule.strings.push(...newStrings.slice(0, 3))
+              rule.matchCount++
+              rule.weight = Math.min(1.0, rule.weight + 0.08)
+              saveRules(rules)
+            }
+            return null
+          }
+        }
+      }
+    }
+  } catch { /* TLSH clustering optional */ }
 
   const rule: AutoRule = {
     id: crypto.randomUUID(),

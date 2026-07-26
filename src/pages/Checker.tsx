@@ -47,12 +47,9 @@ const T: Record<string, Record<string, string>> = {
     file: 'Файл', matches: 'Совпадения', path: 'Путь',
     scanAgain: 'Проверить снова',
     browser: 'История браузера',
-    tabFiles: 'Файлы', tabFilesDesc: 'Поиск подозрительных файлов и скриптов',
-    tabProcesses: 'Процессы', tabProcessesDesc: 'Запущенные и недавние процессы',
-    tabCheats: 'Читы', tabCheatsDesc: 'Поиск Nightfall, DMA, 0Xcheat и других',
-    tabDma: 'DMA', tabDmaDesc: 'Обнаружение DMA-карт и FPGA-устройств',
-    tabExtended: 'Расширенный', tabExtendedDesc: 'Полное сканирование системы — файлы, процессы, реестр, Prefetch, DMA',
-    tabNetwork: 'Сеть', tabNetworkDesc: 'Проверка DNS-кеша, hosts файла, сетевых подключений и подозрительных IP',
+    tabFull: 'Полное сканирование', tabFullDesc: 'Все модули: файлы, процессы, реестр, сеть, DMA, браузер, эвристика',
+    tabQuick: 'Быстрая проверка', tabQuickDesc: 'Процессы, Prefetch, реестр и история браузера — без обхода диска',
+    tabDma: 'DMA-устройства', tabDmaDesc: 'Обнаружение DMA-карт и FPGA-устройств',
     riskHigh: 'Высокий риск', riskMedium: 'Средний риск', riskLow: 'Низкий риск',
     processRunning: 'Запущен', processRecent: 'Недавние', processPrefetch: 'Prefetch', processMem: 'Память',
     cheatFiles: 'Файлы', cheatBrowser: 'История', cheatRegistry: 'Реестр',
@@ -91,12 +88,9 @@ const T: Record<string, Record<string, string>> = {
     file: 'File', matches: 'Matches', path: 'Path',
     scanAgain: 'Scan Again',
     browser: 'Browser History',
-    tabFiles: 'Files', tabFilesDesc: 'Search suspicious files & scripts',
-    tabProcesses: 'Processes', tabProcessesDesc: 'Running and recent processes',
-    tabCheats: 'Cheats', tabCheatsDesc: 'Search Nightfall, DMA, 0Xcheat & more',
-    tabDma: 'DMA', tabDmaDesc: 'Detect DMA cards & FPGA devices',
-    tabExtended: 'Extended', tabExtendedDesc: 'Full system scan — files, processes, registry, Prefetch, DMA',
-    tabNetwork: 'Network', tabNetworkDesc: 'Check DNS cache, hosts file, active connections & suspicious IPs',
+    tabFull: 'Full Scan', tabFullDesc: 'All modules: files, processes, registry, network, DMA, browser, heuristics',
+    tabQuick: 'Quick Check', tabQuickDesc: 'Processes, Prefetch, registry & browser history — no disk walk',
+    tabDma: 'DMA Devices', tabDmaDesc: 'Detect DMA cards & FPGA devices',
     riskHigh: 'High risk', riskMedium: 'Medium risk', riskLow: 'Low risk',
     processRunning: 'Running', processRecent: 'Recent', processPrefetch: 'Prefetch', processMem: 'Memory',
     cheatFiles: 'Files', cheatBrowser: 'History', cheatRegistry: 'Registry',
@@ -129,12 +123,9 @@ interface TabConfig {
 }
 
 const TABS: TabConfig[] = [
-  { id: 'files',     icon: 'Folder',     label: 'tabFiles',     desc: 'tabFilesDesc',     color: '#ff4444' },
-  { id: 'processes', icon: 'Gear',       label: 'tabProcesses', desc: 'tabProcessesDesc', color: '#3B82F6' },
-  { id: 'cheats',    icon: 'Crosshair',  label: 'tabCheats',    desc: 'tabCheatsDesc',    color: '#F59E0B' },
-  { id: 'dma',       icon: 'USB',        label: 'tabDma',       desc: 'tabDmaDesc',       color: '#8B5CF6' },
-  { id: 'extended',  icon: 'Shield',     label: 'tabExtended',  desc: 'tabExtendedDesc',  color: '#22c55e' },
-  { id: 'network',   icon: 'Globe',      label: 'tabNetwork',   desc: 'tabNetworkDesc',   color: '#06b6d4' },
+  { id: 'full',     icon: 'Shield',     label: 'tabFull',     desc: 'tabFullDesc',     color: '#22c55e' },
+  { id: 'quick',    icon: 'Crosshair',  label: 'tabQuick',    desc: 'tabQuickDesc',    color: '#F59E0B' },
+  { id: 'dma',      icon: 'USB',        label: 'tabDma',      desc: 'tabDmaDesc',      color: '#8B5CF6' },
 ]
 
 // ── Red Eye Component ──
@@ -164,29 +155,27 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
   const now = new Date().toISOString()
 
   const mockSets: Record<ScanMode, { results: ScanResult[]; scanned: number }> = {
-    files: {
+    full: {
       results: [
-        { path: '~/Downloads/cheat_loader.js', fileName: 'cheat_loader.js', type: 'file', risk: 'high', matches: ['filename:cheat', 'content:inject', 'content:hack'], size: 15234, modifiedAt: now },
-        { path: '~/Desktop/menu.dll', fileName: 'menu.dll', type: 'file', risk: 'high', matches: ['pattern:mod menu', 'dll inject'], size: 245760, modifiedAt: now },
-        { path: '~/.config/script_hook.lua', fileName: 'script_hook.lua', type: 'file', risk: 'medium', matches: ['filename:script hook'], size: 8912, modifiedAt: now },
+        { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine', 'suspicious debugger', 'module:CreateRemoteThread (injector)'], size: 0, modifiedAt: now },
+        { path: '~/Downloads/cheat_loader.js', fileName: '[Score:95] cheat_loader.js', type: 'file', risk: 'high', matches: ['Name → [injector]: DLL injector', 'Extension .js: JavaScript', 'Signatures [menu]: ImGui'], size: 15234, modifiedAt: now },
+        { path: '~/Desktop/menu.dll', fileName: '[Score:87] menu.dll', type: 'file', risk: 'high', matches: ['High entropy (7.82)', 'Name → [menu]: Game menu'], size: 245760, modifiedAt: now },
+        { path: '~/AppData/Local/FiveM/mods/', fileName: '[Score:80] eulen.asi', type: 'file', risk: 'high', matches: ['Extension .asi: ASI mod GTA', 'No digital signature'], size: 320512, modifiedAt: now },
+        { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx (VEN_10ee)', 'FPGA device detected'], size: 0, modifiedAt: now },
+        { path: 'HKCU\\...\\Run', fileName: 'Registry [injector]: inject', type: 'registry', risk: 'high', matches: ['registry-deep:inject', 'risk:CRITICAL'], size: 0, modifiedAt: now },
+        { path: 'C:\\Windows\\Prefetch\\DMA_TOOL.EXE-*.pf', fileName: 'Prefetch [dma]: DMA_TOOL.EXE', type: 'file', risk: 'high', matches: ['prefetch:dma', 'last-run:2026-07-20'], size: 0, modifiedAt: now },
+        { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma', 'browser:injector'], size: 4096, modifiedAt: now },
       ],
-      scanned: 340,
+      scanned: 2487,
     },
-    processes: {
+    quick: {
       results: [
         { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine', 'suspicious debugger'], size: 0, modifiedAt: now },
-        { path: 'process:Injector Helper (PID: 0)', fileName: 'Injector Helper', type: 'process', risk: 'high', matches: ['process:inject', 'recent:injector'], size: 0, modifiedAt: now },
-        { path: 'Prefetch/DMA_TOOL.EXE-*.pf', fileName: 'DMA_TOOL.EXE-*.pf', type: 'file', risk: 'medium', matches: ['prefetch:dma last run'], size: 0, modifiedAt: now },
-      ],
-      scanned: 45,
-    },
-    cheats: {
-      results: [
-        { path: '~/Downloads/Nightfall', fileName: 'Nightfall Loader', type: 'file', risk: 'high', matches: ['cheat:nightfall → nightfall', 'filename:nightfall'], size: 0, modifiedAt: now },
-        { path: 'HKCU\\...\\Uninstall', fileName: 'Registry: Nightfall', type: 'registry', risk: 'high', matches: ['registry:nightfall installed'], size: 0, modifiedAt: now },
+        { path: 'C:\\Windows\\Prefetch\\DMA_TOOL.EXE-*.pf', fileName: 'Prefetch [dma]: DMA_TOOL.EXE', type: 'file', risk: 'high', matches: ['prefetch:dma', 'last-run:2026-07-20'], size: 0, modifiedAt: now },
+        { path: 'HKCU\\...\\Run', fileName: 'Registry [injector]: inject', type: 'registry', risk: 'high', matches: ['registry-deep:inject', 'risk:CRITICAL'], size: 0, modifiedAt: now },
         { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma'], size: 4096, modifiedAt: now },
       ],
-      scanned: 12,
+      scanned: 45,
     },
     dma: {
       results: [
@@ -196,39 +185,7 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
       ],
       scanned: 8,
     },
-    extended: {
-      results: [
-        { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine', 'suspicious debugger', 'module:CreateRemoteThread (injector)'], size: 0, modifiedAt: now },
-        { path: 'process:Injector Helper (PID: 0)', fileName: 'Module: injector.dll', type: 'process', risk: 'high', matches: ['module:inject (injector)', 'process:cheat loader'], size: 0, modifiedAt: now },
-        { path: '~/Downloads/cheat_loader.js', fileName: '[Score:95] cheat_loader.js', type: 'file', risk: 'high', matches: ['Name → [injector]: DLL injector', 'Extension .js: JavaScript', 'Signatures [menu]: ImGui, Direct3D'], size: 15234, modifiedAt: now },
-        { path: '~/Desktop/menu.dll', fileName: '[Score:87] menu.dll', type: 'file', risk: 'high', matches: ['Extension .dll: Dynamic library', 'Name → [menu]: Game menu / overlay', 'High entropy (7.82) — possibly packed'], size: 245760, modifiedAt: now },
-        { path: '~/AppData/Local/FiveM/mods/', fileName: '[Score:80] eulen.asi', type: 'file', risk: 'high', matches: ['Extension .asi: ASI mod GTA', 'File in protected folder', 'No digital signature'], size: 320512, modifiedAt: now },
-        { path: '~/AppData/Roaming/redengine/', fileName: '[Score:75] redengine.dll', type: 'file', risk: 'high', matches: ['Extension .dll: Dynamic library', 'Name → [debugger]: Debugger', 'Signatures [hook]: SetWindowsHookEx'], size: 180224, modifiedAt: now },
-        { path: '~/.config/script_hook.lua', fileName: '[Score:60] script_hook.lua', type: 'file', risk: 'medium', matches: ['Name → [hook]: System function hooking', 'Extension .lua: Lua script'], size: 8912, modifiedAt: now },
-        { path: '~/Documents/bypass_tool.exe', fileName: '[Score:70] bypass_tool.exe', type: 'file', risk: 'medium', matches: ['Name → [bypass]: Security bypass', 'Recently modified (2 days ago)', 'No digital signature'], size: 45056, modifiedAt: now },
-        { path: 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', fileName: 'Registry [injector]: inject', type: 'registry', risk: 'high', matches: ['registry-deep:inject (injector)', 'risk:CRITICAL'], size: 0, modifiedAt: now },
-        { path: 'HKCU\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run', fileName: 'Registry [bypass]: bypass', type: 'registry', risk: 'high', matches: ['registry-deep:bypass (bypass)', 'risk:CRITICAL'], size: 0, modifiedAt: now },
-        { path: 'C:\\Windows\\Prefetch\\DMA_TOOL.EXE-*.pf', fileName: 'Prefetch [dma]: DMA_TOOL.EXE-*.pf', type: 'file', risk: 'high', matches: ['prefetch:dma (dma)', 'last-run:2026-07-20'], size: 0, modifiedAt: now },
-        { path: 'C:\\Windows\\Prefetch\\CHEAT_ENGINE.EXE-*.pf', fileName: 'Prefetch [debugger]: CHEAT_ENGINE.EXE-*.pf', type: 'file', risk: 'high', matches: ['prefetch:cheatengine (debugger)', 'last-run:2026-07-21'], size: 0, modifiedAt: now },
-        { path: 'C:\\Windows\\Prefetch\\INJECTOR.EXE-*.pf', fileName: 'Prefetch [injector]: INJECTOR.EXE-*.pf', type: 'file', risk: 'medium', matches: ['prefetch:injector (injector)', 'last-run:2026-07-19'], size: 0, modifiedAt: now },
-        { path: 'Network Connections', fileName: 'Suspicious connections: 2', type: 'software', risk: 'high', matches: ['netstat:1080 (PID: 4821)', 'netstat:remote:185.123.45.67 (PID: 5678)'], size: 0, modifiedAt: now },
-        { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx (VEN_10ee)', 'FPGA device detected'], size: 0, modifiedAt: now },
-        { path: 'System32/drivers/', fileName: 'Driver: leeched.sys', type: 'software', risk: 'high', matches: ['dma-keyword:leechcore', 'DMA kernel driver'], size: 0, modifiedAt: now },
-        { path: 'HKLM\\...\\Uninstall', fileName: 'Registry: nightfall', type: 'registry', risk: 'high', matches: ['registry:nightfall installed'], size: 0, modifiedAt: now },
-        { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma', 'browser:injector', 'browser:bypass'], size: 4096, modifiedAt: now },
-      ],
-      scanned: 2487,
-    },
-    network: {
-      results: [
-        { path: 'DNS Cache', fileName: 'DNS: Suspicious entries (2)', type: 'software', risk: 'medium', matches: ['dns:nightfall', 'dns:unknowncheats'], size: 0, modifiedAt: now },
-        { path: 'C:\\Windows\\System32\\drivers\\etc\\hosts', fileName: 'Hosts: Suspicious entries (3)', type: 'file', risk: 'high', matches: ['hosts-block:nightfall.com', 'hosts-block:eulen.gg', 'hosts-redirect:cheat.dom→185.x.x.x'], size: 1024, modifiedAt: now },
-        { path: 'Active Connections', fileName: 'Cheat-related ports: 2', type: 'software', risk: 'high', matches: ['port:1337 (PID: 4821)', 'port:4444 (PID: 5678)'], size: 0, modifiedAt: now },
-        { path: 'Network Summary', fileName: 'Connections: 45', type: 'process', risk: 'low', matches: ['est:12 active', 'lstn:8 listening', 'foreign:3 unusual IPs'], size: 0, modifiedAt: now },
-        { path: 'Browser History', fileName: 'Chrome History', type: 'browser', risk: 'medium', matches: ['browser:nightfall', 'browser:dma'], size: 4096, modifiedAt: now },
-      ],
-      scanned: 5,
-    },
+
   }
 
   const data = mockSets[mode]
@@ -310,7 +267,7 @@ function calcScanPercent(progress: ScanProgress | null): number {
 
 export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
   const t = useMemo(() => (key: string) => T[lang][key] || key, [lang])
-  const [activeTab, setActiveTab] = useState<ScanMode>('files')
+  const [activeTab, setActiveTab] = useState<ScanMode>('full')
   const cachedEntry = tabCache.get(activeTab)
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>(cachedEntry ? 'done' : 'idle')
   const [progress, setProgress] = useState<ScanProgress | null>(null)

@@ -24,32 +24,22 @@ interface UseScanReturn {
 function mockScan(tab: ScanMode): { results: ScanResult[]; scanned: number } {
   const now = new Date().toISOString()
   const base: Record<ScanMode, { results: ScanResult[]; scanned: number }> = {
-    files: { scanned: 340, results: [
-      { path: '~/Downloads/cheat_loader.js', fileName: 'cheat_loader.js', type: 'file', risk: 'high', matches: ['filename:cheat', 'content:inject'], size: 15234, modifiedAt: now },
-      { path: '~/Desktop/menu.dll', fileName: 'menu.dll', type: 'file', risk: 'high', matches: ['pattern:mod menu', 'dll inject'], size: 245760, modifiedAt: now },
-    ]},
-    processes: { scanned: 45, results: [
-      { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine'], size: 0, modifiedAt: now },
-    ]},
-    cheats: { scanned: 12, results: [
-      { path: '~/Downloads/Nightfall', fileName: 'Nightfall Loader', type: 'file', risk: 'high', matches: ['cheat:nightfall'], size: 0, modifiedAt: now },
-    ]},
-    dma: { scanned: 8, results: [
-      { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx', 'FPGA detected'], size: 0, modifiedAt: now },
-    ]},
-    extended: { scanned: 2487, results: [
+    full: { scanned: 2487, results: [
       { path: '~/Desktop/menu.dll', fileName: '[Score:87] menu.dll', type: 'file', risk: 'high', matches: ['YARA [bypass_strings]', 'High entropy (7.82)'], size: 245760, modifiedAt: now },
       { path: 'HKCU\\...\\Run', fileName: 'Registry [injector]: inject', type: 'registry', risk: 'high', matches: ['registry-deep:inject'], size: 0, modifiedAt: now },
     ]},
-    network: { scanned: 5, results: [
-      { path: 'DNS Cache', fileName: 'DNS: Suspicious entries', type: 'software', risk: 'medium', matches: ['dns:nightfall'], size: 0, modifiedAt: now },
+    quick: { scanned: 45, results: [
+      { path: 'process:Cheat Engine (PID: 4821)', fileName: 'Cheat Engine', type: 'process', risk: 'high', matches: ['process:cheat engine'], size: 0, modifiedAt: now },
+    ]},
+    dma: { scanned: 8, results: [
+      { path: 'PCI Bus', fileName: 'Xilinx FPGA Device', type: 'hardware', risk: 'high', matches: ['pci:Xilinx', 'FPGA detected'], size: 0, modifiedAt: now },
     ]},
   }
   return base[tab]
 }
 
 export function useScan(tokenId: number | null): UseScanReturn {
-  const [activeTab, setActiveTab] = useState<ScanMode>('files')
+  const [activeTab, setActiveTab] = useState<ScanMode>('full')
   const cachedEntry = tabCache.get(activeTab)
   const [phase, setPhase] = useState<'idle' | 'scanning' | 'done'>(cachedEntry ? 'done' : 'idle')
   const [progress, setProgress] = useState<ScanProgress | null>(null)

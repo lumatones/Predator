@@ -14,6 +14,9 @@ const KNOWN_DMA_VENDORS = [
   { name: 'Texas Instruments (FPGA)', ids: ['104c'] },
 ]
 
+// PCI Class Codes for suspicious generic bridges (possible spoofed FPGA devices)
+const SUSPICIOUS_PCI_CLASSES = ['0604', '0600', '0680'] // PCI Bridge, Host Bridge, Other Bridge
+
 /**
  * Query PnP devices via WMIC or PowerShell
  */
@@ -25,7 +28,84 @@ export function queryPnpDevices(filter: string): string {
 }
 
 /**
- * Scan for DMA devices (PCI hardware + software files + drivers)
+ * PCI Config Space Fingerprinting — detect spoofed DMA devices.
+ * Cheaters change Vendor/Device IDs in FPGA firmware to hide from name-based detection.
+ * This catches "generic" PCI bridges with suspicious characteristics.
+ */
+function scanPciFingerprints(): ScanResult[] {
+  const results: ScanResult[] = []
+
+  try {
+    // Get detailed PCI device info including class codes and BARs
+    // This catches devices claiming to be "generic bridges" but with unusual BAR sizes
+    const psCmd = [
+      'Get-PnpDevice -PresentOnly -Class System | Select-Object InstanceId, FriendlyName, Class, Status | ConvertTo-Json -Compress'
+    ].join('')
+
+    const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"')}"`, {
+      encoding: 'utf-8' as BufferEncoding,
+      timeout: 8000,
+    }).trim()
+
+    if (!out || out.length < 5) return results
+
+    let devices: { InstanceId?: string; FriendlyName?: string; Class?: string; Status?: string }[] = []
+    try {
+      const parsed = JSON.parse(out)
+      devices = Array.isArray(parsed) ? parsed : [parsed]
+    } catch { return results }
+
+    for (const dev of devices) {
+      const name = (dev.FriendlyName || '').toLowerCase()
+      const instanceId = (dev.InstanceId || '').toLowerCase()
+      const deviceClass = (dev.Class || '')
+
+      const signals: string[] = []
+
+      // Signal 1: Generic PCI bridge names that cheaters spoof FPGA as
+      if (name.includes('pci standard ram controller') ||
+          name.includes('pci memory controller') ||
+          name.includes('standard pci-to-pci bridge') ||
+          name.includes('pci standard host bridge')) {
+        signals.push(`Generic PCI bridge: "${name}" (possible FPGA masquerade)`)
+      }
+
+      // Signal 2: Device IDs matching known FPGA patterns + suspicious PCI classes
+      const fpgaPatterns = [
+        'ven_10ee', 'ven_1172', 'ven_1204', 'ven_104c',
+        ...SUSPICIOUS_PCI_CLASSES.map(cc => `cc_${cc}`), 'subsys_']
+      for (const pattern of fpgaPatterns) {
+        if (instanceId.includes(pattern)) {
+          const clean = pattern.replace('ven_', 'VEN_').replace('cc_', 'Class_').toUpperCase()
+          signals.push(`FPGA-like hardware ID: ${clean}`)
+          break
+        }
+      }
+
+      // Signal 3: No friendly name (hidden/spoofed device)
+      if (!dev.FriendlyName || dev.FriendlyName.trim() === '') {
+        signals.push('PCI device with no friendly name (hidden/spoofed)')
+      }
+
+      if (signals.length > 0 && addFindingDedup(`pci-fp:${instanceId}`)) {
+        results.push({
+          path: 'PCI Config Space',
+          fileName: `DMA Fingerprint: ${dev.FriendlyName || 'Unknown Device'}`,
+          type: 'hardware',
+          risk: signals.length >= 2 ? 'high' : 'medium',
+          matches: signals,
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+  } catch { /* PCI fingerprinting optional */ }
+
+  return results
+}
+
+/**
+ * Scan for DMA devices (PCI hardware + software files + drivers + fingerprinting)
  */
 export function scanDmaDevices(): ScanResult[] {
   const results: ScanResult[] = []
@@ -45,6 +125,9 @@ export function scanDmaDevices(): ScanResult[] {
       }
     }
   }
+
+  // 1b. PCI fingerprinting (new — catches spoofed devices)
+  results.push(...scanPciFingerprints())
 
   // 2. Software: DMA-related files in scan paths
   const dmaKeywords = ['dma', 'fpga', 'pcileech', 'fuser', 'screamer', 'leechcore', 'memprocfs', 'vmm', 'kmem', 'coremap', 'ftd3', 'ftd2']
@@ -137,14 +220,14 @@ export function scanScheduledTasks(): ScanResult[] {
   const results: ScanResult[] = []
 
   try {
-    const ps = `
-Get-ScheduledTask | Where-Object {
-  $_.TaskPath -eq '\\' -and
-  $_.Author -notmatch 'Microsoft|Adobe|Google|Mozilla|Apple|Oracle|NVIDIA|AMD|Intel|Spotify|Discord|Slack|GitHub|Docker|JetBrains|Valve|Epic|Rockstar'
-} | Select-Object TaskName, TaskPath, Author, State, @{N='Actions';E={($_.Actions | ForEach-Object { $_.Execute }) -join '; '}} | ConvertTo-Json -Compress
-`.trim()
+    const ps = [
+      'Get-ScheduledTask | Where-Object {',
+      "  $_.TaskPath -eq '\\' -and",
+      "  $_.Author -notmatch 'Microsoft|Adobe|Google|Mozilla|Apple|Oracle|NVIDIA|AMD|Intel|Spotify|Discord|Slack|GitHub|Docker|JetBrains|Valve|Epic|Rockstar'",
+      '} | Select-Object TaskName, TaskPath, Author, State, @{N=\'Actions\';E={($_.Actions | ForEach-Object { $_.Execute }) -join \'; \'}} | ConvertTo-Json -Compress'
+    ].join('\n').trim()
 
-    const out = execSync(`powershell -Command "${ps.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
+    const out = execSync(`powershell -Command "${ps}"`, {
       encoding: 'utf-8' as const,
       timeout: 10000,
       windowsHide: true,

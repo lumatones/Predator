@@ -16,7 +16,7 @@ interface UseAuthReturn {
   requestId: number | null
   requestStatus: 'pending' | 'approved' | 'rejected' | null
   handleAuth: () => Promise<boolean>
-  handleRequestAccess: () => Promise<void>
+  handleRequestAccess: () => Promise<boolean>
   cancelRequest: () => void
 }
 
@@ -66,7 +66,7 @@ export function useAuth(lang: Lang): UseAuthReturn {
     finally { setAuthLoading(false) }
   }, [token, pcName, t])
 
-  const handleRequestAccess = useCallback(async () => {
+  const handleRequestAccess = useCallback(async (): Promise<boolean> => {
     setAuthLoading(true); setAuthError('')
     try {
       const result = await requestAccess(pcName || 'unknown')
@@ -82,8 +82,11 @@ export function useAuth(lang: Lang): UseAuthReturn {
             }
           } catch { /* retry */ }
         }, 3000)
-      } else setAuthError(result.error || 'Ошибка отправки запроса')
-    } catch (err) { setAuthError(err instanceof Error ? err.message : 'Ошибка подключения к серверу') }
+        return true
+      }
+      setAuthError(result.error || 'Ошибка отправки запроса')
+      return false
+    } catch (err) { setAuthError(err instanceof Error ? err.message : 'Ошибка подключения к серверу'); return false }
     finally { setAuthLoading(false) }
   }, [pcName, t, clearPolling])
 

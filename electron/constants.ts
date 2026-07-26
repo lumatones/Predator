@@ -46,4 +46,13 @@ export const EXTENDED_CHEAT_KEYWORDS: string[] = [
 // EXTENDED SCAN PATHS
 // ═══════════════════════════════════════════════════
 
+// ── Quick scan keywords (top-20, browser history only) ──
+
+export const QUICK_CHEAT_KEYWORDS: string[] = [
+  'nightfall', 'dma', 'cheat', 'inject', 'bypass',
+  'eulen', 'pcileech', 'aimbot', 'wallhack', 'esp',
+  'redengine', 'cherax', 'xenos', 'hook', 'mod menu',
+  'spoofer', 'fivem bypass', 'kiddions', 'stand', 'luna',
+]
+
 export const EXTENDED_SCAN_PATHS: string[] = getScanPaths()
