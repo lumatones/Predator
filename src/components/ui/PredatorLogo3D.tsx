@@ -43,7 +43,7 @@ function Shield({ accent, light, dark, rotate }: ShieldProps) {
       <extrudeGeometry
         args={[
           shape,
-          { depth: 0.25, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 2 }
+          { depth: 0.25, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 4 }
         ]}
       />
       <meshStandardMaterial
@@ -139,8 +139,8 @@ export default function PredatorLogo3D({
     <div className="logo-3d" style={{ width: size, height: size, lineHeight: 0 }}>
       <Canvas
         camera={{ position: [0, 0, 4.5], fov: 45 }}
-        dpr={config.dpr}
-        gl={{ antialias: config.antialias, alpha: true }}
+        dpr={[1, Math.max(window.devicePixelRatio || 2, 2)]}
+        gl={{ antialias: true, alpha: true }}
         style={{ width: '100%', height: '100%' }}
         onError={() => setWebglFailed(true)}
       >

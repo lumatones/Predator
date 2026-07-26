@@ -73,7 +73,7 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
             hr.suspicions.push(`fuzzy-hash:matched (distance=${fuzzyMatch.distance})`)
           }
         }
-        if (hr && riskScore > 30) {
+        if (hr && riskScore > 20) {
           results.push({
             path: filePath,
             fileName: path.basename(filePath),
