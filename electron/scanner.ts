@@ -61,7 +61,14 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   for (const dir of EXTENDED_SCAN_PATHS) {
     await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 2 })
     try {
+      let dirFileCount = 0
+      const DIR_FILE_LIMIT = 2000 // Prevent hangs on huge dirs (e.g., Temp had 50K+ files)
       for await (const filePath of walkDirAsync(dir)) {
+        dirFileCount++
+        if (dirFileCount > DIR_FILE_LIMIT) {
+          console.warn(`[Predator] Directory file limit reached: ${dir} (${dirFileCount} files, limit ${DIR_FILE_LIMIT})`)
+          break
+        }
         filesScanned++
         // Always run heuristic scan (expensive but thorough)
         let hr = heuristicFileScan(filePath)
