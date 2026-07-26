@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import type { SystemInfoSnapshot } from '../types/electron'
 import ServerStatus from '../components/ServerStatus'
+import { SkeletonGauge, SkeletonCard, SkeletonTable } from '../components/ui/Skeleton'
+import { Button } from '../components/ui/Button'
 
 interface DashboardProps {
   lang: 'ru' | 'en'
@@ -188,11 +190,11 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
   return (
     <div className="dash-wrapper">
       <div className="dash-header">
-        <button className="checker-back-btn" onClick={onBack} title={t('back')}>
+        <Button className="checker-back-btn" variant="ghost" size="sm" onClick={onBack} title={t('back')}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>
-        </button>
+        </Button>
         <h2 className="dash-title">{t('title')}</h2>
         <div className="dash-header-right">
           <ServerStatus lang={lang} />
@@ -288,12 +290,15 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
       )}
 
       {!snapshot && (
-        <div className="dash-empty">
-          <div className="spinner" style={{ width: 36, height: 36 }}>
-            <div className="spinner-ring" style={{ borderWidth: 2 }} />
+        <>
+          <SkeletonGauge count={3} />
+          <div className="dash-info-row">
+            <SkeletonCard lines={2} />
+            <SkeletonCard lines={2} />
+            <SkeletonCard lines={2} />
           </div>
-          <p className="dash-empty-text">{t('loading')}</p>
-        </div>
+          <SkeletonTable rows={6} cols={3} />
+        </>
       )}
     </div>
   )

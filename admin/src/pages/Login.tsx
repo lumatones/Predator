@@ -1,5 +1,8 @@
 import { useState, FormEvent } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Shield, User, Lock, Loader2 } from 'lucide-react'
 import { login as apiLogin } from '../api'
+import PredatorLogo3D from '../components/PredatorLogo3D'
 
 interface LoginProps {
   onLogin: (token: string, admin: { id: number; username: string; role: string }) => void
@@ -32,60 +35,89 @@ export default function Login({ onLogin }: LoginProps) {
   }
 
   return (
-    <form className="login-card" onSubmit={handleSubmit}>
-      <div className="login-logo">
-        <svg viewBox="0 0 36 36" fill="none">
-          <path d="M18 3L3 18L18 33L33 18L18 3Z" fill="url(#lg)" opacity="0.15"/>
-          <path d="M18 8L8 18L18 28L28 18L18 8Z" fill="url(#lg)" opacity="0.3"/>
-          <path d="M18 13L13 18L18 23L23 18L18 13Z" fill="url(#lg)"/>
-          <defs>
-            <linearGradient id="lg" x1="3" y1="3" x2="33" y2="33">
-              <stop stopColor="#ff4444"/>
-              <stop offset="1" stopColor="#ff6b35"/>
-            </linearGradient>
-          </defs>
-        </svg>
-        <h1>Predator</h1>
+    <div className="login-content">
+      <div className="login-logo-3d">
+        <PredatorLogo3D />
       </div>
-      <p className="login-subtitle">Панель администратора</p>
+      <motion.form
+        className="login-card"
+        onSubmit={handleSubmit}
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+      >
+        <div className="login-logo">
+          <div className="login-logo-icon">
+            <Shield size={32} strokeWidth={1.5} />
+          </div>
+          <h1>Predator</h1>
+        </div>
+        <p className="login-subtitle">Панель администратора</p>
 
-      {error && <div className="login-error">{error}</div>}
+        <AnimatePresence mode="wait">
+          {error && (
+          <motion.div
+            className="login-error"
+            role="alert"
+            initial={{ x: 0 }}
+            animate={{ x: [0, -5, 5, -5, 5, 0] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            {error}
+          </motion.div>
+          )}
+        </AnimatePresence>
 
-      <div className="form-group">
-        <label htmlFor="username">Логин</label>
-        <input
-          id="username"
-          type="text"
-          className="form-input"
-          placeholder="admin"
-          value={username}
-          onChange={e => setUsername(e.target.value)}
-          autoFocus
-        />
-      </div>
+        <div className="form-group">
+          <label htmlFor="username">Логин</label>
+          <div className="form-input-wrap">
+            <User size={16} className="form-input-icon" />
+            <input
+              id="username"
+              type="text"
+              className="form-input with-icon"
+              placeholder="admin"
+              value={username}
+              onChange={(e) => { setUsername(e.target.value); setError('') }}
+              autoFocus
+            />
+          </div>
+        </div>
 
-      <div className="form-group">
-        <label htmlFor="password">Пароль</label>
-        <input
-          id="password"
-          type="password"
-          className="form-input"
-          placeholder="••••••"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-        />
-      </div>
+        <div className="form-group">
+          <label htmlFor="password">Пароль</label>
+          <div className="form-input-wrap">
+            <Lock size={16} className="form-input-icon" />
+            <input
+              id="password"
+              type="password"
+              className="form-input with-icon"
+              placeholder="••••••"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setError('') }}
+            />
+          </div>
+        </div>
 
-      <button type="submit" className="btn btn-primary full" disabled={loading}>
-        {loading ? (
-          <>
-            <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-            Вход...
-          </>
-        ) : (
-          'Войти'
-        )}
-      </button>
-    </form>
+        <motion.button
+          type="submit"
+          className="btn btn-primary full"
+          disabled={loading}
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.98 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        >
+          {loading ? (
+            <>
+              <Loader2 size={16} className="spinner-svg" />
+              Вход...
+            </>
+          ) : (
+            'Войти'
+          )}
+        </motion.button>
+      </motion.form>
+    </div>
   )
 }

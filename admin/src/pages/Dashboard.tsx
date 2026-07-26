@@ -1,56 +1,70 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../App'
 import { getDashboardStats, getScanStats, type DashboardStats, type ScanStats } from '../api'
 import { io, Socket } from 'socket.io-client'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  PointElement,
-  LineElement,
-  Title,
-} from 'chart.js'
-import { Doughnut, Bar } from 'react-chartjs-2'
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
+  PieChart, Pie, Cell, ResponsiveContainer,
+} from 'recharts'
+import {
+  Clock, Key, UserCheck, Activity, AlertTriangle, Search,
+  Inbox, BarChart3, PieChart as PieChartIcon, Wifi, WifiOff,
+  type LucideIcon,
+} from 'lucide-react'
+import AnimatedNumber from '../components/AnimatedNumber'
+import { SkeletonStatCard, SkeletonTable } from '../components/Skeleton'
 
-ChartJS.register(
-  ArcElement, Tooltip, Legend,
-  CategoryScale, LinearScale, BarElement,
-  PointElement, LineElement, Title,
-)
-
-// WebSocket URL — используем hostname браузера (работает через Vite proxy и на сервере)
 const WS_BASE = `http://${window.location.hostname}:3001`
 
-// ── Notification Toast ──
+const springEase = [0.16, 1, 0.3, 1] as const
+
+// ── Toast system ──
+
+type ToastType = 'success' | 'warning' | 'info'
 
 interface Toast {
-  type: 'success' | 'warning' | 'info'
+  id: number
+  type: ToastType
   message: string
 }
 
-function ToastItem({ toast, onDone }: { toast: Toast; onDone: () => void }) {
-  useEffect(() => {
-    const timer = setTimeout(onDone, 5000)
-    return () => clearTimeout(timer)
-  }, [onDone])
+const toastConfig: Record<ToastType, { border: string; glow: string; iconColor: string }> = {
+  success: { border: 'rgba(34,197,94,0.35)', glow: 'rgba(34,197,94,0.2)', iconColor: '#22c55e' },
+  warning: { border: 'rgba(234,179,8,0.35)', glow: 'rgba(234,179,8,0.2)', iconColor: '#eab308' },
+  info: { border: 'rgba(59,130,246,0.35)', glow: 'rgba(59,130,246,0.2)', iconColor: '#3B82F6' },
+}
 
-  const bgColor = toast.type === 'success' ? 'rgba(34,197,94,0.15)' :
-    toast.type === 'warning' ? 'rgba(234,179,8,0.15)' : 'rgba(59,130,246,0.15)'
-  const borderColor = toast.type === 'success' ? 'rgba(34,197,94,0.25)' :
-    toast.type === 'warning' ? 'rgba(234,179,8,0.25)' : 'rgba(59,130,246,0.25)'
-  const textColor = toast.type === 'success' ? '#22c55e' :
-    toast.type === 'warning' ? '#eab308' : '#3B82F6'
+// ── Toast item with auto-dismiss ──
+
+function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: number) => void }) {
+  useEffect(() => {
+    const timer = setTimeout(() => onRemove(toast.id), 5000)
+    return () => clearTimeout(timer)
+  }, [toast.id, onRemove])
 
   return (
-    <div className="toast" style={{ background: bgColor, border: `1px solid ${borderColor}`, color: textColor }}>
-      {toast.message}
-    </div>
+    <motion.div
+      className="toast glass-toast"
+      layout
+      role="button"
+      tabIndex={0}
+      style={{ borderLeft: `3px solid ${toastConfig[toast.type].border}` }}
+      initial={{ x: 80, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 80, opacity: 0 }}
+      transition={{ duration: 0.25, ease: springEase }}
+      onClick={() => onRemove(toast.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onRemove(toast.id) }}
+      aria-label="Закрыть уведомление"
+    >
+      <span className="toast-glow" style={{ background: toastConfig[toast.type].glow }} />
+      <span className="toast-message" style={{ color: toastConfig[toast.type].iconColor }}>{toast.message}</span>
+    </motion.div>
   )
 }
+
+// ── Dashboard ──
 
 export default function Dashboard() {
   const { auth } = useAuth()
@@ -62,12 +76,13 @@ export default function Dashboard() {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [wsConnected, setWsConnected] = useState(false)
 
-  const addToast = useCallback((type: Toast['type'], message: string) => {
-    setToasts(prev => [...prev, { type, message }])
+  const addToast = useCallback((type: ToastType, message: string) => {
+    const id = Date.now() + Math.random()
+    setToasts(prev => [...prev, { id, type, message }])
   }, [])
 
-  const removeToast = useCallback((index: number) => {
-    setToasts(prev => prev.filter((_, i) => i !== index))
+  const removeToast = useCallback((id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
   // ── Initial data load ──
@@ -98,13 +113,12 @@ export default function Dashboard() {
 
   useEffect(() => { load(); loadScanStats() }, [auth])
 
-  // ── WebSocket connection (Socket.IO) ──
+  // ── WebSocket connection ──
 
   useEffect(() => {
     if (!auth) return
 
     let socket: Socket | null = null
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
     function connect() {
       socket = io(WS_BASE, {
@@ -118,8 +132,6 @@ export default function Dashboard() {
         console.log('🔌 WebSocket connected:', socket?.id)
         setWsConnected(true)
         socket?.emit('join-admin')
-
-        // Initial data load on reconnect
         load()
         loadScanStats()
       })
@@ -134,30 +146,27 @@ export default function Dashboard() {
         setWsConnected(false)
       })
 
-      // ── Server events ──
-
       socket.on('request-update', (data) => {
         const msg = data.type === 'approved'
-          ? `✅ Запрос ${data.pcUsername} одобрен администратором ${data.admin}`
-          : `❌ Запрос ${data.pcUsername} отклонён администратором ${data.admin}`
+          ? `Запрос ${data.pcUsername} одобрен администратором ${data.admin}`
+          : `Запрос ${data.pcUsername} отклонён администратором ${data.admin}`
         addToast('success', msg)
-        // Reload data
         load()
         loadScanStats()
       })
 
       socket.on('token-generated', (data) => {
-        addToast('success', `🔑 Создано ${data.count} новых токенов администратором ${data.admin}`)
+        addToast('success', `Создано ${data.count} новых токенов администратором ${data.admin}`)
         loadScanStats()
       })
 
       socket.on('new-request', (data) => {
-        addToast('warning', `👤 Новый запрос на доступ от ${data.pcUsername} (ID: ${data.requestId})`)
+        addToast('warning', `Новый запрос на доступ от ${data.pcUsername} (ID: ${data.requestId})`)
         load()
       })
 
       socket.on('scan-result', (data) => {
-        addToast('info', `📊 Новое сканирование от ${data.pc_username}: режим ${data.mode}, ${data.suspicious_files} угроз`)
+        addToast('info', `Новое сканирование от ${data.pc_username}: режим ${data.mode}, ${data.suspicious_files} угроз`)
         loadScanStats()
       })
     }
@@ -169,85 +178,81 @@ export default function Dashboard() {
         socket.removeAllListeners()
         socket.disconnect()
       }
-      if (reconnectTimer) clearTimeout(reconnectTimer)
     }
   }, [auth, addToast])
 
-  // ── Chart configs ──
+  // ── Chart data ──
 
-  const modeColors: Record<string, string> = {
-    files: '#ff4444', processes: '#3B82F6', cheats: '#F59E0B',
-    dma: '#8B5CF6', extended: '#22c55e', network: '#06b6d4',
+  const dayChartData = useMemo(() => {
+    return (scanStats?.byDay || []).map(d => ({
+      day: new Date(d.day).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
+      scans: d.cnt,
+      threats: d.threats,
+    }))
+  }, [scanStats])
+
+  const modeChartData = useMemo(() => {
+    const colors: Record<string, string> = {
+      files: '#ff4444', processes: '#3B82F6', cheats: '#F59E0B',
+      dma: '#8B5CF6', extended: '#22c55e', network: '#06b6d4',
+    }
+    const names: Record<string, string> = {
+      files: 'Файлы', processes: 'Процессы', cheats: 'Читы',
+      dma: 'DMA', extended: 'Расширенный', network: 'Сеть',
+    }
+    return (scanStats?.byMode || []).map(m => ({
+      name: names[m.mode] || m.mode,
+      value: m.cnt,
+      color: colors[m.mode] || '#3B82F6',
+    }))
+  }, [scanStats])
+
+  // ── Stat cards ──
+
+  const statCards = [
+    { icon: Clock, color: 'yellow', value: stats?.pendingCount ?? 0, label: 'Ожидающих запросов' },
+    { icon: Key, color: 'green', value: stats?.activeTokens ?? 0, label: 'Активных токенов' },
+    { icon: UserCheck, color: 'red', value: stats?.usedTokens ?? 0, label: 'Использованных токенов' },
+    { icon: Activity, color: 'blue', value: scanStats?.totalScans ?? 0, label: 'Всего сканирований' },
+    { icon: AlertTriangle, color: 'red', value: scanStats?.totalSuspicious ?? 0, label: 'Найдено угроз' },
+    { icon: Search, color: 'green', value: scanStats?.totalScanned ?? 0, label: 'Файлов проверено' },
+  ]
+
+  const containerVariants = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.08 } },
   }
 
-  const modeNames: Record<string, string> = {
-    files: 'Файлы', processes: 'Процессы', cheats: 'Читы',
-    dma: 'DMA', extended: 'Расширенный', network: 'Сеть',
+  const cardVariants = {
+    hidden: { opacity: 0, y: 16 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: springEase } },
   }
 
-  const modeChartData = {
-    labels: (scanStats?.byMode || []).map(m => modeNames[m.mode] || m.mode),
-    datasets: [{
-      data: (scanStats?.byMode || []).map(m => m.cnt),
-      backgroundColor: (scanStats?.byMode || []).map(m => modeColors[m.mode] || '#3b82f6'),
-      borderWidth: 0,
-      hoverOffset: 8,
-    }],
+  const rowVariants = {
+    hidden: { opacity: 0, y: 8 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: springEase } },
   }
 
-  const dayBarChartData = {
-    labels: (scanStats?.byDay || []).map(d => {
-      const date = new Date(d.day)
-      return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-    }),
-    datasets: [
-      {
-        label: 'Сканирования',
-        data: (scanStats?.byDay || []).map(d => d.cnt),
-        backgroundColor: 'rgba(59, 130, 246, 0.3)',
-        borderColor: '#3B82F6',
-        borderWidth: 2,
-      },
-      {
-        label: 'Угрозы',
-        data: (scanStats?.byDay || []).map(d => d.threats),
-        backgroundColor: 'rgba(255, 68, 68, 0.3)',
-        borderColor: '#ff4444',
-        borderWidth: 2,
-      },
-    ],
-  }
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        labels: { color: '#94a3b8', font: { size: 11 } },
-      },
-    },
-    scales: {
-      x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.03)' } },
-      y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.03)' }, beginAtZero: true },
-    },
-  }
-
-  const doughnutOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'bottom' as const,
-        labels: { color: '#94a3b8', font: { size: 11 }, padding: 12 },
-      },
-    },
-  }
+  // ── Loading / error ──
 
   if (loading) {
     return (
-      <div className="loading">
-        <div className="spinner" />
-        Загрузка...
+      <div>
+        <div className="page-header">
+          <div>
+            <h1>Панель управления</h1>
+            <p>Сводка по системе авторизации и сканированиям Predator</p>
+          </div>
+        </div>
+        <div className="stats-grid">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonStatCard key={i} />)}
+        </div>
+        <div className="stats-grid dashboard-charts">
+          <div className="table-container chart-card"><SkeletonTable rows={5} cols={4} /></div>
+          <div className="table-container chart-card"><SkeletonTable rows={5} cols={4} /></div>
+        </div>
+        <div className="table-container dashboard-table"><SkeletonTable rows={5} cols={5} /></div>
+        <div className="table-container dashboard-table"><SkeletonTable rows={4} cols={3} /></div>
       </div>
     )
   }
@@ -270,146 +275,179 @@ export default function Dashboard() {
           <h1>Панель управления</h1>
           <p>Сводка по системе авторизации и сканированиям Predator</p>
         </div>
-        <div className="page-actions" style={{ alignItems: 'center', gap: 12 }}>
-          {/* WebSocket status indicator */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 12, color: wsConnected ? '#22c55e' : '#ff6b6b',
-          }}>
-            <span style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: wsConnected ? '#22c55e' : '#ff6b6b',
-              animation: wsConnected ? 'none' : 'pulse 1.5s ease-in-out infinite',
-            }} />
-            {wsConnected ? 'Real-time' : 'Disconnected'}
+        <div className="page-actions">
+          <div className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`}>
+            {wsConnected ? <Wifi size={14} /> : <WifiOff size={14} />}
+            <span>{wsConnected ? 'Real-time' : 'Disconnected'}</span>
           </div>
         </div>
       </div>
 
       {/* ── Stats cards ── */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-card-icon yellow">⏳</div>
-          <div className="stat-card-value">{stats?.pendingCount ?? 0}</div>
-          <div className="stat-card-label">Ожидающих запросов</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon green">✓</div>
-          <div className="stat-card-value">{stats?.activeTokens ?? 0}</div>
-          <div className="stat-card-label">Активных токенов</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon red">👤</div>
-          <div className="stat-card-value">{stats?.usedTokens ?? 0}</div>
-          <div className="stat-card-label">Использованных токенов</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon" style={{ background: 'rgba(59,130,246,0.15)', color: '#3B82F6' }}>📊</div>
-          <div className="stat-card-value">{scanStats?.totalScans ?? 0}</div>
-          <div className="stat-card-label">Всего сканирований</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon" style={{ background: 'rgba(255,68,68,0.15)', color: '#ff4444' }}>⚠️</div>
-          <div className="stat-card-value">{scanStats?.totalSuspicious ?? 0}</div>
-          <div className="stat-card-label">Найдено угроз</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>🔍</div>
-          <div className="stat-card-value">{scanStats?.totalScanned ?? 0}</div>
-          <div className="stat-card-label">Файлов проверено</div>
-        </div>
-      </div>
+      <motion.div
+        className="stats-grid"
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+      >
+        {statCards.map((card, idx) => {
+          const Icon = card.icon
+          return (
+            <motion.div
+              key={card.label}
+              className="stat-card"
+              variants={cardVariants}
+              whileHover={{ scale: 1.02, y: -2, transition: { duration: 0.2 } }}
+            >
+              <div className={`stat-card-icon ${card.color}`}>
+                <Icon size={20} />
+              </div>
+              <div className="stat-card-value">
+                <AnimatedNumber value={card.value} />
+              </div>
+              <div className="stat-card-label">{card.label}</div>
+            </motion.div>
+          )
+        })}
+      </motion.div>
 
-      {/* ── Charts Section ── */}
+      {/* ── Charts ── */}
       {!scanLoading && scanStats && (
-        <>
-          <div className="stats-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 20 }}>
-            <div className="table-container">
-              <div className="table-header"><h3>Статистика сканирований</h3></div>
-              <div style={{ padding: 16 }}>
-                {scanStats.totalScans > 0 ? (
-                  <div style={{ height: 240 }}>
-                    <Bar data={dayBarChartData} options={chartOptions} />
-                  </div>
-                ) : (
-                  <div className="table-empty" style={{ padding: 40 }}>
-                    <div className="table-empty-icon">📊</div>
-                    <p>Нет данных сканирований</p>
-                    <p style={{ fontSize: 13, marginTop: 4, color: 'var(--text-muted)' }}>
-                      Данные появятся после того, как пользователи начнут сканировать систему
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="table-container">
-              <div className="table-header"><h3>По режимам</h3></div>
-              <div style={{ padding: 16 }}>
-                <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {scanStats.byMode.length > 0 ? (
-                    <div style={{ width: 220, height: 220 }}>
-                      <Doughnut data={modeChartData} options={doughnutOptions} />
-                    </div>
-                  ) : (
-                    <div className="table-empty" style={{ padding: 20 }}>
-                      <div className="table-empty-icon">📊</div>
-                      <p style={{ fontSize: 13 }}>Нет данных</p>
-                    </div>
-                  )}
+        <motion.div
+          className="stats-grid dashboard-charts"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2, ease: springEase }}
+        >
+          <div className="table-container chart-card">
+            <div className="table-header"><h3>Статистика сканирований</h3></div>
+            <div style={{ padding: 16 }}>
+              {scanStats.totalScans > 0 ? (
+                <div style={{ height: 260 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={dayChartData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="scansGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="threatsGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ff4444" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="#ff4444" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="rgba(255,255,255,0.03)" vertical={false} />
+                      <XAxis dataKey="day" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <ReTooltip
+                        contentStyle={{ background: 'rgba(12,12,26,0.9)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}
+                        itemStyle={{ fontSize: 12 }}
+                      />
+                      <Area type="monotone" dataKey="scans" stroke="#3B82F6" strokeWidth={2} fill="url(#scansGradient)" animationDuration={1500} />
+                      <Area type="monotone" dataKey="threats" stroke="#ff4444" strokeWidth={2} fill="url(#threatsGradient)" animationDuration={1500} />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
+              ) : (
+                <EmptyState icon={BarChart3} title="Нет данных сканирований" subtitle="Данные появятся после того, как пользователи начнут сканировать систему" />
+              )}
             </div>
           </div>
 
-          {/* Recent scans */}
-          {scanStats.recent.length > 0 && (
-            <div className="table-container" style={{ marginBottom: 20 }}>
-              <div className="table-header">
-                <h3>Последние сканирования</h3>
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{scanStats.totalScans} всего</span>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Пользователь</th>
-                    <th>Режим</th>
-                    <th>Проверено</th>
-                    <th>Угрозы</th>
-                    <th>Дата</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scanStats.recent.slice(0, 10).map(r => (
-                    <tr key={r.id}>
-                      <td style={{ fontWeight: 500 }}>{r.pc_username}</td>
-                      <td>
-                        <span className="badge badge-pending" style={{ fontSize: 11 }}>
-                          {r.mode}
-                        </span>
-                      </td>
-                      <td>{r.total_scanned}</td>
-                      <td>
-                        <span style={{ color: r.suspicious_files > 0 ? '#ff6b6b' : '#22c55e', fontWeight: 600 }}>
-                          {r.suspicious_files > 0 ? `⚠ ${r.suspicious_files}` : '✓ 0'}
-                        </span>
-                      </td>
-                      <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                        {new Date(r.created_at).toLocaleString('ru-RU')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="table-container chart-card">
+            <div className="table-header"><h3>По режимам</h3></div>
+            <div style={{ padding: 16 }}>
+              {modeChartData.length > 0 ? (
+                <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={modeChartData}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={2}
+                        animationDuration={1500}
+                      >
+                        {modeChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} stroke="rgba(0,0,0,0.3)" />
+                        ))}
+                      </Pie>
+                      <ReTooltip
+                        contentStyle={{ background: 'rgba(12,12,26,0.9)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}
+                        itemStyle={{ fontSize: 12 }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState icon={PieChartIcon} title="Нет данных" subtitle="Статистика по режимам недоступна" />
+              )}
             </div>
-          )}
-        </>
+          </div>
+        </motion.div>
       )}
 
-      {/* ── Recent requests ── */}
-      <div className="table-container" style={{ marginBottom: 20 }}>
+      {/* ── Recent scans ── */}
+      <motion.div
+        className="table-container dashboard-table"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3, ease: springEase }}
+      >
         <div className="table-header">
-          <h3>Последние запросы</h3>
+          <h3>Последние сканирования</h3>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{scanStats?.totalScans ?? 0} всего</span>
         </div>
+        {scanStats && scanStats.recent.length > 0 ? (
+          <table>
+            <thead>
+              <tr>
+                <th>Пользователь</th>
+                <th>Режим</th>
+                <th>Проверено</th>
+                <th>Угрозы</th>
+                <th>Дата</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scanStats.recent.slice(0, 10).map((r, i) => (
+                <motion.tr
+                  key={r.id}
+                  variants={rowVariants}
+                  initial="hidden"
+                  animate="show"
+                  transition={{ delay: i * 0.05, duration: 0.3, ease: springEase }}
+                >
+                  <td style={{ fontWeight: 500 }}>{r.pc_username}</td>
+                  <td><span className="badge badge-pending" style={{ fontSize: 11 }}>{r.mode}</span></td>
+                  <td>{r.total_scanned}</td>
+                  <td>
+                    <span className={`threat-count ${r.suspicious_files > 0 ? 'active' : ''}`}>
+                      {r.suspicious_files > 0 ? r.suspicious_files : '0'}
+                    </span>
+                  </td>
+                  <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                    {new Date(r.created_at).toLocaleString('ru-RU')}
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <EmptyState icon={Inbox} title="Нет сканирований" subtitle="Последние сканирования появятся здесь" />
+        )}
+      </motion.div>
+
+      {/* ── Recent requests ── */}
+      <motion.div
+        className="table-container dashboard-table"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.35, ease: springEase }}
+      >
+        <div className="table-header"><h3>Последние запросы</h3></div>
         {stats?.recentRequests && stats.recentRequests.length > 0 ? (
           <table>
             <thead>
@@ -420,8 +458,14 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {stats.recentRequests.map(r => (
-                <tr key={r.id}>
+              {stats.recentRequests.map((r, i) => (
+                <motion.tr
+                  key={r.id}
+                  variants={rowVariants}
+                  initial="hidden"
+                  animate="show"
+                  transition={{ delay: i * 0.05, duration: 0.3, ease: springEase }}
+                >
                   <td style={{ fontWeight: 500 }}>{r.pc_username}</td>
                   <td>
                     <span className={`badge badge-${r.status}`}>
@@ -431,23 +475,23 @@ export default function Dashboard() {
                   <td style={{ color: 'var(--text-secondary)' }}>
                     {new Date(r.created_at).toLocaleString('ru-RU')}
                   </td>
-                </tr>
+                </motion.tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <div className="table-empty">
-            <div className="table-empty-icon">📋</div>
-            Нет запросов на доступ
-          </div>
+          <EmptyState icon={Inbox} title="Нет запросов на доступ" subtitle="Запросы появятся после обращения пользователей" />
         )}
-      </div>
+      </motion.div>
 
       {/* ── Recent tokens ── */}
-      <div className="table-container">
-        <div className="table-header">
-          <h3>Последние токены</h3>
-        </div>
+      <motion.div
+        className="table-container dashboard-table"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.4, ease: springEase }}
+      >
+        <div className="table-header"><h3>Последние токены</h3></div>
         {stats?.recentTokens && stats.recentTokens.length > 0 ? (
           <table>
             <thead>
@@ -458,11 +502,15 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {stats.recentTokens.map(t => (
-                <tr key={t.id}>
-                  <td>
-                    <span className="token-code token-code-sm">{t.code_display}</span>
-                  </td>
+              {stats.recentTokens.map((t, i) => (
+                <motion.tr
+                  key={t.id}
+                  variants={rowVariants}
+                  initial="hidden"
+                  animate="show"
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <td><span className="token-code token-code-sm">{t.code_display}</span></td>
                   <td>
                     <span className={`badge ${t.is_active ? 'badge-active' : 'badge-inactive'}`}>
                       {t.is_active ? 'Активен' : t.used_by ? 'Использован' : 'Отозван'}
@@ -471,26 +519,41 @@ export default function Dashboard() {
                   <td style={{ color: 'var(--text-secondary)' }}>
                     {new Date(t.created_at).toLocaleString('ru-RU')}
                   </td>
-                </tr>
+                </motion.tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <div className="table-empty">
-            <div className="table-empty-icon">🔑</div>
-            Токены ещё не созданы
-          </div>
+          <EmptyState icon={Inbox} title="Токены ещё не созданы" subtitle="Сгенерируйте токены для пользователей" />
         )}
-      </div>
+      </motion.div>
 
-      {/* ── Toast notifications ── */}
-      {toasts.length > 0 && (
-        <div className="toast-container">
-          {toasts.map((t, i) => (
-            <ToastItem key={i} toast={t} onDone={() => removeToast(i)} />
+      {/* ── Toasts ── */}
+      <div className="toast-container">
+        <AnimatePresence>
+          {toasts.map(t => (
+            <ToastItem key={t.id} toast={t} onRemove={removeToast} />
           ))}
-        </div>
-      )}
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+// ── Empty state helper ──
+
+interface EmptyStateProps {
+  icon: LucideIcon
+  title: string
+  subtitle: string
+}
+
+function EmptyState({ icon: Icon, title, subtitle }: EmptyStateProps) {
+  return (
+    <div className="table-empty">
+      <Icon size={36} style={{ marginBottom: 12, opacity: 0.5 }} />
+      <p>{title}</p>
+      <p style={{ fontSize: 13, marginTop: 4, color: 'var(--text-muted)' }}>{subtitle}</p>
     </div>
   )
 }

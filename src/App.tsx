@@ -1,8 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import Checker from './pages/Checker'
 import Dashboard from './pages/Dashboard'
 import { IconShield, IconDashboard } from './icons'
 import UpdateModal from './components/ui/UpdateModal'
+import ParticleBackground from './components/ui/ParticleBackground'
+import PredatorLogo3D from './components/ui/PredatorLogo3D'
+import { ToastProvider } from './components/ui/ToastProvider'
+import { Skeleton } from './components/ui/Skeleton'
+import { Magnetic } from './components/ui/Magnetic'
+import { Button } from './components/ui/Button'
 import { useAuth } from './hooks/useAuth'
 import type { AppPhase, ThemeId, Lang, UpdateModalState } from './types'
 import { THEMES, T } from './types'
@@ -15,17 +22,9 @@ const Logo = React.memo(function Logo({ accent, light, dark, subtitle }: {
   return (
     <div className="logo-section">
       <div className="logo-icon">
-        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-          <circle cx="40" cy="40" r="38" stroke="url(#logo-grad)" strokeWidth="2" />
-          <path d="M40 10C40 10 25 30 25 45C25 55 31.7 62 40 62C48.3 62 55 55 55 45C55 30 40 10 40 10Z" fill="url(#logo-grad)" opacity="0.9" />
-          <path d="M28 50L16 68H64L52 50" stroke="url(#logo-grad)" strokeWidth="2" />
-          <circle cx="40" cy="42" r="6" fill="white" opacity="0.3" />
-          <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="80" y2="80">
-            <stop offset="0%" stopColor={accent} /><stop offset="50%" stopColor={light} /><stop offset="100%" stopColor={dark} />
-          </linearGradient></defs>
-        </svg>
+        <PredatorLogo3D accent={accent} light={light} dark={dark} size={72} />
       </div>
-      <h1 className="title">Predator</h1>
+      <h1 className="title" data-text="Predator">Predator</h1>
       <p className="subtitle">{subtitle}</p>
     </div>
   )
@@ -46,6 +45,31 @@ const Footer = React.memo(function Footer({ version, updateAvailable }: {
 const renderCard = (children: React.ReactNode) => (
   <div className="status-section"><div className="status-card">{children}</div></div>
 )
+
+const phaseVariants = {
+  initial: { opacity: 0, filter: 'blur(8px)', scale: 0.97 },
+  animate: { opacity: 1, filter: 'blur(0px)', scale: 1 },
+  exit: { opacity: 0, filter: 'blur(8px)', scale: 0.97 },
+}
+
+const PageWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const reducedMotion = useReducedMotion()
+  // Treat the initial `null` value as reduced motion to avoid a flash of
+  // animation for users who have requested reduced motion at the OS level.
+  const isReduced = reducedMotion !== false
+  return (
+    <motion.div
+      className="phase-motion"
+      variants={phaseVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={{ duration: isReduced ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {children}
+    </motion.div>
+  )
+}
 
 // ── App ──
 
@@ -146,16 +170,15 @@ const App: React.FC = () => {
   const subtitle = t('title')
 
   return (
+    <ToastProvider>
     <div className="app">
       <div className="background-gradient">
         <div className="gradient-orb orb-1" /><div className="gradient-orb orb-2" /><div className="gradient-orb orb-3" />
+        <ParticleBackground accentColor={c.accent} lightColor={c.light} />
       </div>
       <div className="scan-line" />
       <div className="container">
         <Logo accent={c.accent} light={c.light} dark={c.dark} subtitle={subtitle} />
-        {/* Loading */}
-        {phase === 'loading' && renderCard(<><div className="spinner"><div className="spinner-ring" /></div><p className="status-text">Загрузка...</p><div className="progress-bar indeterminate"><div className="progress-fill" /></div></>)}
-
         {(phase.startsWith('onboarding-') || phase === 'requesting-access') && (
           <div className="onb-steps">
             <div className={`onb-step${phase === 'onboarding-lang' ? ' active' : ' done'}`}><span className="onb-step-dot" /><span className="onb-step-label">{t('langTitle')}</span></div>
@@ -166,24 +189,28 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {phase === 'onboarding-lang' && renderCard(<><p className="onb-label">{t('langTitle')}</p><p className="onb-desc">{t('langDesc')}</p>
+        <AnimatePresence mode="wait">
+          {/* Loading */}
+          {phase === 'loading' && <PageWrapper key="loading">{renderCard(<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}><Skeleton width="64px" height="64px" radius="50%" /><Skeleton width="70%" height="16px" /><Skeleton width="50%" height="12px" /><Skeleton width="100%" height="6px" radius="3px" /></div>)}</PageWrapper>}
+
+          {phase === 'onboarding-lang' && <PageWrapper key="onboarding-lang">{renderCard(<><p className="onb-label">{t('langTitle')}</p><p className="onb-desc">{t('langDesc')}</p>
           <div className="lang-grid">
             <button className={`lang-btn${lang === 'ru' ? ' active' : ''}`} onClick={() => setLang('ru')}><span className="lang-flag">🇷🇺</span><span className="lang-name">{t('langRu')}</span></button>
             <button className={`lang-btn${lang === 'en' ? ' active' : ''}`} onClick={() => setLang('en')}><span className="lang-flag">🇬🇧</span><span className="lang-name">{t('langEn')}</span></button>
           </div>
-          <div className="onb-step-actions"><button className="start-button" onClick={hNextLang}>{t('next')}</button></div></>)}
+          <div className="onb-step-actions"><Button className="start-button" onClick={hNextLang}>{t('next')}</Button></div></>)}</PageWrapper>}
 
-        {phase === 'onboarding-theme' && renderCard(<><p className="onb-label">{t('themeTitle')}</p><p className="onb-desc">{t('themeDesc')}</p>
+          {phase === 'onboarding-theme' && <PageWrapper key="onboarding-theme">{renderCard(<><p className="onb-label">{t('themeTitle')}</p><p className="onb-desc">{t('themeDesc')}</p>
           <div className="theme-grid">
             {(Object.entries(THEMES) as [ThemeId, typeof c][]).map(([id, th]) => (
-              <button key={id} className={`theme-btn${theme === id ? ' active' : ''}`} style={{ '--theme-accent': th.accent, '--theme-bg': th.card } as React.CSSProperties} onClick={() => setTheme(id)}>
+              <Magnetic key={id}><button className={`theme-btn${theme === id ? ' active' : ''}`} style={{ '--theme-accent': th.accent, '--theme-bg': th.card } as React.CSSProperties} onClick={() => setTheme(id)}>
                 <span className="theme-swatch" style={{ background: th.accent }} /><span className="theme-name">{th.name}</span>
-              </button>
+              </button></Magnetic>
             ))}
           </div>
-          <div className="onb-step-actions"><button className="start-button" onClick={hNextTheme}>{t('next')}</button></div></>)}
+          <div className="onb-step-actions"><Button className="start-button" onClick={hNextTheme}>{t('next')}</Button></div></>)}</PageWrapper>}
 
-        {phase === 'onboarding-auth' && renderCard(<><p className="onb-label">{t('authTitle')}</p><p className="onb-desc">{t('authDesc')}</p>
+          {phase === 'onboarding-auth' && <PageWrapper key="onboarding-auth">{renderCard(<><p className="onb-label">{t('authTitle')}</p><p className="onb-desc">{t('authDesc')}</p>
           <div className="token-input-wrap">
             <label className="token-label">{t('tokenLabel')}</label>
             <div className="token-field">
@@ -191,30 +218,32 @@ const App: React.FC = () => {
             </div>
             {(tokenError || authError) && <p className="token-error">{tokenError || authError}</p>}
           </div>
-          <button className="start-button" onClick={hNextAuth} disabled={authLoading} style={{ marginTop: 8 }}>
+          <Button className="start-button" onClick={hNextAuth} disabled={authLoading} style={{ marginTop: 8 }}>
             {authLoading ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, position: 'relative', display: 'inline-block' }}><span className="spinner-ring" style={{ position: 'absolute', inset: 0 }} /></span> Проверка...</> : t('authBtn')}
-          </button>
-          <button className="skip-button" onClick={hRequestAccess} disabled={authLoading}>{t('authAlt')}</button></>)}
+          </Button>
+          <Button className="skip-button" variant="ghost" onClick={hRequestAccess} disabled={authLoading}>{t('authAlt')}</Button></>)}</PageWrapper>}
 
-        {phase === 'requesting-access' && renderCard(<>
-          {(!requestStatus || requestStatus === 'pending') && (<><div className="spinner"><div className="spinner-ring" /></div><p className="onb-label">{t('requestSent')}</p><p className="status-text" style={{ animation: 'textPulse 1.5s ease-in-out infinite', margin: '4px 0' }}>{t('requestPending')}</p><div className="request-id-badge">{t('requestId')}: #{requestId || '...'}</div><div className="progress-bar indeterminate" style={{ marginTop: 8 }}><div className="progress-fill" /></div>          <button className="skip-button" onClick={() => { cancelRequest(); setPhase('onboarding-auth') }}>{t('cancel')}</button></>)}
+          {phase === 'requesting-access' && <PageWrapper key="requesting-access">{renderCard(<>
+          {(!requestStatus || requestStatus === 'pending') && (<><p className="onb-label">{t('requestSent')}</p><div className="request-id-badge">{t('requestId')}: #{requestId || '...'}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', margin: '8px 0' }}><Skeleton width="100%" height="12px" /><Skeleton width="80%" height="12px" /><Skeleton width="60%" height="12px" /></div><Button className="skip-button" variant="ghost" onClick={() => { cancelRequest(); setPhase('onboarding-auth') }}>{t('cancel')}</Button></>)}
           {requestStatus === 'approved' && (<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('requestApproved')}</p><p className="status-text" style={{ animation: 'none' }}>Перенаправление...</p></>)}
-          {requestStatus === 'rejected' && (<><div className="error-icon-dl"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" /><line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /><line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /></svg></div><p className="status-text" style={{ color: '#EF4444', animation: 'none' }}>{t('requestRejected')}</p><button className="start-button" onClick={() => setPhase('onboarding-auth')}>{t('authBtn')}</button></>)}
-        </>)}
+          {requestStatus === 'rejected' && (<><div className="error-icon-dl"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" /><line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /><line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /></svg></div><p className="status-text" style={{ color: '#EF4444', animation: 'none' }}>{t('requestRejected')}</p><Button className="start-button" onClick={() => setPhase('onboarding-auth')}>{t('authBtn')}</Button></>)}
+        </>)}</PageWrapper>}
 
-        {phase === 'main' && renderCard(<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('ready')}</p>
+          {phase === 'main' && <PageWrapper key="main">{renderCard(<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('ready')}</p>
           <div className="main-cards">
-            <button className="main-card" onClick={hStartChecker}><div className="main-card-icon" style={{ background: 'rgba(255,255,255,0.06)' }}><IconShield size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('startCheck')}</span><span className="main-card-desc">Deep scan for files, processes, registry, network, and memory anomalies.</span></div><span className="main-card-arrow">→</span></button>
-            <button className="main-card" onClick={hStartDashboard}><div className="main-card-icon" style={{ background: 'rgba(255,255,255,0.06)' }}><IconDashboard size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('dashboard')}</span><span className="main-card-desc">Live system overview with streaming snapshots and runtime telemetry.</span></div><span className="main-card-arrow">→</span></button>
-          </div></>)}
+            <Magnetic><button className="main-card" onClick={hStartChecker}><div className="main-card-icon" style={{ background: 'rgba(255,255,255,0.06)' }}><IconShield size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('startCheck')}</span><span className="main-card-desc">Deep scan for files, processes, registry, network, and memory anomalies.</span></div><span className="main-card-arrow">→</span></button></Magnetic>
+            <Magnetic><button className="main-card" onClick={hStartDashboard}><div className="main-card-icon" style={{ background: 'rgba(255,255,255,0.06)' }}><IconDashboard size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('dashboard')}</span><span className="main-card-desc">Live system overview with streaming snapshots and runtime telemetry.</span></div><span className="main-card-arrow">→</span></button></Magnetic>
+          </div></>)}</PageWrapper>}
 
-        {phase === 'checker' && <Checker lang={lang} tokenId={tokenId} onBack={hBackToMain} />}
-        {phase === 'dashboard' && <Dashboard lang={lang} onBack={hBackToMain} />}
+          {phase === 'checker' && <PageWrapper key="checker"><Checker lang={lang} tokenId={tokenId} onBack={hBackToMain} /></PageWrapper>}
+          {phase === 'dashboard' && <PageWrapper key="dashboard"><Dashboard lang={lang} onBack={hBackToMain} /></PageWrapper>}
+        </AnimatePresence>
 
         <UpdateModal state={updateModal} theme={theme} lang={lang} onClose={hCloseModal} onDownload={hInstallUpdate} onRestart={hRestart} />
         <Footer version={version} updateAvailable={updateAvailable} />
       </div>
     </div>
+    </ToastProvider>
   )
 }
 

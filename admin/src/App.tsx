@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect, createContext, useContext } from 'react'
 import Layout from './components/Layout'
+import ParticleBackground from './components/ParticleBackground'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Pending from './pages/Pending'
@@ -47,9 +48,8 @@ export default function App() {
   if (!auth) {
     return (
       <div className="login-wrapper">
-        <div className="orb-1" />
-        <div className="orb-2" />
-        <div className="orb-3" />
+        <ParticleBackground density={80} opacity={0.3} speed={0.5} linkOpacity={0.1} />
+        <div className="login-scan-line" />
         <Login onLogin={login} />
       </div>
     )

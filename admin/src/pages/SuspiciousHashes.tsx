@@ -1,27 +1,29 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../App'
 import {
   getSuspiciousHashes, approveHash, rejectHash,
   getScanResultHashes, confirmHashFromScan,
   type SuspiciousHash, type ScanResultHash,
 } from '../api'
-
-// ── Tab definitions ──
+import HashRow from '../components/HashRow'
+import { Search, ShieldAlert, Clock, Check, X } from 'lucide-react'
+import { SkeletonTable } from '../components/Skeleton'
 
 interface TabDef {
   key: string
   label: string
-  icon: string
+  icon: ReactNode
 }
 
 const TABS: TabDef[] = [
-  { key: 'pending', label: 'На проверке', icon: '⏳' },
-  { key: 'confirmed', label: 'Подтверждённые', icon: '✅' },
-  { key: 'false_positive', label: 'Ложные', icon: '❌' },
-  { key: 'scan_results', label: 'Из сканов', icon: '📊' },
+  { key: 'pending', label: 'На проверке', icon: <Clock size={14} /> },
+  { key: 'confirmed', label: 'Подтверждённые', icon: <Check size={14} /> },
+  { key: 'false_positive', label: 'Ложные', icon: <X size={14} /> },
+  { key: 'scan_results', label: 'Из сканов', icon: <Search size={14} /> },
 ]
 
-// ── Component ──
+const smoothEase = [0.16, 1, 0.3, 1] as const
 
 export default function SuspiciousHashes() {
   const { auth } = useAuth()
@@ -30,6 +32,9 @@ export default function SuspiciousHashes() {
   const [scanResultsTotal, setScanResultsTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [confettiId, setConfettiId] = useState<string | number | null>(null)
+  const [glowId, setGlowId] = useState<string | number | null>(null)
+  const [rejectingId, setRejectingId] = useState<string | number | null>(null)
 
   const load = async (status: string) => {
     if (!auth) return
@@ -53,10 +58,23 @@ export default function SuspiciousHashes() {
 
   useEffect(() => { load(tab) }, [auth, tab])
 
+  const triggerConfetti = (id: string | number) => {
+    setConfettiId(id)
+    setGlowId(id)
+    setTimeout(() => setConfettiId(null), 800)
+    setTimeout(() => setGlowId(null), 1200)
+  }
+
+  const triggerReject = (id: string | number) => {
+    setRejectingId(id)
+    setTimeout(() => setRejectingId(null), 600)
+  }
+
   const handleApprove = async (id: number) => {
     if (!auth) return
     try {
       await approveHash(auth.token, id)
+      triggerConfetti(id)
       load(tab)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка')
@@ -67,6 +85,7 @@ export default function SuspiciousHashes() {
     if (!auth) return
     try {
       await rejectHash(auth.token, id)
+      triggerReject(id)
       load(tab)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка')
@@ -77,6 +96,7 @@ export default function SuspiciousHashes() {
     if (!auth) return
     try {
       await confirmHashFromScan(auth.token, sha256, fileName, fileSize)
+      triggerConfetti(sha256)
       load(tab)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка')
@@ -85,28 +105,7 @@ export default function SuspiciousHashes() {
 
   const isScanTab = tab === 'scan_results'
 
-  // ── Status helper for scan results ──
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'new': return <span style={{
-        fontSize: 11, padding: '2px 6px', borderRadius: 4,
-        background: 'rgba(245, 158, 11, 0.15)', color: '#eab308',
-      }}>Новый</span>
-      case 'pending': return <span style={{
-        fontSize: 11, padding: '2px 6px', borderRadius: 4,
-        background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6',
-      }}>На проверке</span>
-      case 'confirmed': return <span style={{
-        fontSize: 11, padding: '2px 6px', borderRadius: 4,
-        background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e',
-      }}>✅ Чит</span>
-      case 'false_positive': return <span style={{
-        fontSize: 11, padding: '2px 6px', borderRadius: 4,
-        background: 'rgba(255, 107, 107, 0.15)', color: '#ff6b6b',
-      }}>❌ Спам</span>
-      default: return null
-    }
-  }
+  const rowId = (h: SuspiciousHash | ScanResultHash) => (isScanTab ? (h as ScanResultHash).sha256 : (h as SuspiciousHash).id)
 
   return (
     <div>
@@ -121,165 +120,114 @@ export default function SuspiciousHashes() {
         </div>
       </div>
 
-      <div className="tabs" style={{ display: 'flex', gap: 4, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div className="hashes-segmented-tabs">
         {TABS.map(t => (
           <button
             key={t.key}
-            className={`btn ${tab === t.key ? 'btn-primary' : 'btn-secondary'}`}
+            className={`hashes-tab ${tab === t.key ? 'active' : ''}`}
             onClick={() => setTab(t.key)}
-            style={{ fontSize: 13, padding: '8px 16px' }}
           >
-            {t.icon} {t.label}
-            {t.key === 'scan_results' && scanResultsTotal > 0 &&
-              ` (${scanResultsTotal})`}
+            {tab === t.key && (
+              <motion.div className="hashes-tab-indicator" layoutId="hashes-tab-indicator" />
+            )}
+            <span className="hashes-tab-content">
+              {t.icon} {t.label}
+              {t.key === 'scan_results' && scanResultsTotal > 0 && (
+                <span className="hashes-tab-count">{scanResultsTotal}</span>
+              )}
+            </span>
           </button>
         ))}
       </div>
 
       {error && (
-        <div style={{ color: '#ff6b6b', padding: 16, textAlign: 'center' }}>
-          <p>{error}</p>
+        <div className="history-error">
+          <ShieldAlert size={16} />
+          {error}
         </div>
       )}
 
-      {loading ? (
-        <div className="loading"><div className="spinner" />Загрузка...</div>
-      ) : hashes.length === 0 ? (
-        <div className="table-container">
-          <div className="table-empty" style={{ padding: 60 }}>
-            <div className="table-empty-icon" style={{ fontSize: 48 }}>🔍</div>
-            <p>Нет хешей в статусе «{TABS.find(t => t.key === tab)?.label}»</p>
-            <p style={{ fontSize: 13, marginTop: 4, color: 'var(--text-muted)' }}>
-              {tab === 'pending'
-                ? 'Хеши появляются после того, как пользователи запускают сканирование и находят подозрительные файлы'
-                : tab === 'scan_results'
-                  ? 'Хеши появятся после того, как пользователи отправят результаты сканирования'
-                  : 'Подтверждённые хеши автоматически попадают в базу и используются при проверках'}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>SHA256</th>
-                <th>Имя файла</th>
-                {!isScanTab && <th>Пользователь</th>}
-                {isScanTab && <th>Пользователи</th>}
-                <th>Размер</th>
-                {!isScanTab && <th>Риск</th>}
-                {isScanTab && <th>Найдено раз</th>}
-                {isScanTab && <th>Статус</th>}
-                {!isScanTab && <th>Дата</th>}
-                {isScanTab && <th>Последний раз</th>}
-                <th style={{ width: 200 }}>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hashes.map((h: any, idx: number) => (
-                <tr key={isScanTab ? `scan-${h.sha256}-${idx}` : `hash-${h.id}`} style={{
-                  background: !isScanTab && h.status === 'new'
-                    ? 'rgba(255, 255, 255, 0.02)' : undefined,
-                }}>
-                  <td>
-                    <code style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                      {h.sha256.slice(0, 16)}...
-                    </code>
-                  </td>
-                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{h.file_name}</span>
-                  </td>
-                  <td style={{ color: 'var(--text-secondary)' }}>
-                    {isScanTab
-                      ? h.pc_usernames?.slice(0, 2).join(', ') || '—'
-                      : h.pc_username}
-                  </td>
-                  <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                    {h.file_size > 0
-                      ? h.file_size > 1024 * 1024
-                        ? `${(h.file_size / (1024 * 1024)).toFixed(1)} MB`
-                        : `${(h.file_size / 1024).toFixed(0)} KB`
-                      : '—'}
-                  </td>
-                  {!isScanTab && (
-                    <td>
-                      <span className={`badge ${h.risk_score > 60 ? 'badge-high' : h.risk_score > 30 ? 'badge-medium' : 'badge-low'}`}
-                        style={{ fontSize: 11 }}>
-                        {h.risk_score}
-                      </span>
-                    </td>
-                  )}
-                  {isScanTab && (
-                    <td style={{ fontSize: 12, textAlign: 'center' }}>
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        minWidth: 24, height: 24, borderRadius: 12,
-                        background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa',
-                        fontSize: 11, fontWeight: 600,
-                      }}>
-                        {h.occurrences}
-                      </span>
-                    </td>
-                  )}
-                  {isScanTab && (
-                    <td>{getStatusBadge(h.status)}</td>
-                  )}
-                  <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                    {new Date(isScanTab ? h.last_seen : h.created_at).toLocaleString('ru-RU')}
-                  </td>
-                  <td>
-                    {!isScanTab && tab === 'pending' && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          className="btn btn-primary"
-                          style={{ fontSize: 11, padding: '4px 10px' }}
-                          onClick={() => handleApprove(h.id)}
-                        >
-                          ✅ Чит
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          style={{ fontSize: 11, padding: '4px 10px' }}
-                          onClick={() => handleReject(h.id)}
-                        >
-                          ❌ Спам
-                        </button>
-                      </div>
-                    )}
-                    {!isScanTab && tab === 'confirmed' && (
-                      <span style={{ fontSize: 12, color: '#22c55e' }}>
-                        Reviewed by {h.reviewed_by_name || 'admin'}
-                      </span>
-                    )}
-                    {!isScanTab && tab === 'false_positive' && (
-                      <span style={{ fontSize: 12, color: '#ff6b6b' }}>
-                        Отклонён {h.reviewed_by_name || 'admin'}
-                      </span>
-                    )}
-                    {isScanTab && h.status === 'new' && (
-                      <button
-                        className="btn btn-primary"
-                        style={{ fontSize: 11, padding: '4px 10px' }}
-                        onClick={() => handleConfirmFromScan(h.sha256, h.file_name, h.file_size)}
-                      >
-                        ✅ Подтвердить чит
-                      </button>
-                    )}
-                    {isScanTab && h.status !== 'new' && (
-                      <span style={{ fontSize: 12, color: '#22c55e' }}>
-                        {h.status === 'confirmed' ? '✅ В базе' :
-                         h.status === 'pending' ? '⏳ На проверке' :
-                         '❌ Отклонён'}
-                      </span>
-                    )}
-                  </td>
+      <AnimatePresence mode="wait">
+        {loading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="table-container hash-table-container">
+              <SkeletonTable rows={6} cols={8} />
+            </div>
+          </motion.div>
+        ) : hashes.length === 0 ? (
+          <motion.div
+            key="empty"
+            className="table-container"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3, ease: smoothEase }}
+          >
+            <div className="table-empty hash-empty">
+              <div className="table-empty-icon"><Search size={40} /></div>
+              <p>Нет хешей в статусе «{TABS.find(t => t.key === tab)?.label}»</p>
+              <p>
+                {tab === 'pending'
+                  ? 'Хеши появляются после того, как пользователи запускают сканирование и находят подозрительные файлы'
+                  : tab === 'scan_results'
+                    ? 'Хеши появятся после того, как пользователи отправят результаты сканирования'
+                    : 'Подтверждённые хеши автоматически попадают в базу и используются при проверках'}
+              </p>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="table"
+            className="table-container hash-table-container"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: smoothEase }}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>SHA256</th>
+                  <th>Имя файла</th>
+                  {!isScanTab && <th>Пользователь</th>}
+                  {isScanTab && <th>Пользователи</th>}
+                  <th>Размер</th>
+                  {!isScanTab && <th>Риск</th>}
+                  {isScanTab && <th>Найдено раз</th>}
+                  {isScanTab && <th>Статус</th>}
+                  <th>{isScanTab ? 'Последний раз' : 'Дата'}</th>
+                  <th style={{ width: 220 }}>Действия</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {hashes.map((h, idx) => {
+                  const id = rowId(h)
+                  return (
+                    <HashRow
+                      key={isScanTab ? `scan-${id}-${idx}` : `hash-${id}`}
+                      data={h}
+                      isScan={isScanTab}
+                      tab={tab}
+                      index={idx}
+                      isGlowing={glowId === id}
+                      isRejecting={rejectingId === id}
+                      showConfetti={confettiId === id}
+                      onApprove={handleApprove}
+                      onReject={handleReject}
+                      onConfirmFromScan={handleConfirmFromScan}
+                    />
+                  )
+                })}
+              </tbody>
+            </table>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

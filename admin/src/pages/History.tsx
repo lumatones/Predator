@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import { useAuth } from '../App'
-import { getHistory, HistoryItem } from '../api'
+import { getHistory, type HistoryItem } from '../api'
+import { Key, User, RefreshCw, Search, List } from 'lucide-react'
+import { SkeletonStatCard, SkeletonTimeline, SkeletonText } from '../components/Skeleton'
+
+const springEase = [0.34, 1.56, 0.64, 1] as const
+const smoothEase = [0.16, 1, 0.3, 1] as const
+
+const filters = [
+  { key: 'all', label: 'Все' },
+  { key: 'token', label: 'Токены' },
+  { key: 'request', label: 'Запросы' },
+] as const
 
 export default function History() {
   const { auth } = useAuth()
@@ -10,6 +22,7 @@ export default function History() {
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<'all' | 'token' | 'request'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
 
   async function load() {
     if (!auth) return
@@ -50,8 +63,45 @@ export default function History() {
     })
   }
 
-  function getTypeIcon(type: string) {
-    return type === 'token' ? '🔑' : '👤'
+  function formatTime(dateStr: string) {
+    if (!dateStr) return '—'
+    return new Date(dateStr).toLocaleString('ru-RU', {
+      hour: '2-digit', minute: '2-digit',
+    })
+  }
+
+  const getItemMeta = (item: HistoryItem) => {
+    if (item.type === 'token') {
+      return {
+        icon: <Key size={14} />,
+        color: '#3B82F6',
+        bg: 'rgba(59, 130, 246, 0.15)',
+        label: 'Токен',
+      }
+    }
+    if (item.subType === 'approved') {
+      return {
+        icon: <User size={14} />,
+        color: '#22c55e',
+        bg: 'rgba(34, 197, 94, 0.15)',
+        label: 'Одобрен',
+      }
+    }
+    return {
+      icon: <User size={14} />,
+      color: '#ff6b6b',
+      bg: 'rgba(255, 68, 68, 0.15)',
+      label: 'Отклонён',
+    }
+  }
+
+  const cardVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: (i: number) => ({
+      opacity: 1,
+      y: 0,
+      transition: { delay: i * 0.08, duration: 0.45, ease: smoothEase },
+    }),
   }
 
   return (
@@ -63,6 +113,7 @@ export default function History() {
         </div>
         <div className="page-actions">
           <button className="btn btn-outline" onClick={load} disabled={loading}>
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
             {loading ? 'Загрузка...' : 'Обновить'}
           </button>
         </div>
@@ -70,113 +121,130 @@ export default function History() {
 
       {/* Stats */}
       <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-card-icon red">🔑</div>
+        <motion.div className="stat-card" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: springEase }}>
+          <div className="stat-card-icon red"><Key size={20} /></div>
           <div className="stat-card-value">{stats.totalTokensUsed}</div>
           <div className="stat-card-label">Токенов использовано</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon green">✓</div>
+        </motion.div>
+        <motion.div className="stat-card" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.4, ease: springEase }}>
+          <div className="stat-card-icon green"><User size={20} /></div>
           <div className="stat-card-value">{stats.totalRequestsProcessed}</div>
           <div className="stat-card-label">Запросов обработано</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-card-icon yellow">📋</div>
+        </motion.div>
+        <motion.div className="stat-card" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16, duration: 0.4, ease: springEase }}>
+          <div className="stat-card-icon yellow"><List size={20} /></div>
           <div className="stat-card-value">{items.length}</div>
           <div className="stat-card-label">Всего событий</div>
-        </div>
+        </motion.div>
       </div>
 
-      {/* Filters */}
-      <div className="table-container" style={{ marginBottom: 20 }}>
-        <div className="table-header">
-          <h3>События</h3>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div className="filter-tabs" style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: 3 }}>
-              {(['all', 'token', 'request'] as const).map(f => (
-                <button
-                  key={f}
-                  className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-outline'}`}
-                  onClick={() => setFilter(f)}
-                  style={{ padding: '5px 12px', fontSize: 11 }}
-                >
-                  {f === 'all' ? 'Все' : f === 'token' ? 'Токены' : 'Запросы'}
-                </button>
-              ))}
-            </div>
+      {/* Filters + search */}
+      <div className="table-container history-filters">
+        <div className="history-filters-inner">
+          <div className="history-filter-pills">
+            {filters.map(f => (
+              <button
+                key={f.key}
+                className={`history-filter-pill ${filter === f.key ? 'active' : ''}`}
+                onClick={() => setFilter(f.key as typeof filter)}
+              >
+                {filter === f.key && (
+                  <motion.div className="history-pill-bg" layoutId="history-pill-bg" />
+                )}
+                <span>{f.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <motion.div className="history-search" animate={{ width: searchFocused ? 260 : 180 }} transition={{ duration: 0.25, ease: smoothEase }}>
+            <Search size={14} className="history-search-icon" />
             <input
               type="text"
-              className="form-input"
+              className="history-search-input"
               placeholder="Поиск..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              style={{ width: 180, padding: '6px 12px', fontSize: 12 }}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
             />
-          </div>
+          </motion.div>
         </div>
+      </div>
 
-        {loading && !items.length ? (
-          <div className="loading">
-            <div className="spinner" />
-            Загрузка истории...
+      {/* Timeline */}
+      <div className="table-container history-timeline-container">
+      {loading && !items.length ? (
+        <>
+          <div className="stats-grid">
+            <SkeletonStatCard />
+            <SkeletonStatCard />
+            <SkeletonStatCard />
           </div>
-        ) : error ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#ff6b6b' }}>
+          <div className="table-container history-filters">
+            <SkeletonText lines={1} width={200} />
+          </div>
+          <div className="table-container history-timeline-container">
+            <SkeletonTimeline items={5} />
+          </div>
+        </>
+      ) : error ? (
+          <div className="history-error">
             <p>{error}</p>
-            <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={load}>
-              Повторить
-            </button>
+            <button className="btn btn-primary" onClick={load}>Повторить</button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="table-empty">
+          <div className="table-empty history-empty">
             <div className="table-empty-icon">📭</div>
             <p>Событий не найдено</p>
-            <p style={{ fontSize: 13, marginTop: 4, color: 'var(--text-muted)' }}>
-              {searchQuery ? 'Попробуйте изменить поисковый запрос' : 'Нет истории — используйте токены и обрабатывайте запросы'}
-            </p>
+            <p>{searchQuery ? 'Попробуйте изменить поисковый запрос' : 'Нет истории — используйте токены и обрабатывайте запросы'}</p>
           </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: 40 }}></th>
-                <th>Событие</th>
-                <th>Описание</th>
-                <th>Детали</th>
-                <th>Администратор</th>
-                <th>Дата</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(item => (
-                <tr key={item.id}>
-                  <td style={{ textAlign: 'center', fontSize: 16 }}>{getTypeIcon(item.type)}</td>
-                  <td>
-                    <span className={`badge ${item.subType === 'used' || item.subType === 'approved' ? 'badge-approved' : 'badge-rejected'}`}>
-                      {item.subType === 'used' ? 'Использован' :
-                       item.subType === 'approved' ? 'Одобрен' : 'Отклонён'}
-                    </span>
-                  </td>
-                  <td style={{ fontWeight: 500 }}>{item.description}</td>
-                  <td>
-                    {item.type === 'token' ? (
-                      <span className="token-code token-code-sm">{item.detail}</span>
-                    ) : (
-                      <span style={{ color: 'var(--text-secondary)' }}>{item.detail}</span>
-                    )}
-                  </td>
-                  <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{item.actor}</td>
-                  <td style={{ color: 'var(--text-secondary)', fontSize: 12, whiteSpace: 'nowrap' }}>
-                    {formatDate(item.date)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="history-timeline">
+            <motion.div
+              className="timeline-line"
+              initial={{ scaleY: 0 }}
+              animate={{ scaleY: 1 }}
+              transition={{ duration: 2, ease: smoothEase }}
+            />
+            <div className="timeline-items">
+              {filtered.map((item, i) => {
+                const meta = getItemMeta(item)
+                return (
+                  <motion.div
+                    key={item.id}
+                    className="timeline-item"
+                    initial="hidden"
+                    animate="visible"
+                    custom={filtered.length - 1 - i}
+                    variants={cardVariants}
+                  >
+                    <div className="timeline-node" style={{ color: meta.color, background: meta.bg, boxShadow: `0 0 12px ${meta.color}33` }}>
+                      {meta.icon}
+                    </div>
+                    <div className="timeline-card">
+                      <div className="timeline-card-header">
+                        <span className="timeline-type" style={{ color: meta.color }}>{meta.label}</span>
+                        <time className="timeline-time">{formatDate(item.date)}</time>
+                      </div>
+                      <p className="timeline-description">{item.description}</p>
+                      <div className="timeline-detail">
+                        {item.type === 'token' ? (
+                          <span className="token-code token-code-sm">{item.detail}</span>
+                        ) : (
+                          <span>{item.detail}</span>
+                        )}
+                      </div>
+                      <div className="timeline-actor">{item.actor} · {formatTime(item.date)}</div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </div>
         )}
 
         {!loading && filtered.length > 0 && (
-          <div style={{ padding: '10px 20px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
+          <div className="history-footer">
             Показано {filtered.length} из {items.length} событий
           </div>
         )}

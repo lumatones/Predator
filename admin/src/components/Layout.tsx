@@ -1,6 +1,11 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { LayoutDashboard, ClipboardCheck, Key, History, Activity, LogOut } from 'lucide-react'
 import { useAuth } from '../App'
-import { ReactNode } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
+import ParticleBackground from './ParticleBackground'
+import CommandPalette from './CommandPalette'
+import { Menu, X, Command, Search } from 'lucide-react'
 
 interface LayoutProps {
   children: ReactNode
@@ -8,12 +13,59 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const { auth, logout } = useAuth()
+  const { pathname } = useLocation()
+  const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
+  const reducedMotion = useReducedMotion()
+
+  useEffect(() => {
+    setIsMobileOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    document.body.style.overflow = isMobileOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [isMobileOpen])
 
   return (
     <div className="layout">
+      <div className="mobile-header">
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setIsMobileOpen(prev => !prev)}
+          aria-label="Открыть меню"
+        >
+          <Menu size={20} />
+        </button>
+        <span className="mobile-title">Predator Admin</span>
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setCommandOpen(true)}
+          aria-label="Открыть командную палитру"
+          title="Командная палитра (Ctrl+K / Cmd+K)"
+        >
+          <Command size={20} />
+        </button>
+      </div>
+
+      <div
+        className={`sidebar-overlay ${isMobileOpen ? 'open' : ''}`}
+        onClick={() => setIsMobileOpen(false)}
+      />
+
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${isMobileOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
+          <button
+            className="command-palette-trigger"
+            onClick={() => setCommandOpen(true)}
+            aria-label="Открыть командную палитру"
+            title="Командная палитра (Ctrl+K / Cmd+K)"
+          >
+            <Search size={16} />
+            <span>Поиск</span>
+            <kbd className="command-kbd">⌘K</kbd>
+          </button>
           <NavLink to="/" className="sidebar-logo">
             <svg viewBox="0 0 28 28" fill="none">
               <path d="M14 2L2 14L14 26L26 14L14 2Z" fill="url(#sg)" opacity="0.15"/>
@@ -33,43 +85,27 @@ export default function Layout({ children }: LayoutProps) {
 
         <nav className="sidebar-nav">
           <NavLink to="/" end className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Dashboard">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1"/>
-              <rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/>
-              <rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
+            <LayoutDashboard size={18} />
             <span>Dashboard</span>
           </NavLink>
 
           <NavLink to="/pending" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Запросы на доступ">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 11l3 3L22 4"/>
-              <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h7"/>
-            </svg>
+            <ClipboardCheck size={18} />
             <span>Запросы</span>
           </NavLink>
 
           <NavLink to="/tokens" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Управление токенами">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0110 0v4"/>
-            </svg>
+            <Key size={18} />
             <span>Токены</span>
           </NavLink>
 
           <NavLink to="/history" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="История сканирований">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
+            <History size={18} />
             <span>История</span>
           </NavLink>
 
           <NavLink to="/hashes" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title="Подозрительные сигнатуры">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="4 12 8 12 10 8 14 16 16 12 20 12"/>
-            </svg>
+            <Activity size={18} />
             <span>Сигнатуры</span>
           </NavLink>
         </nav>
@@ -84,20 +120,43 @@ export default function Layout({ children }: LayoutProps) {
               <div className="sidebar-user-role">{auth?.admin.role}</div>
             </div>
             <button className="sidebar-logout" onClick={logout} title="Выйти">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
+              <LogOut size={18} />
             </button>
           </div>
         </div>
+        <div className="sidebar-footer-mobile">
+          <button
+            className="mobile-close-btn"
+            onClick={() => setIsMobileOpen(false)}
+            aria-label="Закрыть меню"
+          >
+            <X size={20} />
+            <span>Закрыть</span>
+          </button>
+        </div>
       </aside>
 
+      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} withTrigger={false} />
+
       {/* Main content */}
-      <main className="main-content">
-        {children}
-      </main>
+      <div className="layout-bg">
+        <ParticleBackground density={30} opacity={0.15} speed={0.3} linkOpacity={0.02} links={false} />
+      </div>
+      <AnimatePresence mode="wait">
+        <motion.main
+          key={pathname}
+          className="main-content"
+          initial={{ opacity: 0, y: reducedMotion ? 0 : 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: reducedMotion ? 0 : -8 }}
+          transition={{
+            duration: reducedMotion ? 0 : 0.25,
+            ease: [0.16, 1, 0.3, 1]
+          }}
+        >
+          {children}
+        </motion.main>
+      </AnimatePresence>
     </div>
   )
 }

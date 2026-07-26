@@ -1,40 +1,39 @@
 import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { CheckCircle, User, Check, X } from 'lucide-react'
 import { useAuth } from '../App'
 import { getPending, approveRequest, rejectRequest, PendingRequest } from '../api'
+import CountdownCircle from '../components/CountdownCircle'
+import { SkeletonPendingCard } from '../components/Skeleton'
 
-// ── Countdown component (outside Pending — stable, won't re-create on re-render) ──
-function CountdownItem({ expiresAt }: { expiresAt: string }) {
-  const calcDisplay = () => {
-    const now = new Date()
-    const exp = new Date(expiresAt)
-    const diffMs = exp.getTime() - now.getTime()
-    if (diffMs <= 0) return { text: 'Истёк', isUrgent: false, isExpired: true }
-    const mins = Math.floor(diffMs / 60000)
-    const secs = Math.floor((diffMs % 60000) / 1000)
-    if (mins > 60) {
-      const hours = Math.floor(mins / 60)
-      return { text: `${hours}ч ${mins % 60}м ${secs}с`, isUrgent: diffMs < 5 * 60 * 1000, isExpired: false }
-    }
-    return { text: `${mins}м ${secs}с`, isUrgent: diffMs < 5 * 60 * 1000, isExpired: false }
-  }
+// ── Toast helpers ──
 
-  const [state, setState] = useState(calcDisplay)
+type ToastType = 'success' | 'error'
 
+interface Toast {
+  id: number
+  type: ToastType
+  message: string
+}
+
+const springEase = [0.16, 1, 0.3, 1] as const
+
+function ToastItem({ toast, onDone }: { toast: Toast; onDone: () => void }) {
   useEffect(() => {
-    const timer = setInterval(() => setState(calcDisplay()), 1000)
-    return () => clearInterval(timer)
-  }, [expiresAt])
+    const timer = setTimeout(onDone, 4000)
+    return () => clearTimeout(timer)
+  }, [onDone])
 
   return (
-    <span style={{
-      fontFamily: 'SF Mono, Fira Code, monospace',
-      fontSize: 13,
-      fontWeight: 600,
-      color: state.isExpired ? '#ff6b6b' : state.isUrgent ? '#F59E0B' : '#22c55e',
-      animation: state.isUrgent && !state.isExpired ? 'pulse 1.5s ease-in-out infinite' : 'none',
-    }}>
-      {state.text}
-    </span>
+    <motion.div
+      className={`toast toast-${toast.type}`}
+      initial={{ x: 80, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 80, opacity: 0 }}
+      transition={{ duration: 0.25, ease: springEase }}
+    >
+      {toast.message}
+    </motion.div>
   )
 }
 
@@ -43,20 +42,18 @@ export default function Pending() {
   const [requests, setRequests] = useState<PendingRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [toasts, setToasts] = useState<Toast[]>([])
   const [actionId, setActionId] = useState<number | null>(null)
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [exitAction, setExitAction] = useState<{ id: number; action: 'approve' | 'reject' } | null>(null)
+  const toastId = useRef(0)
 
-  useEffect(() => {
-    return () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current)
-    }
-  }, [])
+  const showToast = (type: ToastType, message: string) => {
+    const id = ++toastId.current
+    setToasts(prev => [...prev, { id, type, message }])
+  }
 
-  function showToast(type: 'success' | 'error', message: string) {
-    setToast({ type, message })
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 4000)
+  const removeToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
   }
 
   async function load() {
@@ -78,6 +75,7 @@ export default function Pending() {
   async function handleApprove(id: number) {
     if (!auth) return
     setActionId(id)
+    setExitAction({ id, action: 'approve' })
     try {
       await approveRequest(auth.token, id)
       showToast('success', 'Запрос одобрен')
@@ -86,12 +84,14 @@ export default function Pending() {
       showToast('error', err instanceof Error ? err.message : 'Ошибка')
     } finally {
       setActionId(null)
+      setExitAction(null)
     }
   }
 
   async function handleReject(id: number) {
     if (!auth) return
     setActionId(id)
+    setExitAction({ id, action: 'reject' })
     try {
       await rejectRequest(auth.token, id)
       showToast('success', 'Запрос отклонён')
@@ -100,7 +100,18 @@ export default function Pending() {
       showToast('error', err instanceof Error ? err.message : 'Ошибка')
     } finally {
       setActionId(null)
+      setExitAction(null)
     }
+  }
+
+  const containerVariants = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.06 } },
+  }
+
+  const cardVariants = {
+    hidden: { opacity: 0, y: 20, scale: 0.96 },
+    show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.35, ease: springEase } },
   }
 
   return (
@@ -118,87 +129,108 @@ export default function Pending() {
       </div>
 
       {error && (
-        <div style={{ background: 'rgba(255,68,68,0.1)', border: '1px solid rgba(255,68,68,0.2)', borderRadius: 8, padding: 12, marginBottom: 20, color: '#ff6b6b', fontSize: 13 }}>
+        <div className="pending-error">
           {error}
         </div>
       )}
 
-      <div className="table-container">
-        <div className="table-header">
-          <h3>Ожидающие проверки</h3>
-          {requests.length > 0 && <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{requests.length} запрос(ов)</span>}
+      {loading && !requests.length ? (
+        <div className="pending-grid">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonPendingCard key={i} />)}
         </div>
+      ) : requests.length === 0 ? (
+        <motion.div
+          className="pending-empty"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: springEase }}
+        >
+          <CheckCircle size={48} className="pending-empty-icon" />
+          <h3>Все запросы обработаны</h3>
+          <p>Новые запросы появятся здесь</p>
+        </motion.div>
+      ) : (
+        <motion.div
+          className="pending-grid"
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+        >
+          <AnimatePresence mode="popLayout">
+            {requests.map(r => {
+              const isApproving = exitAction?.id === r.id && exitAction.action === 'approve'
+              const isRejecting = exitAction?.id === r.id && exitAction.action === 'reject'
+              return (
+              <motion.div
+                key={r.id}
+                className={`pending-card ${isApproving ? 'exiting-approve' : ''} ${isRejecting ? 'exiting-reject' : ''}`}
+                variants={cardVariants}
+                layout
+                whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                exit={
+                  isApproving
+                    ? { x: 200, opacity: 0, transition: { duration: 0.35, ease: springEase } }
+                    : isRejecting
+                    ? { x: [-10, 10, -10, -200], opacity: 0, transition: { duration: 0.45, ease: springEase } }
+                    : { opacity: 0, transition: { duration: 0.2 } }
+                }
+              >
+                <div className="pending-card-header">
+                  <div className="pending-avatar">
+                    <User size={20} />
+                  </div>
+                  <div className="pending-meta">
+                    <h4 className="pending-username">{r.pc_username}</h4>
+                    <span className="pending-id">#{r.id}</span>
+                  </div>
+                </div>
 
-        {loading && !requests.length ? (
-          <div className="loading">
-            <div className="spinner" />
-            Загрузка запросов...
-          </div>
-        ) : requests.length === 0 ? (
-          <div className="table-empty">
-            <div className="table-empty-icon">✅</div>
-            <p>Нет ожидающих запросов</p>
-            <p style={{ fontSize: 13, marginTop: 4 }}>Все запросы обработаны</p>
-          </div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Имя ПК</th>
-                <th>Дата запроса</th>
-                <th>Истекает</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map(r => (
-                <tr key={r.id}>
-                  <td style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>#{r.id}</td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 500 }}>{r.pc_username}</span>
-                    </div>
-                  </td>
-                  <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                    {new Date(r.created_at).toLocaleString('ru-RU')}
-                  </td>
-                  <td style={{ fontSize: 12 }}>
-                    {r.expires_at
-                      ? <CountdownItem expiresAt={r.expires_at} />
-                      : '—'}
-                  </td>
-                  <td>
-                    <div className="action-btns">
-                      <button
-                        className="btn btn-green btn-sm"
-                        onClick={() => handleApprove(r.id)}
-                        disabled={actionId === r.id}
-                      >
-                        {actionId === r.id ? '...' : 'Одобрить'}
-                      </button>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() => handleReject(r.id)}
-                        disabled={actionId === r.id}
-                      >
-                        {actionId === r.id ? '...' : 'Отклонить'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                <div className="pending-card-body">
+                  <div className="pending-countdown">
+                    {r.expires_at ? (
+                      <CountdownCircle expiresAt={r.expires_at} createdAt={r.created_at} size={64} stroke={5} />
+                    ) : (
+                      <span className="pending-no-expiry">Без срока</span>
+                    )}
+                  </div>
+                  <div className="pending-created">
+                    <span>Запрос от</span>
+                    <time>{new Date(r.created_at).toLocaleString('ru-RU')}</time>
+                  </div>
+                </div>
 
-      {/* Toast */}
-      {toast && (
-        <div className="toast-container">
-          <div className={`toast toast-${toast.type}`}>{toast.message}</div>
-        </div>
+                <div className="pending-card-actions">
+                  <button
+                    className="btn btn-green btn-sm pending-approve"
+                    onClick={() => handleApprove(r.id)}
+                    disabled={actionId === r.id}
+                  >
+                    <Check size={14} />
+                    {actionId === r.id ? '...' : 'Одобрить'}
+                  </button>
+                  <button
+                    className="btn btn-danger btn-sm pending-reject"
+                    onClick={() => handleReject(r.id)}
+                    disabled={actionId === r.id}
+                  >
+                    <X size={14} />
+                    {actionId === r.id ? '...' : 'Отклонить'}
+                  </button>
+                </div>
+              </motion.div>
+            )})}
+          </AnimatePresence>
+        </motion.div>
       )}
+
+      {/* Toasts */}
+      <div className="toast-container">
+        <AnimatePresence>
+          {toasts.map(t => (
+            <ToastItem key={t.id} toast={t} onDone={() => removeToast(t.id)} />
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }

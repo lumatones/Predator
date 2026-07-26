@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
 
 // ── Per-tab cache ──
@@ -9,6 +10,8 @@ interface TabCacheEntry {
 const tabCache = new Map<ScanMode, TabCacheEntry>()
 import { exportHtml, exportJson } from '../utils/export-report'
 import { submitScan } from '../api'
+import { Magnetic } from '../components/ui/Magnetic'
+import { Button } from '../components/ui/Button'
 import {
   IconFolder,
   IconGear,
@@ -266,6 +269,16 @@ function calcScanPercent(progress: ScanProgress | null): number {
 // ── Component ──
 
 export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
+  const prefersReducedMotion = useReducedMotion()
+
+  const containerVariants = prefersReducedMotion
+    ? { hidden: {}, visible: {} }
+    : { hidden: {}, visible: { transition: { staggerChildren: 0.03 } } }
+
+  const itemVariants = prefersReducedMotion
+    ? { hidden: {}, visible: {} }
+    : { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.3 } } }
+
   const t = useMemo(() => (key: string) => T[lang][key] || key, [lang])
   const [activeTab, setActiveTab] = useState<ScanMode>('full')
   const cachedEntry = tabCache.get(activeTab)
@@ -497,11 +510,11 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
     <div className="checker-wrapper">
       <div className="checker-header">
         <div className="checker-title-row">
-          <button className="checker-back-btn" onClick={onBack} title="Back">
+          <Button className="checker-back-btn" variant="ghost" size="sm" onClick={onBack} title="Back">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
-          </button>
+          </Button>
           <h2 className="checker-title">{t('title')}</h2>
           <div className="checker-status-dot" data-phase={phase} />
         </div>
@@ -510,14 +523,14 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
       {/* Tabs */}
       <div className="checker-tabs" role="tablist">
         {TABS.map(tab => (
+          <Magnetic key={tab.id} strength={0.15}>
           <button
-            key={tab.id}
             className={`checker-tab${activeTab === tab.id ? ' active' : ''}`}
             onClick={() => handleTabChange(tab.id)}
             role="tab"
             aria-selected={activeTab === tab.id}
             data-color={tab.color}
-            style={{ '--tab-accent': tab.color } as React.CSSProperties}
+            style={{ '--tab-accent': tab.color, width: '100%' } as React.CSSProperties}
           >
             <span className="checker-tab-icon">
               {tab.icon === 'Folder' ? <IconFolder size={16} color={tab.color} /> :
@@ -538,6 +551,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
               </span>
             )}
           </button>
+          </Magnetic>
         ))}
       </div>
 
@@ -557,12 +571,12 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
              currentTab.icon === 'Shield' ? <IconShield size={24} color={currentTab.color} animated /> :
              currentTab.icon === 'Globe' ? <IconGlobe size={24} color={currentTab.color} animated /> : null}
           </div>
-          <button className="checker-start-btn" data-tab={activeTab} onClick={handleStartScan}>
+          <Button className="checker-start-btn" onClick={handleStartScan}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
             </svg>
             {t('startBtn')}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -688,7 +702,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
           {results.length > 0 && (
             <div className="checker-results-split">
               <div className="checker-results-list">
-                <div className="checker-groups">
+                <motion.div className="checker-groups" variants={containerVariants} initial="hidden" animate="visible">
                   {filteredResults.length > 0 ? (
                     (['high', 'medium', 'low'] as const).map(riskLevel => {
                     const group = filteredResults.filter(r => r.risk === riskLevel)
@@ -716,7 +730,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                     }
 
                     return (
-                      <div key={riskLevel} className={`result-group group-${riskLevel}`}>
+                      <motion.div key={riskLevel} className={`result-group group-${riskLevel}`} variants={itemVariants}>
                         <button className="group-header" onClick={toggleGroup}>
                           <div className="group-header-left">
                             <span className={`group-risk-dot dot-${riskLevel}`} />
@@ -736,12 +750,12 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                         </button>
 
                         {isExpanded && (
-                          <div className="group-body">
+                          <motion.div className="group-body" variants={containerVariants} initial="hidden" animate="visible">
                             {visible.map((r, i) => (
-                              <div key={`${r.path}-${i}`}
+                              <motion.div key={`${r.path}-${i}`}
                                 className={`result-row${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? ' selected' : ''}`}
                                 data-risk={r.risk}
-                                style={{ animationDelay: `${i * 0.06}s` }}
+                                variants={itemVariants}
                                 onClick={() => setSelectedResult(
                                   selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? null : r
                                 )}
@@ -758,7 +772,7 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                                     {r.matches.length > 1 && <span className="match-more">+{r.matches.length - 1}</span>}
                                   </div>
                                 </div>
-                              </div>
+                              </motion.div>
                             ))}
 
                             {hidden > 0 && !isShowAll && (
@@ -771,15 +785,15 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                                 {t('collapse')}
                               </button>
                             )}
-                          </div>
+                          </motion.div>
                         )}
-                      </div>
+                      </motion.div>
                     )
                   })
                   ) : (
                     searchQuery && <div className="search-no-results">{t('searchNoResults')}</div>
                   )}
-                </div>
+                </motion.div>
               </div>
 
               <div className="checker-results-detail">
@@ -844,23 +858,23 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
           )}
 
           <div className="checker-actions">
-            <button className="checker-action-btn secondary" onClick={handleClear}>{t('clear')}</button>
+            <Button className="checker-action-btn secondary" size="sm" onClick={handleClear}>{t('clear')}</Button>
             <div className="checker-export-group">
-              <button className="checker-action-btn export" onClick={() => handleExport('html')} title={t('exportHtml')}>
+              <Button className="checker-action-btn export" size="sm" onClick={() => handleExport('html')} title={t('exportHtml')}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
                 {t('exportHtml')}
-              </button>
-              <button className="checker-action-btn export" onClick={() => handleExport('json')} title={t('exportJson')}>
+              </Button>
+              <Button className="checker-action-btn export" size="sm" onClick={() => handleExport('json')} title={t('exportJson')}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
                 {t('exportJson')}
-              </button>
+              </Button>
               <span className="checker-export-msg">{exportMsg}</span>
             </div>
-            <button className="checker-action-btn primary" onClick={handleStartScan}>{t('scanAgain')}</button>
+            <Button className="checker-action-btn primary" size="sm" onClick={handleStartScan}>{t('scanAgain')}</Button>
           </div>
         </div>
       )}
