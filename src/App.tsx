@@ -6,6 +6,7 @@ import { IconShield, IconDashboard } from './icons'
 import UpdateModal from './components/ui/UpdateModal'
 import ParticleBackground from './components/ui/ParticleBackground'
 import PredatorLogo3D from './components/ui/PredatorLogo3D'
+import GlassEye from './components/ui/GlassEye'
 import ThemeBurnTransition from './components/ui/ThemeBurnTransition'
 import { ToastProvider } from './components/ui/ToastProvider'
 import { Skeleton } from './components/ui/Skeleton'
@@ -324,6 +325,10 @@ const App: React.FC = () => {
         <UpdateModal state={updateModal} theme={theme} lang={lang} onClose={hCloseModal} onDownload={hInstallUpdate} onRestart={hRestart} />
         <Footer version={version} updateAvailable={updateAvailable} />
       </div>
+      {/* GlassEye — always visible on every screen, fixed position */}
+      {phase !== 'loading' && phase !== 'onboarding-lang' && phase !== 'onboarding-theme' && phase !== 'onboarding-auth' && phase !== 'requesting-access' && (
+        <GlassEye position="bottom-right" size={100} scanLine creepiness={0.6} />
+      )}
     </div>
     </ToastProvider>
   )

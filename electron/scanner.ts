@@ -52,7 +52,8 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   let filesScanned = 0
 
   clearFindingDedup()
-  ctx.sigCache.clear()
+  // NOTE: sigCache intentionally NOT cleared — digital signatures persist between scans.
+  // Each check spawns PowerShell (2s timeout). Keeping the cache saves 2s PER FILE.
   await sendProgress(win, { phase: 'scanning', currentDir: 'Advanced process scanning...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 1 })
   results.push(...safeCall('scanRunningProcessesV2', () => scanRunningProcessesV2()))
 
@@ -220,8 +221,7 @@ async function runQuickScan(win: BrowserWindow | null): Promise<{ results: ScanR
   let filesScanned = 0
 
   clearFindingDedup()
-  ctx.sigCache.clear()
-
+  // NOTE: sigCache intentionally NOT cleared — persists between scans.
   await sendProgress(win, { phase: 'scanning', currentDir: 'Processes...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 1 })
   results.push(...safeCall('scanRunningProcessesV2', () => scanRunningProcessesV2()))
   results.push(...safeCall('scanMasqueradingProcesses', () => scanMasqueradingProcesses()))
@@ -265,8 +265,7 @@ async function runCleanerScan(win: BrowserWindow | null): Promise<{ results: Sca
   const results: ScanResult[] = []
 
   clearFindingDedup()
-  ctx.sigCache.clear()
-
+  // NOTE: sigCache intentionally NOT cleared — persists between scans.
   await sendProgress(win, { phase: 'scanning', currentDir: 'PC cleaning detection...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 1 })
   results.push(...safeCall('runPcCleanerScan', () => runPcCleanerScan()))
 
@@ -299,8 +298,8 @@ export function registerScanHandlers() {
     const tokenId = options?.token_id ?? options?.tokenId ?? 0
     const pcUsername = options?.pc_username ?? options?.pcUsername ?? 'unknown'
 
-    // Internal state cleanup
-    ctx.clear()
+    // Internal state cleanup — preserves expensive caches (sigCache, peHeaderCache)
+    ctx.resetScan()
 
     try {
       const startTime = Date.now()

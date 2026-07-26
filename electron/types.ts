@@ -77,11 +77,22 @@ export class ScanContext {
   }
 
   clear() {
+    // Full reset — clears ALL state (use for app restart / full reset)
     this.findingDedup.clear()
     this.sigCache.clear()
     this.peHeaderCache.clear()
     this.cheatNameCache.clear()
     this.shadowFindings = []
+  }
+
+  /** Reset scan-specific state but PRESERVE expensive caches (signatures, PE headers).
+   *  Digital signatures don't change between scans — no need to re-check via PowerShell.
+   *  sigCache → 2s per file saved on subsequent scans. */
+  resetScan() {
+    this.findingDedup.clear()
+    this.cheatNameCache.clear()
+    this.shadowFindings = []
+    // NOTE: sigCache and peHeaderCache intentionally NOT cleared
   }
 }
 

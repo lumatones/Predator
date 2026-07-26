@@ -420,7 +420,7 @@ export function checkDigitalSignature(filepath: string): boolean {
   try {
     const out = execSync(
       `powershell -Command "(Get-AuthenticodeSignature '${filepath.replace(/'/g, "''")}').Status"`,
-      { encoding: 'utf-8', timeout: 5000 },
+      { encoding: 'utf-8', timeout: 2000 },
     )
     const valid = out.includes('Valid')
     ctx.sigCache.set(filepath, valid)
