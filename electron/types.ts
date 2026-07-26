@@ -12,7 +12,7 @@ export type ScanMode = 'full' | 'quick' | 'dma'
 export interface ScanResult {
   path: string
   fileName: string
-  type: 'file' | 'browser' | 'process' | 'registry' | 'hardware' | 'software'
+  type: 'file' | 'browser' | 'process' | 'registry' | 'hardware' | 'software' | 'system'
   risk: 'high' | 'medium' | 'low'
   matches: string[]
   size: number

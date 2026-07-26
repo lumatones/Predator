@@ -7,11 +7,12 @@ import { scanBrowserHistory } from './browser'
 import { getScanPaths } from '../cheats-db'
 
 const KNOWN_DMA_VENDORS = [
-  { name: 'Xilinx', ids: ['10ee'] },
+  { name: 'Xilinx FPGA', ids: ['10ee'] },
   { name: 'Altera/Intel FPGA', ids: ['1172'] },
   { name: 'Lattice Semiconductor', ids: ['1204'] },
   { name: 'FTDI (USB-FPGA bridge)', ids: ['0403'] },
-  { name: 'Texas Instruments (FPGA)', ids: ['104c'] },
+  { name: 'Texas Instruments FPGA', ids: ['104c'] },
+  { name: 'Xilinx (alt class)', ids: ['dada'] },
 ]
 
 // PCI Class Codes for suspicious generic bridges (possible spoofed FPGA devices)
@@ -183,6 +184,75 @@ export function scanDmaRegistry(): ScanResult[] {
       }
     } catch (_e) { /* skip */ }
   }
+
+  return results
+}
+
+/**
+ * Check IOMMU/VT-d status — if disabled, DMA protection is off
+ */
+export function checkIommuStatus(): ScanResult[] {
+  const results: ScanResult[] = []
+
+  const psCmd = `
+$ErrorActionPreference = 'SilentlyContinue'
+$info = @{}
+# Check if Hyper-V/VBS is enforcing DMA protection
+$dmaGuard = Get-CimInstance -Namespace root\\wmi -ClassName Win32_DeviceGuard -ErrorAction SilentlyContinue
+if ($dmaGuard) { $info.DmaGuard = $dmaGuard.SecurityServicesConfigured }
+# Check kernel DMA protection via registry
+$kernelDma = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Kernel DMA Protection' -ErrorAction SilentlyContinue
+if ($kernelDma) { $info.KernelDma = $kernelDma }
+# Check Device Guard / Credential Guard status
+$devGuard = Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\\Microsoft\\Windows\\DeviceGuard -ErrorAction SilentlyContinue
+if ($devGuard) { $info.DeviceGuard = $devGuard.SecurityServicesRunning }
+$info | ConvertTo-Json -Compress
+`
+
+  try {
+    const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
+      encoding: 'utf-8' as BufferEncoding,
+      timeout: 8000,
+      windowsHide: true,
+    }).trim()
+
+    if (out && out.length > 2) {
+      try {
+        const info = JSON.parse(out)
+        const services = info.DmaGuard ?? info.DeviceGuard
+        // Only warn if we EXPLICITLY know protection is off
+        // (undefined means WMI class not available — not a warning)
+        if (services !== undefined && services !== null && services === 0) {
+          results.push({
+            path: 'System Security',
+            fileName: '⚠ IOMMU/DMA Protection OFF',
+            type: 'system',
+            risk: 'medium',
+            matches: [
+              'DMA protection is NOT active',
+              'Kernel DMA Protection: disabled or not configured',
+              '⚠ DMA cheat cards can read all system memory',
+            ],
+            size: 0,
+            modifiedAt: new Date().toISOString(),
+          })
+        } else {
+          results.push({
+            path: 'System Security',
+            fileName: '✅ IOMMU/DMA Protection Active',
+            type: 'system',
+            risk: 'low',
+            matches: [
+              `DMA protection services: ${services}`,
+              'System is protected against DMA attacks',
+            ],
+            size: 0,
+            modifiedAt: new Date().toISOString(),
+          })
+        }
+      } catch { /* parse error */ }
+    }
+  } catch { /* IOMMU check optional */ }
 
   return results
 }

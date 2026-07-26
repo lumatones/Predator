@@ -36,9 +36,11 @@ import { scanGameIntegrity, scanGameModules, scanMasqueradingProcesses, scanOpen
 import { scanNetstatV2 } from './modes/network'
 import { scanRegistryDeepV2, scanPrefetchV2, scanRegistryForCheats } from './modes/registry'
 import { scanBrowserHistory } from './modes/browser'
-import { runDmaScan, scanDmaDevices, scanScheduledTasks } from './modes/dma'
+import { runDmaScan, scanDmaDevices, scanScheduledTasks, checkIommuStatus } from './modes/dma'
 import { safeSpread } from './utils/safe-spread'
 import { runEtwScan } from './etw-provider'
+import { runForensicScan } from './forensic-traces'
+import { runAntiForensicScan } from './anti-forensic'
 
 // ═══════════════════════════════════════════════════
 // FULL SCAN (was extended) — 9-phase deep scan
@@ -160,9 +162,10 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
       }
   } catch (_e) { /* PowerShell AMSI scan failed */ }
 
-  // Phase 6 — DMA + scheduled tasks
-  await sendProgress(win, { phase: 'scanning', currentDir: 'DMA devices...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 6 })
+  // Phase 6 — DMA + scheduled tasks + IOMMU
+  await sendProgress(win, { phase: 'scanning', currentDir: 'DMA devices + IOMMU...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 6 })
   results.push(...safeSpread('scanDmaDevices', scanDmaDevices()))
+  results.push(...safeSpread('checkIommuStatus', checkIommuStatus()))
   await sendProgress(win, { phase: 'scanning', currentDir: 'Scheduled tasks...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 6 })
   results.push(...safeSpread('scanScheduledTasks', scanScheduledTasks()))
 
@@ -174,7 +177,15 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 8 })
   results.push(...safeSpread('scanBrowserHistory', await scanBrowserHistory(EXTENDED_CHEAT_KEYWORDS)))
 
-  await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 9 })
+  // Phase 9 — Forensic artifact scan (Prefetch, Amcache, BAM, UserAssist, EventLogs...)
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Forensic artifact scan...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 9 })
+  results.push(...safeSpread('runForensicScan', runForensicScan()))
+
+  // Phase 10 — Anti-forensic scan (log clearing, cleaning tools, tampering)
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Anti-forensic integrity check...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 10 })
+  results.push(...safeSpread('runAntiForensicScan', runAntiForensicScan()))
+
+  await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 12 })
   return { results, filesScanned }
 }
 
