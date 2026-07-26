@@ -77,6 +77,12 @@ export const KNOWN_PROCESSES: string[] = [
   'absolute.exe', 'nightfall.exe', 'aurora.exe',
   'hydrogen.exe', 'oxide.exe', 'havoc.exe', 'revolution.exe',
 
+  // 0xCheats / LeetCheats / Unicore / Vanish
+  '0xcheats.exe', '0xcheat.exe', 'oxcheat.exe',
+  'leetcheats.exe', 'leetcheat.exe', 'noleet.exe', 'noleetcheats.exe',
+  'unicore.exe', 'unicoremenu.exe', 'unicorecheat.exe',
+  'vanish.exe', 'vanishmenu.exe', 'vanishcheat.exe',
+
   // GTA 5 mod menus (asi loaders — SP only, but used in MP)
   'gta5modmenu.exe', 'menyoo.exe',
   'simpletrainer.exe', 'scripthookv.exe', 'scripthookvdotnet.exe',
@@ -160,6 +166,13 @@ export const KNOWN_CHEAT_FILES: string[] = [
   'susano.dll', 'lambda.dll', 'vmenu.dll',
   'absolute.dll', 'nightfall.dll', 'aurora.dll',
   'hydrogen.dll', 'oxide.dll', 'havoc.dll', 'revolution.dll',
+
+  // 0xCheats / LeetCheats / Unicore / Vanish / Nightfall DLLs
+  '0xcheats.dll', '0xcheat.dll', 'oxcheat.dll',
+  'leetcheats.dll', 'leetcheat.dll', 'noleet.dll', 'noleetcheats.dll',
+  'unicore.dll', 'unicoremenu.dll', 'unicorecheat.dll',
+  'vanish.dll', 'vanishmenu.dll', 'vanishcheat.dll',
+  'nightfall.dll', 'nightfallmenu.dll', 'nightfall_loader.dll',
 
   // Majestic RP
   'majesty.dll', 'rpchanger.dll',
@@ -331,6 +344,15 @@ export const KNOWN_CHEAT_FOLDERS: string[] = [
   // DirectX masquerading cheat loaders
   // NOTE: potential FP on dev machines with DirectX documentation — use hash-only for zero-FP
   'dxwebsetup',
+
+  // 0xCheats / LeetCheats / Unicore / Vanish / Nightfall folders
+  '0xcheats', '0xcheat', 'oxcheat',
+  'leetcheats', 'leetcheat', 'noleet', 'noleetcheats',
+  '1337 cheat', '1337cheat', 'leet',
+  'unicore', 'unicore menu', 'unicore cheat',
+  'vanish', 'vanish menu', 'vanish cheat', 'vanish spoofer',
+  'nightfall', 'nightfall menu', 'nightfall loader',
+  'ownhacks', 'up-game', // Unicore resellers
 ]
 
 // ═══════════════════════════════════════════════════
@@ -401,6 +423,13 @@ export const KNOWN_BINARY_SIGNATURES: Buffer[] = [
   // NOTE: B('dxwebsetup') and B('DirectX Web Setup') are intentionally NOT added here
   // because the legitimate Microsoft DirectX Web Setup Installer also contains these strings.
   // Detection for this cheat relies on SHA256 hash only (filename detection would produce FPs).
+
+  // 0xCheats / LeetCheats / Unicore / Vanish / Nightfall binary strings
+  B('0xcheats'), B('oxcheat'), B('0xcheat'),
+  B('leetcheats'), B('noleet'), B('leetcheat'),
+  B('unicore'), B('unicoremenu'), B('unicorecheat'),
+  B('vanish'), B('vanishmenu'), B('vanishcheat'),
+  B('nightfall'), B('nightfallmenu'),
 ]
 
 function B(s: string): Buffer {
@@ -524,6 +553,12 @@ export function getScanPaths(): string[] {
     path.join(HOME, 'Documents', 'Cheats'),
     path.join(HOME, 'Documents', 'Hacks'),
     path.join(HOME, 'Documents', 'Mods'),
+
+    // Specific cheat config directories (research confirmed)
+    path.join(HOME, 'AppData', 'Roaming', 'Nightfall'),
+    path.join(HOME, 'AppData', 'Roaming', '0xCheats'),
+    path.join(HOME, 'AppData', 'Roaming', 'Unicore'),
+    path.join(HOME, 'AppData', 'Local', 'Nightfall'),
 
     // RAGE MP additional paths
     path.join(HOME, 'AppData', 'Roaming', 'RAGEMP', 'server-files'),

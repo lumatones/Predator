@@ -161,6 +161,14 @@ export const ALL_CHEAT_KEYWORDS = [
   'dma card', 'dma firmware', 'fpga firmware',
   'captaindma', 'leetch', 'enigma x1', 'screamer m2',
   'raptor dma', 'zdma', 'gbox',
+  // 0xCheats / LeetCheats / Unicore / Vanish / Nightfall (research confirmed)
+  '0xcheats', '0xcheat', 'oxcheat', 'oxcheats',
+  'leetcheats', 'leetcheat', 'noleet', 'noleetcheats',
+  '1337 cheat', '1337cheat',
+  'unicore', 'unicorecheat', 'unicoremenu',
+  'vanish', 'vanishcheat', 'vanish spoofer',
+  'nightfall', 'nightfallmenu', 'nightfall loader',
+  'kernel cheat', 'vanish driver', // Vanish uses kernel driver injection
   // CEF/Chromium exploit patterns
   'cef_browser', 'chromium embedded framework',
   'remote debugging port', 'devtools protocol',
@@ -238,6 +246,16 @@ export const SUSPICIOUS_PATTERNS = [
   /[Pp]erm(?:anent)?\s*[Ss]poof/i,
   /[Ee][Ff][Ii]\s*[Ss]poof/i,
   /[Ss][Mm][Bb][Ii][Oo][Ss]\s*[Ss]poof/i,
+  // 0xCheats / LeetCheats / Unicore / Vanish / Nightfall
+  /0x[Cc]heats?/i,
+  /[Oo]x[Cc]heat/i,
+  /[Ll]eet[Cc]heats?/i,
+  /[Nn]oleet[Cc]heats?/i,
+  /1337\s*[Cc]heat/i,
+  /[Uu]nicore/i,
+  /[Vv]anish\s*([Cc]heat|[Mm]enu|[Ss]poof)/i,
+  /[Nn]ightfall\s*([Cc]heat|[Mm]enu|[Ll]oader)/i,
+  /[Kk]ernel\s*[Cc]heat/i,
 ]
 
 // Protected paths — game mod directories where files should not be
