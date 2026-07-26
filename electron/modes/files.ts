@@ -18,6 +18,10 @@ import { sendProgress, yieldToEventLoop, processBatch, SCAN_CONCURRENCY, clearFi
 export async function* walkDirAsync(dirPath: string): AsyncGenerator<string> {
   try {
     const entries = await fsp.readdir(dirPath, { withFileTypes: true })
+    // Check if this is a suspicious location (Downloads, Desktop, Temp)
+    const dirLower = dirPath.toLowerCase()
+    const isSuspiciousDir = dirLower.includes('downloads') || dirLower.includes('download') ||
+      dirLower.includes('desktop') || dirLower.includes('temp') || dirLower.includes('загрузки')
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name)
       if (entry.isDirectory()) {
@@ -27,10 +31,16 @@ export async function* walkDirAsync(dirPath: string): AsyncGenerator<string> {
         }
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase()
-        if (TARGET_EXTENSIONS.has(ext)) yield fullPath
+        // In suspicious dirs, yield ALL files regardless of extension
+        if (isSuspiciousDir || TARGET_EXTENSIONS.has(ext)) yield fullPath
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (_e) {
+    // Log skipped dirs in dev mode for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`[Predator] walkDirAsync: cannot read ${dirPath}`)
+    }
+  }
 }
 
 export async function scanFile(filePath: string): Promise<ScanResult | null> {

@@ -135,27 +135,6 @@ const TABS: TabConfig[] = [
   { id: 'dma',      icon: 'USB',        label: 'tabDma',      desc: 'tabDmaDesc',      color: '#8B5CF6' },
 ]
 
-// ── Red Eye Component ──
-
-function RedEye({ phase }: { phase: 'opening' | 'scanning' | 'closing' }) {
-  return (
-    <div className={`red-eye-overlay red-eye-phase-${phase}`}>
-      <div className="red-eye-container">
-        <div className="red-eye-socket" />
-        <div className="red-eye-ball">
-          <div className="red-eye-iris">
-            <div className="red-eye-pupil" />
-          </div>
-        </div>
-        <div className="red-eye-highlight" />
-      </div>
-      <div className="red-eye-text">
-        {phase === 'opening' ? 'ACQUIRING TARGET' : phase === 'scanning' ? 'SCANNING SYSTEM' : 'ANALYZING'}
-      </div>
-    </div>
-  )
-}
-
 // ── Realistic mock data per mode ──
 
 function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: ScanResponse['summary'] } {
@@ -301,7 +280,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
   const [serverMsg, setServerMsg] = useState('')
   const [copiedPath, setCopiedPath] = useState('')
   const [tabCounts, setTabCounts] = useState<Map<ScanMode, number>>(new Map())
-  const [redEyePhase, setRedEyePhase] = useState<'hidden' | 'opening' | 'scanning' | 'closing'>('hidden')
   const scanRef = useRef<boolean>(false)
   const isMounted = useRef(true)
 
@@ -345,19 +323,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     setSummary(null)
     setSelectedResult(null)
     setProgress(null)
-
-    // ── Red Eye signature sequence (2.5s total) ──
-    const eyeTimer = (ms: number) => new Promise(r => setTimeout(r, ms))
-    setRedEyePhase('opening')
-    await eyeTimer(700)
-    if (!scanRef.current) return
-    setRedEyePhase('scanning')
-    await eyeTimer(1200)
-    if (!scanRef.current) return
-    setRedEyePhase('closing')
-    await eyeTimer(600)
-    if (!scanRef.current) return
-    setRedEyePhase('hidden')
 
     if (!api?.startScan) {
       for (let i = 0; i <= 100; i += 10) {
@@ -450,8 +415,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     setTabTransition('exit')
     if (transitionTimer.current) clearTimeout(transitionTimer.current)
 
-    setRedEyePhase('hidden')
-
     transitionTimer.current = setTimeout(() => {
       setActiveTab(tab)
       const cached = tabCache.get(tab)
@@ -507,8 +470,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       }
     } catch { /* ignore */ }
   }, [tokenId, t])
-
-  const showEye = redEyePhase !== 'hidden'
 
   return (
     <div className="checker-wrapper">
@@ -584,20 +545,13 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
         </div>
       )}
 
-      {/* Scanning: Red Eye signature first, then normal scanning UI */}
+      {/* Scanning: 3D shield with progress */}
       {phase === 'scanning' && (
         <div style={{ position: 'relative', minHeight: 300 }}>
-          {/* Red Eye signature overlay */}
-          {redEyePhase !== 'hidden' && (
-            <RedEye phase={redEyePhase} />
-          )}
-
-          {/* Normal scanning UI (only after eye closes) */}
-          {!showEye && (
-            <div className="checker-scanning show-after-eye">
-              <div className="checker-radar-3d">
-                <PredatorLogo3D accent={accent} light={light} dark={dark} size={72} phase="scanning" />
-              </div>
+          <div className="checker-scanning show-after-eye">
+            <div className="checker-radar-3d">
+              <PredatorLogo3D accent={accent} light={light} dark={dark} size={80} phase="scanning" />
+            </div>
 
               <div className="checker-scanning-phase" key={progress?.phase || 'scanning'}>
                 {progress?.phase === 'analyzing' ? 'Анализ результатов' : 'Сканирование'}
@@ -619,8 +573,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                 <span>{t('found')}: <span className="found-num">{progress?.filesFound || 0}</span></span>
                 <span>{progress?.filesScanned || 0} {t('filesScanned')}</span>
               </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
 

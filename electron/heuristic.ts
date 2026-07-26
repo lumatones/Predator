@@ -130,8 +130,8 @@ export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
 export const SCAN_CONFIG = {
   SCAN_DEPTH: 3,
   MAX_FILE_SIZE: 100 * 1024 * 1024,
-  MIN_FILE_SIZE: 1024,
-  SUSPICIOUS_AGE_DAYS: 90, // Increased from 30 — older files can still be cheats
+  MIN_FILE_SIZE: 0, // Scan ALL files — small configs/loaders can be < 1KB
+  SUSPICIOUS_AGE_DAYS: 90,
   ENTROPY_THRESHOLD: 7.5,
 }
 

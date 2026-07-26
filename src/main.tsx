@@ -13,7 +13,6 @@ import './styles/layout.css'
 import './styles/onboarding.css'
 import './styles/components.css'
 import './styles/checker.css'
-import './styles/red-eye.css'
 import './styles/dashboard.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
