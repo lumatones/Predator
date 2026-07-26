@@ -10,18 +10,39 @@ interface ShieldProps {
   light: string
   dark: string
   rotate: boolean
+  /** Scan phase — changes rotation speed, emissive, and pulse */
+  phase?: 'idle' | 'scanning' | 'done'
+  /** Threat count — determines color (0 = clean = green) */
+  threatCount?: number
 }
 
-function Shield({ accent, light, dark, rotate }: ShieldProps) {
+function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0 }: ShieldProps) {
   const meshRef = useRef<Mesh>(null)
   const reducedMotion = useReducedMotion()
 
+  // Reactive color: green for clean, red for threats, accent for idle/scanning
+  const reactiveColor = useMemo(() => {
+    if (phase === 'done' && threatCount === 0) return '#22c55e' // clean green
+    if (phase === 'done' && threatCount > 0) return '#ef4444' // danger red
+    return accent // default theme accent
+  }, [phase, threatCount, accent])
+
+  const reactiveLight = useMemo(() => {
+    if (phase === 'done' && threatCount === 0) return '#86efac'
+    if (phase === 'done' && threatCount > 0) return '#fca5a5'
+    return light
+  }, [phase, threatCount, light])
+
   useFrame((state, delta) => {
     if (meshRef.current && rotate && reducedMotion === false) {
-      meshRef.current.rotation.y += delta * 0.6
+      // Speed varies by phase
+      const speedMultiplier = phase === 'scanning' ? 3.0 : phase === 'done' ? 0.8 : 1.0
+      meshRef.current.rotation.y += delta * 0.6 * speedMultiplier
       meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.6) * 0.08
-      // Pulsing scale
-      const s = 1 + Math.sin(state.clock.elapsedTime * 1.2) * 0.04
+      // Pulsing scale — more intense during scanning, celebration bounce on clean
+      const pulseAmp = phase === 'scanning' ? 0.08 : phase === 'done' && threatCount === 0 ? 0.06 : 0.04
+      const pulseSpeed = phase === 'scanning' ? 2.0 : phase === 'done' && threatCount === 0 ? 1.6 : 1.2
+      const s = 1 + Math.sin(state.clock.elapsedTime * pulseSpeed) * pulseAmp
       meshRef.current.scale.setScalar(s)
     }
   })
@@ -47,13 +68,13 @@ function Shield({ accent, light, dark, rotate }: ShieldProps) {
         ]}
       />
       <meshStandardMaterial
-        color={dark}
-        emissive={accent}
-        emissiveIntensity={0.7}
+        color={phase === 'done' ? reactiveColor : dark}
+        emissive={reactiveColor}
+        emissiveIntensity={phase === 'scanning' ? 1.2 : phase === 'done' ? 0.9 : 0.7}
         metalness={0.7}
         roughness={0.25}
       />
-      <Edges color={light} lineWidth={2} threshold={15} />
+      <Edges color={reactiveLight} lineWidth={2} threshold={15} />
     </mesh>
   )
 }
@@ -110,6 +131,10 @@ interface PredatorLogo3DProps {
   dark: string
   size?: number
   preset?: GraphicsPreset | 'auto'
+  /** Scan phase for reactive behavior */
+  phase?: 'idle' | 'scanning' | 'done'
+  /** Threat count for color determination (0 = clean) */
+  threatCount?: number
 }
 
 export default function PredatorLogo3D({
@@ -117,7 +142,9 @@ export default function PredatorLogo3D({
   light,
   dark,
   size = 72,
-  preset = 'auto'
+  preset = 'auto',
+  phase = 'idle',
+  threatCount = 0,
 }: PredatorLogo3DProps) {
   const [webglFailed, setWebglFailed] = useState(false)
   const hasWebGL = useMemo(() => isWebGLAvailable(), [])
@@ -147,7 +174,7 @@ export default function PredatorLogo3D({
         <ambientLight intensity={config.lightCount >= 2 ? 0.3 : 0.2} />
         <pointLight position={[4, 4, 6]} intensity={config.lightCount >= 2 ? 1.2 : 0.8} color={light} />
         {config.lightCount >= 2 && <pointLight position={[-4, -2, 2]} intensity={0.4} color={accent} />}
-        <Shield accent={accent} light={light} dark={dark} rotate={config.rotate} />
+        <Shield accent={accent} light={light} dark={dark} rotate={config.rotate} phase={phase} threatCount={threatCount} />
       </Canvas>
     </div>
   )

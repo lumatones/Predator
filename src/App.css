@@ -1363,6 +1363,23 @@ body {
   max-width: 440px;
 }
 
+/* ── 3D Shield during scanning ── */
+.checker-radar-3d {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: var(--space-2) 0;
+}
+
+.checker-radar-3d .logo-3d,
+.checker-radar-3d .logo-3d-fallback {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* ── Radar Animation ── */
 .checker-radar {
   position: relative;

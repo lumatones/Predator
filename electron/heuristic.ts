@@ -8,7 +8,7 @@
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import { execSync } from 'child_process'
+import { execSync, spawnSync } from 'child_process'
 
 import {
   KNOWN_PROCESSES,
@@ -121,13 +121,17 @@ export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
   '.ini': 'Configuration file',
   '.js': 'JavaScript (may contain cheat loader)',
   '.ahk': 'AutoHotkey script',
+  '.zip': 'Archive (may contain cheat files)',
+  '.rar': 'Archive (may contain cheat files)',
+  '.7z': 'Archive (may contain cheat files)',
+  '.msi': 'Installer (may contain cheat)',
 }
 
 export const SCAN_CONFIG = {
   SCAN_DEPTH: 3,
   MAX_FILE_SIZE: 100 * 1024 * 1024,
   MIN_FILE_SIZE: 1024,
-  SUSPICIOUS_AGE_DAYS: 30,
+  SUSPICIOUS_AGE_DAYS: 90, // Increased from 30 — older files can still be cheats
   ENTROPY_THRESHOLD: 7.5,
 }
 
@@ -576,6 +580,17 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       } catch (_e) { /* binary or unreadable */ }
     }
 
+    // Archive content scan (.zip/.rar/.7z)
+    if (ARCHIVE_EXTS.has(ext) && stat.size < 100 * 1024 * 1024) {
+      try {
+        const archiveMatches = scanArchiveContents(filepath)
+        for (const m of archiveMatches) {
+          suspicions.push(m)
+          riskScore += 30
+        }
+      } catch (_e) { /* archive scan optional */ }
+    }
+
     if (binaryExts.has(ext) && stat.size >= 4096 && stat.size < 50 * 1024 * 1024) {
       const fd = fs.openSync(filepath, 'r')
       const sampleSize = Math.min(65536, stat.size)
@@ -778,4 +793,72 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
   } catch (_e) {
     return null
   }
+}
+
+// ═══════════════════════════════════════════════════
+// ARCHIVE CONTENT SCANNING
+// ═══════════════════════════════════════════════════
+
+const ARCHIVE_EXTS = new Set(['.zip', '.rar', '.7z'])
+
+/** Peek into archives and check filenames against cheat patterns. Returns suspicions if found. */
+export function scanArchiveContents(filepath: string): string[] {
+  const matches: string[] = []
+  const ext = path.extname(filepath).toLowerCase()
+  if (!ARCHIVE_EXTS.has(ext)) return matches
+
+  try {
+    let output = ''
+    if (ext === '.zip') {
+      // PowerShell Expand-Archive -WhatIf for .zip listing
+      const shell = spawnSync('powershell', [
+        '-NoProfile', '-Command',
+        `[System.IO.Compression.ZipFile]::OpenRead('${filepath.replace(/'/g, "''")}').Entries | Select-Object -ExpandProperty FullName`,
+      ], { encoding: 'utf-8', timeout: 10000 })
+      output = shell.stdout || ''
+    } else {
+      // .rar and .7z — try 7zip if installed
+      const sevenZip = spawnSync('7z', ['l', '-slt', filepath], { encoding: 'utf-8', timeout: 10000 })
+      output = sevenZip.stdout || ''
+    }
+
+    if (!output) return matches
+
+    const lower = output.toLowerCase()
+    // Check filenames inside archive
+    const lines = lower.split(/[\r\n]+/)
+    for (const line of lines) {
+      const fileName = path.basename(line.trim())
+      if (!fileName || fileName.length < 3) continue
+      // Check against known cheat names
+      for (const base of _PROC_BASES) {
+        if (fileName.includes(base)) {
+          matches.push(`archive:${fileName} → ${base}`)
+          break
+        }
+      }
+      for (const file of _FILE_NAMES) {
+        if (fileName.includes(file)) {
+          matches.push(`archive:${fileName} → ${file}`)
+          break
+        }
+      }
+      // Check against ALL_CHEAT_KEYWORDS
+      for (const kw of ALL_CHEAT_KEYWORDS) {
+        if (kw.length >= 4 && fileName.includes(kw.toLowerCase())) {
+          matches.push(`archive-kw:${fileName} → ${kw}`)
+          break
+        }
+      }
+      // Check SUSPICIOUS_PATTERNS
+      for (const pat of SUSPICIOUS_PATTERNS) {
+        if (pat.test(fileName)) {
+          matches.push(`archive-pat:${pat.source}`)
+          break
+        }
+      }
+      if (matches.length >= 5) break // cap
+    }
+  } catch (_e) { /* archive scanning optional */ }
+  return matches
 }

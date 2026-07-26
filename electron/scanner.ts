@@ -65,6 +65,11 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
         // Always run heuristic scan (expensive but thorough)
         let hr = heuristicFileScan(filePath)
         let riskScore = hr?.riskScore || 0
+        // Location bonus — files in Downloads/Desktop/Temp are extra suspicious (BEFORE threshold check!)
+        const fpLower = filePath.toLowerCase()
+        if (fpLower.includes('downloads') || fpLower.includes('download') || fpLower.includes('desktop') || fpLower.includes('temp') || fpLower.includes('загрузки')) {
+          riskScore += 10
+        }
         // Fuzzy hash check for .exe/.dll (catches polymorphic variants)
         const ext = path.extname(filePath).toLowerCase()
         if ((ext === '.exe' || ext === '.dll') && riskScore < 40) {

@@ -12,6 +12,7 @@ import { exportHtml, exportJson } from '../utils/export-report'
 import { submitScan } from '../api'
 import { Magnetic } from '../components/ui/Magnetic'
 import { Button } from '../components/ui/Button'
+import PredatorLogo3D from '../components/ui/PredatorLogo3D'
 import {
   IconFolder,
   IconGear,
@@ -30,6 +31,9 @@ interface CheckerProps {
   lang: 'ru' | 'en'
   tokenId: number | null
   onBack: () => void
+  accent: string
+  light: string
+  dark: string
 }
 
 const T: Record<string, Record<string, string>> = {
@@ -268,7 +272,7 @@ function calcScanPercent(progress: ScanProgress | null): number {
 
 // ── Component ──
 
-export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
+export default function Checker({ lang, tokenId, onBack, accent, light, dark }: CheckerProps) {
   const prefersReducedMotion = useReducedMotion()
 
   const containerVariants = prefersReducedMotion
@@ -591,11 +595,8 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
           {/* Normal scanning UI (only after eye closes) */}
           {!showEye && (
             <div className="checker-scanning show-after-eye">
-              <div className="checker-radar">
-                <div className="radar-ring" />
-                <div className="radar-ring" />
-                <div className="radar-ring" />
-                <div className="radar-dot" />
+              <div className="checker-radar-3d">
+                <PredatorLogo3D accent={accent} light={light} dark={dark} size={72} phase="scanning" />
               </div>
 
               <div className="checker-scanning-phase" key={progress?.phase || 'scanning'}>
@@ -650,6 +651,9 @@ export default function Checker({ lang, tokenId, onBack }: CheckerProps) {
                 </div>
               ) : (
                 <div className="checker-empty-state">
+                  <div className="checker-empty-logo">
+                    <PredatorLogo3D accent={accent} light={light} dark={dark} size={72} phase="done" threatCount={0} />
+                  </div>
                   <div className="checker-empty-check">
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5">
                       <polyline points="20 6 9 17 4 12" />

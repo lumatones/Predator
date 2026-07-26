@@ -619,4 +619,5 @@ export const TARGET_EXTENSIONS = new Set([
   '.cfg', '.ini', '.json', '.xml',
   '.rpf', // GTA 5 archive (RAGE MP cheats modify RPF)
   '.sys', '.drv',
+  '.zip', '.rar', '.7z', '.msi', // Archives — need content scanning
 ])
