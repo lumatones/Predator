@@ -68,7 +68,7 @@ function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0, 
       <extrudeGeometry
         args={[
           shape,
-          { depth: 0.25, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 4 }
+          { depth: 0.15, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 2 }
         ]}
       />
       <meshStandardMaterial
@@ -78,7 +78,7 @@ function Shield({ accent, light, dark, rotate, phase = 'idle', threatCount = 0, 
         metalness={0.7}
         roughness={0.25}
       />
-      <Edges color={reactiveLight} lineWidth={2} threshold={15} />
+      <Edges color={reactiveLight} lineWidth={1.5} threshold={15} />
     </mesh>
   )
 }

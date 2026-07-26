@@ -121,7 +121,7 @@
   font-size: var(--text-2xs);
   text-align: center;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .checker-tab::before {
@@ -242,7 +242,7 @@
   cursor: pointer;
   transition: all var(--duration-slow) var(--ease-out);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .checker-start-btn::after {
