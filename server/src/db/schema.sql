@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS scan_results (
   high_risk_count INT DEFAULT 0,
   scan_time_ms    INT DEFAULT 0,
   results_json    MEDIUMTEXT,
+  -- Auto-classification columns
+  auto_safe_count   INT DEFAULT 0,
+  auto_malicious_count INT DEFAULT 0,
+  pending_count     INT DEFAULT 0,
+  classified_at     DATETIME,
   created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -73,11 +78,15 @@ CREATE TABLE IF NOT EXISTS suspicious_hashes (
   file_size     INT DEFAULT 0,
   risk_score    INT DEFAULT 0,
   status        ENUM('pending', 'confirmed', 'false_positive') DEFAULT 'pending',
+  -- Auto-classification columns
+  auto_classified  BOOLEAN DEFAULT FALSE,
+  auto_reason      VARCHAR(512),
   reviewed_by   INT REFERENCES admins(id),
   reviewed_at   DATETIME,
   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_sha256 (sha256),
-  INDEX idx_tlsh (tlsh(36))
+  INDEX idx_tlsh (tlsh(36)),
+  INDEX idx_auto_classified (auto_classified)
 ) ENGINE=InnoDB;
 
 CREATE INDEX idx_sh_status ON suspicious_hashes(status);

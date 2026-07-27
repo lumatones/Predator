@@ -10,6 +10,7 @@ interface TabCacheEntry {
 const tabCache = new Map<ScanMode, TabCacheEntry>()
 import { exportHtml, exportJson, exportMarkdown, exportPdf, sendToTelegram } from '../utils/export-report'
 import { submitScan } from '../api'
+import { groupResults } from '../utils/result-grouper'
 import { Magnetic } from '../components/ui/Magnetic'
 import { Button } from '../components/ui/Button'
 import PredatorLogo3D from '../components/ui/PredatorLogo3D'
@@ -84,6 +85,16 @@ const T: Record<string, Record<string, string>> = {
     dmaDetected: 'Обнаружено DMA-устройств',
     cheatsFound: 'Найдено следов читов',
     processesFound: 'Подозрительных процессов',
+    cheatFilesUnit: 'файлов', cheatProcUnit: 'процессов', cheatRegUnit: 'реестр',
+    cheatBrowserUnit: 'браузер', cheatHwUnit: 'устройств', cheatOtherUnit: 'другое',
+    cheatConfidence: 'уверенность',
+    cheatOtherActivity: 'Другая подозрительная активность',
+    devicesTitle: 'Подключенные устройства',
+    devicesSafe: 'Обычные устройства',
+    devicesSuspicious: '⚠ Подозрительные устройства',
+    devicesHistory: '⏳ История DMA',
+    devicesPhone: 'Телефон', devicesFlash: 'Флешка', devicesDma: 'DMA',
+    devicesUnknown: 'Неизвестно',
     groupHigh: 'Высокий риск', groupMedium: 'Средний риск', groupLow: 'Низкий риск',
     showAll: 'Показать все', collapse: 'Свернуть',
     groupHidden: 'ещё скрыто',
@@ -126,6 +137,16 @@ const T: Record<string, Record<string, string>> = {
     dmaDetected: 'DMA devices detected',
     cheatsFound: 'Cheat traces found',
     processesFound: 'Suspicious processes',
+    cheatFilesUnit: 'files', cheatProcUnit: 'processes', cheatRegUnit: 'registry',
+    cheatBrowserUnit: 'browser', cheatHwUnit: 'hardware', cheatOtherUnit: 'other',
+    cheatConfidence: 'confidence',
+    cheatOtherActivity: 'Other suspicious activity',
+    devicesTitle: 'Connected Devices',
+    devicesSafe: 'Normal Devices',
+    devicesSuspicious: '⚠ Suspicious Devices',
+    devicesHistory: '⏳ DMA History',
+    devicesPhone: 'Phone', devicesFlash: 'Flash Drive', devicesDma: 'DMA',
+    devicesUnknown: 'Unknown',
     groupHigh: 'High risk', groupMedium: 'Medium risk', groupLow: 'Low risk',
     showAll: 'Show all', collapse: 'Collapse',
     groupHidden: 'more hidden',
@@ -329,6 +350,24 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       r.matches.some(m => m.toLowerCase().includes(q))
     )
   }, [results, searchQuery])
+
+  // ── Grouped results for clean cheat display ──
+  const groupedResults = useMemo(() => groupResults(results), [results])
+  const [cheatExpandedGroups, setCheatExpandedGroups] = useState<Set<string>>(new Set())
+  const [showOtherItems, setShowOtherItems] = useState(false)
+  const [showSafeDevices, setShowSafeDevices] = useState(false)
+
+  // Auto-expand high-risk cheat groups on first load
+  useEffect(() => {
+    if (groupedResults.cheatGroups.length > 0 && cheatExpandedGroups.size === 0) {
+      const highRiskGroups = groupedResults.cheatGroups
+        .filter(g => g.risk === 'high')
+        .map(g => g.cheatName)
+      if (highRiskGroups.length > 0) {
+        setCheatExpandedGroups(new Set(highRiskGroups))
+      }
+    }
+  }, [groupedResults.cheatGroups])
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const currentTab = TABS.find(t => t.id === activeTab)!
@@ -420,6 +459,9 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     scanRef.current = false
     setExpandedGroups(new Set(['high']))
     setShowAllGroups(new Set())
+    setCheatExpandedGroups(new Set())
+    setShowOtherItems(false)
+    setShowSafeDevices(false)
     setSearchQuery('')
   }, [])
 
@@ -719,6 +761,209 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
 
           {results.length > 0 && summary && summary.suspiciousFiles > 0 && (
             <ThreatMap results={results} />
+          )}
+
+          {/* ── Connected Devices Section ── */}
+          {(groupedResults.deviceSummary.hasSuspiciousDevices || groupedResults.deviceSummary.hasDmaHistory || groupedResults.deviceSummary.connectedSafe.length > 0) && (
+            <div className="devices-section">
+              <div className="devices-header">
+                <span className="devices-title">🔌 {t('devicesTitle')}</span>
+              </div>
+
+              {/* Suspicious devices (DMA/FPGA) */}
+              {groupedResults.deviceSummary.connectedSuspicious.length > 0 && (
+                <div className="devices-group suspicious">
+                  <div className="devices-group-header">
+                    <span>{t('devicesSuspicious')} ({groupedResults.deviceSummary.connectedSuspicious.length})</span>
+                  </div>
+                  {groupedResults.deviceSummary.connectedSuspicious.map((r, i) => (
+                    <div key={`dma-${i}`} className="device-item danger"
+                      onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}>
+                      <span className="device-item-icon">⚠️</span>
+                      <div className="device-item-info">
+                        <span className="device-item-name">{r.fileName}</span>
+                        {r.matches.slice(0, 2).map((m, j) => (
+                          <span key={j} className="device-item-detail">{m}</span>
+                        ))}
+                      </div>
+                      <span className="device-item-risk high">HIGH</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* DMA history */}
+              {groupedResults.deviceSummary.dmaHistory.length > 0 && (
+                <div className="devices-group history">
+                  <div className="devices-group-header">
+                    <span>{t('devicesHistory')} ({groupedResults.deviceSummary.dmaHistory.length})</span>
+                  </div>
+                  {groupedResults.deviceSummary.dmaHistory.map((r, i) => (
+                    <div key={`dmahist-${i}`} className="device-item warning"
+                      onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}>
+                      <span className="device-item-icon">⏳</span>
+                      <div className="device-item-info">
+                        <span className="device-item-name">{r.fileName}</span>
+                        {r.matches.slice(0, 2).map((m, j) => (
+                          <span key={j} className="device-item-detail">{m}</span>
+                        ))}
+                      </div>
+                      <span className="device-item-risk high">WAS CONNECTED</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Safe devices (collapsible) */}
+              {groupedResults.deviceSummary.connectedSafe.length > 0 && (
+                <div className="devices-group safe">
+                  <div className="devices-group-header" style={{ cursor: 'pointer' }}
+                    onClick={() => setShowSafeDevices(o => !o)}>
+                    <span>{t('devicesSafe')} ({groupedResults.deviceSummary.connectedSafe.length})</span>
+                    <span className={`cheat-group-chevron ${showSafeDevices ? 'open' : ''}`}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </span>
+                  </div>
+                  {showSafeDevices && (
+                    <div className="devices-safe-list">
+                      {groupedResults.deviceSummary.connectedSafe.map((r, i) => (
+                        <div key={`safe-${i}`} className="device-item safe"
+                          onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}>
+                          <span className="device-item-icon">
+                            {r.fileName.includes('📱') ? '📱' : r.fileName.includes('💾') ? '💾' : r.fileName.includes('⌨️') ? '⌨️' : r.fileName.includes('📹') ? '📹' : r.fileName.includes('🎵') ? '🎵' : r.fileName.includes('📶') ? '📶' : '🔌'}
+                          </span>
+                          <span className="device-item-name">{r.fileName}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Grouped Cheat Detection Cards ── */}
+          {groupedResults.cheatGroups.length > 0 && (
+            <div className="cheat-groups-section">
+              <div className="cheat-groups-header">
+                <span className="cheat-groups-title">
+                  🎯 {t('cheatsFound')}: {groupedResults.summary.totalCheatsDetected}
+                </span>
+                <span className="cheat-groups-subtitle">
+                  {groupedResults.summary.totalHighRisk} HIGH · {groupedResults.summary.totalMediumRisk} MEDIUM
+                </span>
+              </div>
+              {groupedResults.cheatGroups.map(group => {
+                const isExpanded = cheatExpandedGroups.has(group.cheatName)
+                const toggleGroup = () => {
+                  setCheatExpandedGroups(prev => {
+                    const next = new Set(prev)
+                    if (next.has(group.cheatName)) next.delete(group.cheatName)
+                    else next.add(group.cheatName)
+                    return next
+                  })
+                }
+                const parts: string[] = []
+                if (group.counts.files > 0) parts.push(`${group.counts.files} ${t('cheatFilesUnit')}`)
+                if (group.counts.processes > 0) parts.push(`${group.counts.processes} ${t('cheatProcUnit')}`)
+                if (group.counts.registry > 0) parts.push(`${group.counts.registry} ${t('cheatRegUnit')}`)
+                if (group.counts.browser > 0) parts.push(`${group.counts.browser} ${t('cheatBrowserUnit')}`)
+                if (group.counts.hardware > 0) parts.push(`${group.counts.hardware} ${t('cheatHwUnit')}`)
+                if (group.counts.other > 0) parts.push(`${group.counts.other} ${t('cheatOtherUnit')}`)
+                const findingSummary = parts.join(', ')
+                const confColor = group.confidence >= 70 ? '#22c55e' : group.confidence >= 40 ? '#f59e0b' : '#ef4444'
+                return (
+                  <div key={group.cheatName} className={`cheat-group-card ${group.risk}`}>
+                    <button className="cheat-group-header" onClick={toggleGroup}>
+                      <div className="cheat-group-header-left">
+                        <span className={`cheat-group-risk-dot ${group.risk}`} />
+                        <span className="cheat-group-name">{group.cheatName}</span>
+                        <span className={`cheat-group-badge ${group.risk}`}>{riskLabel(group.risk, lang)}</span>
+                      </div>
+                      <div className="cheat-group-header-right">
+                        <span className="cheat-group-count">{group.findings.length}</span>
+                        <span className={`cheat-group-chevron ${isExpanded ? 'open' : ''}`}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </span>
+                      </div>
+                    </button>
+                    <div className="cheat-group-meta">
+                      <span className="cheat-group-summary">{findingSummary}</span>
+                      <span className="cheat-group-confidence" style={{ color: confColor }}>
+                        {group.confidence}% {t('cheatConfidence')}
+                      </span>
+                    </div>
+                    {isExpanded && (
+                      <div className="cheat-group-body">
+                        {group.tags.length > 0 && (
+                          <div className="cheat-group-tags">
+                            {group.tags.map((tag, i) => (
+                              <span key={i} className="cheat-group-tag">{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                        {group.findings.map((r, i) => (
+                          <div key={`${r.path}-${i}`}
+                            className={`cheat-group-item ${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? 'selected' : ''}`}
+                            data-risk={r.risk}
+                            onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}
+                          >
+                            <span className="cheat-group-item-type">{typeIcon(r.type, 12)}</span>
+                            <div className="cheat-group-item-info">
+                              <span className="cheat-group-item-name">{r.fileName}</span>
+                              <span className="cheat-group-item-path">{r.path.length > 50 ? r.path.slice(0, 47) + '...' : r.path}</span>
+                            </div>
+                            <span className="cheat-group-item-risk" data-risk={r.risk}>{riskLabel(r.risk, lang)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* ── Other suspicious items (ungrouped) ── */}
+          {(groupedResults.otherHigh.length > 0 || groupedResults.otherMedium.length > 0) && (
+            <div className="cheat-other-section">
+              <button className="cheat-other-header" onClick={() => setShowOtherItems(o => !o)}>
+                <span>🔍 {t('cheatOtherActivity')} ({groupedResults.otherHigh.length + groupedResults.otherMedium.length})</span>
+                <span className={`cheat-group-chevron ${showOtherItems ? 'open' : ''}`}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </span>
+              </button>
+              {showOtherItems && (
+                <div className="cheat-other-body">
+                  {[...groupedResults.otherHigh, ...groupedResults.otherMedium].map((r, i) => (
+                    <div key={`other-${i}`}
+                      className={`result-row${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? ' selected' : ''}`}
+                      data-risk={r.risk}
+                      onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}
+                    >
+                      <div className="result-row-main">
+                        <div className="result-info">
+                          <span className="result-name">{r.fileName}</span>
+                          <span className="result-path">{r.path.length > 55 ? r.path.slice(0, 52) + '...' : r.path}</span>
+                        </div>
+                        <div className="result-matches">
+                          {r.matches.slice(0, 1).map((m, j) => (
+                            <span key={j} className="match-tag">{m.includes(':') ? m.split(':').slice(1).join(':') : m}</span>
+                          ))}
+                          {r.matches.length > 1 && <span className="match-more">+{r.matches.length - 1}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {results.length > 0 && (

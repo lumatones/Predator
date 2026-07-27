@@ -12,6 +12,7 @@ import authRoutes from './routes/auth'
 import adminRoutes from './routes/admin'
 import v1Routes from './routes/v1'
 import { metricsMiddleware, metricsRouter, startMetricsUpdater, trackScan, trackHashSubmission, trackHashConfirmed, trackTokenUsed } from './middleware/metrics'
+import { startAutoClassifier, stopAutoClassifier } from './services/classifier'
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001')
@@ -186,7 +187,12 @@ async function start() {
     console.log(`  POST /api/v1/signatures/refresh  Force sig version bump`)
     console.log(`  ──────────────────────────────────────────`)
     console.log(`  GET  /metrics                    Prometheus metrics`)
-    console.log(`  WebSocket on same port           Real-time admin updates\n`)
+    console.log(`  WebSocket on same port           Real-time admin updates`)
+    console.log(`  🤖 Auto-classifier               Rule engine + crowdsourcing`)
+    console.log('')
+
+    // ── Start auto-classifier (background) ──
+    startAutoClassifier()
   })
 }
 

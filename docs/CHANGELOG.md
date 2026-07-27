@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.3.0 — AI Scanner Intelligence + DMA/Hardware/RE Detection (2026-07-27)
+
+### 🧠 Auto-Scan Intelligence
+- **Server-side auto-classifier** (`server/src/services/classifier.ts`) — автоматическая классификация результатов
+- **Telemetry Queue** (`electron/telemetry-queue.ts`) — надёжная очередь загрузки с ретраями
+- **Result Grouper** — группировка/фильтрация результатов (реальные читы vs шум)
+- **Noise filter** — UI показывает только реальные угрозы, не миллионы файлов
+- **Safe-files auto-whitelist**: сервер автоматически добавляет проверенные файлы в вайтлист
+
+### 🔌 USB/PCI Device Intelligence
+- **USB Device Inventory** (`electron/modes/usb-devices.ts`) — полный инвентарь устройств
+- **Device Classification**: телефон/флешка/DMA-карта/клавиатура/вебкамера/хаб — с иконками
+- **USB Descriptor Reading** — точное определение MTP/ADB/PTP режима, производитель, серийный номер
+- **DMA Device History** — детект ОТКЛЮЧЁННЫХ DMA-карт через реестр и setupapi.dev.log
+- **Driver Signature Verification** — проверка подписи FTDI/FPGA драйверов
+- **USB Bandwidth Monitor** — детект АКТИВНЫХ DMA-карт по USB-трафику (>150 MB/s = high risk)
+
+### 🎯 Hardware Cheat Detection
+- **HW Cheat VIDs** — Arduino Leonardo (2341), Teensy (16C0), Titan Two (2508), Cronus Zen (0C12)
+- Автоматический high-risk флаг при обнаружении hardware aimbot устройств
+
+### 🛡️ BYOVD Scanner
+- **`electron/modes/byovd.ts`** — 3-тирный сканер уязвимых драйверов
+- 9 драйверов: gdrv.sys, RTCore64.sys, Capcom.sys, kprocesshacker.sys, winio64.sys, phymem.sys, dbk64.sys, cpuz*.sys, interception.sys
+- Тиры: файлы в System32\drivers + WMI-сервисы + реестр
+
+### 🔍 Anti-Debug / R.E. Scanner
+- **`electron/modes/anti-debug.ts`** — детект реверс-инжиниринг тулов
+- 12 тулов: x64dbg, Cheat Engine, IDA Pro, Ghidra, Process Hacker, WinDbg, dnSpy, OllyDbg, Binary Ninja, ReClass, HxD, DLL Injectors
+- Детект anti-debug DLL (scyllahide, titanhide, hyperhide)
+
+### 📦 Интеграция
+- BYOVD → Phase 5c (IPC & persistence)
+- Anti-Debug → Phase 1a (process scanning)
+- Hardware Cheat VIDs → Phase 1b (USB device scan)
+
+---
+
 ## v0.1.14 — Архитектурный рефакторинг (2026-07-27)
 
 ### 🏗 Архитектура

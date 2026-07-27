@@ -3,10 +3,11 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { autoUpdater } from 'electron-updater'
-import { registerScanHandlers, startCloudSync, initSafeFilesDb } from './scanner'
+import { registerScanHandlers, startCloudSync, initSafeFilesDb, initTelemetry } from './scanner'
 import { registerSystemInfoHandlers } from './system-info'
 import { loadConfig, saveConfig, getApiBase } from './config'
 import { startSignatureWatcher, stopSignatureWatcher } from './signature-watcher'
+import { flushTelemetryQueue } from './telemetry-queue'
 
 let mainWindow: BrowserWindow | null = null
 let _updateCheckInterval: ReturnType<typeof setInterval> | null = null
@@ -141,6 +142,9 @@ app.whenReady().then(async () => {
   // Initialize safe-files DB from community whitelist BEFORE scan handlers
   await initSafeFilesDb()
 
+  // Initialize telemetry queue for reliable result delivery
+  initTelemetry()
+
   // Setup system tray
   setupTray()
 
@@ -268,6 +272,8 @@ function setupTray() {
 app.on('will-quit', () => {
   writeCrashLog('INFO', 'App quitting')
   stopSignatureWatcher()
+  // Flush telemetry queue before quitting (async, but app will quit after)
+  flushTelemetryQueue().catch(() => {})
   if (_updateCheckInterval) {
     clearInterval(_updateCheckInterval)
     _updateCheckInterval = null

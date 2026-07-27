@@ -9,17 +9,17 @@
  *   SessionRecorder → ShadowSubmitter → AutoWhitelister → HashSubmitter → ResultUploader
  *
  * Each step: (results, summary, ctx) => void, MUST NOT throw.
+ *
+ * v2: Uses TelemetryQueue for reliable delivery with retry + persistence.
  */
 
 import fs from 'fs'
-import http from 'http'
-import https from 'https'
 
 import type { ScanResult } from './types'
 import { ctx } from './types'
-import { getApiEndpoint } from './config'
 import { recordSession, getProfileSummary } from './persistent-profile'
 import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, uploadSafeFiles } from './safe-files-db'
+import { enqueue } from './telemetry-queue'
 
 // ═══════════════════════════════════════════════════
 // TYPES
@@ -46,24 +46,13 @@ export type PipelineStep = (
 ) => Promise<void>
 
 // ═══════════════════════════════════════════════════
-// HELPER: Fire-and-forget HTTP POST
+// HELPER: Queue payload to telemetry (reliable delivery)
 // ═══════════════════════════════════════════════════
 
-function firePost(path: string, body: unknown): void {
+function queuePost(path: string, body: unknown): void {
   try {
-    const payload = JSON.stringify(body)
-    const { hostname, port, protocol } = getApiEndpoint()
-    const transport = protocol === 'https:' ? https : http
-    const req = transport.request({
-      hostname, port, path, method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-      },
-    })
-    req.write(payload)
-    req.end()
-  } catch { /* fire-and-forget — network failures are expected */ }
+    enqueue(path, body)
+  } catch { /* telemetry queue optional */ }
 }
 
 // ═══════════════════════════════════════════════════
@@ -103,7 +92,7 @@ export async function submitShadowFindings(
 ): Promise<void> {
   try {
     if (ctx.shadowFindings.length === 0) return
-    firePost('/api/auth/submit-shadow', {
+    queuePost('/api/auth/submit-shadow', {
       type: 'shadow-findings',
       token_id: pctx.tokenId,
       pc_username: pctx.pcUsername,
@@ -161,7 +150,7 @@ export async function submitHighRiskHashes(
     const highRiskWithHash = results.filter(r => r.risk === 'high' && r.sha256 && r.type === 'file')
     if (highRiskWithHash.length === 0) return
 
-    firePost('/api/auth/submit-hashes', {
+    queuePost('/api/auth/submit-hashes', {
       token_id: pctx.tokenId,
       pc_username: pctx.pcUsername,
       hashes: highRiskWithHash.map(r => ({
@@ -187,7 +176,7 @@ export async function uploadScanResults(
   try {
     if (results.length === 0) return
 
-    firePost('/api/auth/submit-scan', {
+    queuePost('/api/auth/submit-scan', {
       token_id: pctx.tokenId,
       pc_username: pctx.pcUsername,
       mode: pctx.mode,

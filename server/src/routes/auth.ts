@@ -12,6 +12,7 @@ import {
   validate,
 } from '../shared-types'
 import type { TokenRow, RequestRow, SuspiciousHashRow, ShadowFindingRow } from '../shared-types'
+import { classifyBatch, autoPromoteShadowRules } from '../services/classifier'
 
 const router = express.Router()
 
@@ -183,18 +184,40 @@ router.post('/submit-scan', validate(submitScanSchema), async (req: Request, res
       ]
     )
 
-    try {
-      const io = req.app.get('io')
-      io?.to('admin').emit('scan-result', {
-        id: result.insertId,
-        pc_username,
-        mode,
-        total_scanned,
-        suspicious_files,
-        high_risk_count,
-        timestamp: new Date().toISOString(),
+    // ── Auto-classify scan results (fire-and-forget — don't block response) ──
+    if (Array.isArray(results) && results.length > 0) {
+      const scanId = result.insertId
+      const pUsername = pc_username || 'unknown'
+      const classifierInputs = results.map(r => ({
+        sha256: r.sha256,
+        // partialHash not available from client — safe-file matching uses path+size fallback
+        partialHash: undefined,
+        filePath: r.path,
+        fileName: r.fileName,
+        fileType: r.type,
+        risk: r.risk,
+        matches: r.matches,
+        pcUsername: pUsername,
+      }))
+
+      // Fire-and-forget: classify in background, update scan_results when done
+      classifyBatch(classifierInputs).then(async (classificationResult) => {
+        try {
+          await query(
+            `UPDATE scan_results SET auto_safe_count = ?, auto_malicious_count = ?, pending_count = ?, classified_at = NOW() WHERE id = ?`,
+            [classificationResult.stats.autoSafe, classificationResult.stats.autoMalicious, classificationResult.stats.pending, scanId]
+          )
+          console.log(`  🤖 Auto-classified scan #${scanId}: ${classificationResult.stats.autoSafe} safe, ${classificationResult.stats.autoMalicious} malicious, ${classificationResult.stats.pending} pending`)
+        } catch (err) {
+          console.error('Failed to update classification stats:', err)
+        }
+      }).catch(err => {
+        console.error('Auto-classification error:', err)
       })
-    } catch { /* ws event optional */ }
+    }
+
+    // ── Auto-promote shadow rules periodically ──
+    autoPromoteShadowRules().catch(() => {})
 
     return res.json({ success: true, message: 'Results saved' })
   } catch (err: any) {
