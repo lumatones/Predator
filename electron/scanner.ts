@@ -42,6 +42,7 @@ import { runPcCleanerScan } from './pc-cleaner-detection'
 import { loadSafeFilesDb, syncSafeFilesFromServer, getSafeFilesCount } from './safe-files-db'
 import { runAntiTamperScan } from './anti-tamper'
 import { runParallel } from './workers/worker-pool'
+import { getEscalationBonus, getProfileSummary } from './persistent-profile'
 
 // ═══════════════════════════════════════════════════
 // FULL SCAN (was extended) — 9-phase deep scan
@@ -89,6 +90,43 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
         const scanResults = await runParallel(filePaths, async (filePath) => {
           let hr = heuristicFileScan(filePath)
           let riskScore = hr?.riskScore || 0
+          const shadowHits = hr?.shadowRuleHits
+
+          // ── Shadow-mode routing ──
+          // If file has shadow rule hits but low real risk, route to shadowFindings silently.
+          // User never sees these — telemetry only for admin review.
+          if (shadowHits && shadowHits.length > 0 && riskScore < 20) {
+            const ext2 = path.extname(filePath).toLowerCase()
+            // Extract rule name from first shadow hit for server-side grouping
+            const ruleName = shadowHits[0]?.match(/\[([^\]]+)\]/)?.[1] || 'unknown'
+            let shadowSha256: string | undefined
+            if (ext2 === '.exe' || ext2 === '.dll' || ext2 === '.sys') {
+              try {
+                const h = crypto.createHash('sha256')
+                const fd2 = fs.openSync(filePath, 'r')
+                const st = fs.statSync(filePath)
+                const buf = Buffer.alloc(Math.min(st.size, 50 * 1024 * 1024))
+                fs.readSync(fd2, buf, 0, buf.length, 0)
+                fs.closeSync(fd2)
+                h.update(buf)
+                shadowSha256 = h.digest('hex')
+              } catch { /* sha256 optional */ }
+            }
+            ctx.shadowFindings.push({
+              path: filePath,
+              fileName: path.basename(filePath),
+              type: 'file',
+              risk: 'low',
+              matches: shadowHits.slice(0, 5),
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+              ruleName,
+              sha256: shadowSha256,
+            })
+            // Only return if no real risk — otherwise continue to also report as real finding
+            if (riskScore <= 0) return null
+          }
+
           // Location bonus
           const fpLower = filePath.toLowerCase()
           if (fpLower.includes('downloads') || fpLower.includes('download') || fpLower.includes('desktop') || fpLower.includes('temp') || fpLower.includes('загрузки')) {
@@ -103,6 +141,12 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
               if (!hr) hr = { riskScore: 60, suspicions: [] }
               hr.suspicions.push(`fuzzy-hash:matched (distance=${fuzzyMatch.distance})`)
             }
+          }
+          // ── Persistent escalation bonus ──
+          if (ctx.escalationBonus > 0 && riskScore > 10) {
+            riskScore += ctx.escalationBonus
+            if (!hr) hr = { riskScore: ctx.escalationBonus, suspicions: [] }
+            hr.suspicions.push(`persistent-profile:escalated +${ctx.escalationBonus} (repeated suspicious activity)`)
           }
           if (hr && riskScore > 20) {
             const risk = riskScore > 80 ? 'high' : riskScore > 50 ? 'medium' : 'low'
@@ -403,6 +447,14 @@ export function registerScanHandlers() {
     const win = BrowserWindow.fromWebContents(event.sender)
     const tokenId = options?.token_id ?? options?.tokenId ?? 0
     const pcUsername = options?.pc_username ?? options?.pcUsername ?? 'unknown'
+
+    // ── Persistent profile escalation ──
+    const escalationBonus = getEscalationBonus()
+    const profile = getProfileSummary()
+    if (escalationBonus > 0) {
+      console.log(`  📈 Profile ESCALATED: ${profile.consistencyPercent}% consistency over last scans — adding +${escalationBonus} to all findings`)
+    }
+    ctx.escalationBonus = escalationBonus
 
     // Internal state cleanup — preserves expensive caches (sigCache, peHeaderCache)
     ctx.resetScan()

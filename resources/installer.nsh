@@ -3,6 +3,9 @@
 ; Modern dark UI with red accents
 ;=================================================
 
+; Request administrator privileges for installation
+RequestExecutionLevel admin
+
 ; Use Modern UI 2
 !include "MUI2.nsh"
 

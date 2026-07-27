@@ -19,6 +19,8 @@ export interface ScanResult {
   modifiedAt: string
   /** SHA256 hash of the file (only for HIGH-risk file results) */
   sha256?: string
+  /** Rule name for shadow-mode findings (telemetry grouping) */
+  ruleName?: string
 }
 
 export interface ScanProgress {
@@ -43,6 +45,8 @@ export interface ScanResponse {
 export interface HeuristicResult {
   riskScore: number
   suspicions: string[]
+  /** Shadow-mode rule hits — silent telemetry, never shown to user */
+  shadowRuleHits?: string[]
 }
 
 export interface GamePid {
@@ -71,6 +75,8 @@ export class ScanContext {
   fileMtimeCache = new Map<string, number>()
   /** AbortController for scan cancellation */
   abortController: AbortController | null = null
+  /** Persistent profile escalation bonus (0 = not escalated) */
+  escalationBonus: number = 0
 
   readonly PE_CACHE_MAX = 500
 

@@ -445,12 +445,18 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
     }
 
     // 2. Name check against categories (min length 4 chars to avoid false positives)
+    const shadowRuleHits: string[] = []
     for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
+      const isShadow = cat.shadow === true
       for (const nm of cat.names) {
         if (nm.length < MIN_KEYWORD_LENGTH) continue
         if (fileName.includes(nm)) {
-          suspicions.push(`Name → [${catName}]: ${cat.description}`)
-          riskScore += 40
+          if (isShadow) {
+            shadowRuleHits.push(`Name → [${catName}]: ${cat.description}`)
+          } else {
+            suspicions.push(`Name → [${catName}]: ${cat.description}`)
+            riskScore += 40
+          }
           break
         }
       }
@@ -633,6 +639,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
 
       // ── Signature analysis (applies to all binary files) ──
       for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
+        const isShadow = cat.shadow === true
         const found: string[] = []
         for (const sigBuf of cat.strings) {
           const sigStr = sigBuf.toString().toLowerCase()
@@ -641,8 +648,12 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
           }
         }
         if (found.length > 0) {
-          suspicions.push(`Signatures [${catName}]: ${found.slice(0, 3).join(', ')}`)
-          riskScore += 50
+          if (isShadow) {
+            shadowRuleHits.push(`Signatures [${catName}]: ${found.slice(0, 3).join(', ')}`)
+          } else {
+            suspicions.push(`Signatures [${catName}]: ${found.slice(0, 3).join(', ')}`)
+            riskScore += 50
+          }
         }
       }
 
@@ -698,9 +709,9 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       } catch (_e) { /* skip */ }
     }
 
-    if (riskScore === 0) return null
+    if (riskScore === 0 && shadowRuleHits.length === 0) return null
 
-    return { riskScore, suspicions }
+    return { riskScore, suspicions, shadowRuleHits: shadowRuleHits.length > 0 ? shadowRuleHits : undefined }
   } catch (_e) {
     return null
   }

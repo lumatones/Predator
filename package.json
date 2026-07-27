@@ -1,6 +1,6 @@
 {
   "name": "predator",
-  "version": "0.1.16",
+  "version": "0.2.0",
   "description": "Predator — Cheat checker for GTA 5 RP (Majestic)",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -44,11 +44,12 @@
       ],
       "icon": "resources/icon.png",
       "artifactName": "${productName}-${version}.${ext}",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true,
       "createDesktopShortcut": true,

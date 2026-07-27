@@ -1,4 +1,5 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
+dotenv.config({ override: true })
 import express from 'express'
 import cors from 'cors'
 import http from 'http'
@@ -117,6 +118,11 @@ io.on('connection', (socket) => {
     console.log(`  ${socket.id} joined admin room`)
   })
 
+  socket.on('join-scanner', () => {
+    socket.join('scanner')
+    console.log(`  ${socket.id} joined scanner room (${io.sockets.adapter.rooms.get('scanner')?.size || 0} clients)`)
+  })
+
   socket.on('disconnect', (reason) => {
     console.log(`  WS disconnected: ${socket.id} (${reason})`)
   })
@@ -148,7 +154,7 @@ async function start() {
       + '  Start WAMP and run: npm run db:init\n')
   }
 
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`  Server: http://localhost:${PORT}\n`)
     console.log('  Endpoints:')
     console.log(`  POST /api/auth/token           Check token`)

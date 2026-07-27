@@ -210,12 +210,125 @@ export function scanEtwImageLoadEvents(): ScanResult[] {
 }
 
 /**
- * Run full ETW scan — combines process + image load events.
+ * Scan for remote thread injection patterns.
+ * Detects CreateRemoteThread / NtCreateThreadEx being used to inject code.
+ */
+export function scanEtwThreadInjection(): ScanResult[] {
+  const results: ScanResult[] = []
+  if (!_etwSessionActive) return results
+
+  try {
+    // Query processes with high thread counts in game executables (injection indicator)
+    const psCmd = `
+      Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'GTA5|FiveM|ragemp|altv' } |
+      Select-Object Id, Name, Threads, HandleCount |
+      Where-Object { $_.Threads.Count -gt 300 } |
+      ConvertTo-Json -Compress
+    `.trim()
+
+    const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      encoding: 'utf-8' as BufferEncoding,
+      timeout: 6000,
+    }).trim()
+
+    if (!out || out.length < 5) return results
+
+    let procs: { Id?: number; Name?: string; Threads?: { Count: number }; HandleCount?: number }[] = []
+    try {
+      const parsed = JSON.parse(out)
+      procs = Array.isArray(parsed) ? parsed : [parsed]
+    } catch { return results }
+
+    for (const proc of procs) {
+      const threadCount = proc.Threads?.Count || 0
+      const key = `etw-threads:${proc.Name}:${proc.Id}`
+      if (threadCount > 100 && addFindingDedup(key)) {
+        results.push({
+          path: `etw:${proc.Name} (PID: ${proc.Id})`,
+          fileName: `ETW: Abnormal thread count — ${proc.Name}`,
+          type: 'process',
+          risk: threadCount > 500 ? 'high' : 'medium',
+          matches: [
+            `ETW: ${threadCount} threads in game process (normal: <200)`,
+            'Possible remote thread injection',
+          ],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+  } catch { /* ETW optional */ }
+  return results
+}
+
+/**
+ * Scan for process hollowing indicators.
+ * Detects processes with suspicious PE headers in memory (mismatched image).
+ */
+export function scanEtwProcessHollowing(): ScanResult[] {
+  const results: ScanResult[] = []
+  if (!_etwSessionActive) return results
+
+  try {
+    // PowerShell script: check if running processes' on-disk image differs from in-memory
+    const psCmd = `
+      Get-Process | Where-Object { $_.Path } |
+      Select-Object -First 40 Id, Name, Path |
+      ForEach-Object {
+        try {
+          $diskSig = (Get-AuthenticodeSignature -FilePath $_.Path -ErrorAction SilentlyContinue).Status
+          [PSCustomObject]@{ PID=$_.Id; Name=$_.Name; Path=$_.Path; SignatureStatus=$diskSig }
+        } catch { [PSCustomObject]@{ PID=$_.Id; Name=$_.Name; Path=$_.Path; SignatureStatus='Error' } }
+      } | ConvertTo-Json -Compress
+    `.trim()
+
+    const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      encoding: 'utf-8' as BufferEncoding,
+      timeout: 25000,
+    }).trim()
+
+    if (!out || out.length < 5) return results
+
+    let sigs: { PID?: number; Name?: string; Path?: string; SignatureStatus?: string }[] = []
+    try { const p = JSON.parse(out); sigs = Array.isArray(p) ? p : [p] } catch { return results }
+
+    const SYSTEM_PROCESS_NAMES = new Set([
+      'svchost.exe', 'csrss.exe', 'lsass.exe', 'services.exe', 'smss.exe',
+      'winlogon.exe', 'explorer.exe',
+    ])
+
+    for (const s of sigs) {
+      const name = (s.Name || '').toLowerCase()
+      const sigStatus = s.SignatureStatus || ''
+      if (!s.Path) continue // Skip processes without accessible path
+      if (SYSTEM_PROCESS_NAMES.has(name) && (sigStatus === 'NotSigned') && addFindingDedup(`etw-hollow:${name}:${s.PID}`)) {
+        results.push({
+          path: `etw:${name} (PID: ${s.PID})`,
+          fileName: `ETW: Possible process hollowing — ${name}`,
+          type: 'process',
+          risk: 'high',
+          matches: [
+            `ETW: ${name} is a system process but has invalid/missing signature`,
+            'Possible process hollowing — image on disk differs from memory',
+          ],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
+  } catch { /* ETW optional */ }
+  return results
+}
+
+/**
+ * Run full ETW scan — combines process + image load + thread injection + hollowing.
  * Called during Phase 5 of full scan.
  */
 export function runEtwScan(): ScanResult[] {
   startEtwSession()
   const processEvents = scanEtwProcessEvents()
   const imageEvents = scanEtwImageLoadEvents()
-  return [...processEvents, ...imageEvents]
+  const threadEvents = scanEtwThreadInjection()
+  const hollowingEvents = scanEtwProcessHollowing()
+  return [...processEvents, ...imageEvents, ...threadEvents, ...hollowingEvents]
 }

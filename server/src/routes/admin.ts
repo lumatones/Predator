@@ -8,9 +8,10 @@ import {
   adminLoginSchema,
   tokensGenerateSchema,
   hashConfirmFromScanSchema,
+  shadowPromoteSchema,
   validate,
 } from '../shared-types'
-import type { TokenRow, RequestRow, AdminRow, ScanResultRow, SuspiciousHashRow } from '../shared-types'
+import type { TokenRow, RequestRow, AdminRow, ScanResultRow, SuspiciousHashRow, ShadowFindingRow } from '../shared-types'
 
 const router = express.Router()
 
@@ -343,6 +344,13 @@ router.get('/suspicious-hashes', async (req: Request, res: Response) => {
 router.post('/hashes/approve/:id', async (req: Request, res: Response) => {
   try {
     const hashId = String(req.params.id)
+
+    // Fetch sha256 + tlsh BEFORE updating, so we can push to scanners
+    const hashRows = await query<{ sha256: string; tlsh: string | null }[]>(
+      'SELECT sha256, tlsh FROM suspicious_hashes WHERE id = ? AND status = ?',
+      [hashId, 'pending']
+    )
+
     await query(
       'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND status = ?',
       ['confirmed', (req as any).admin.id, hashId, 'pending']
@@ -355,6 +363,15 @@ router.post('/hashes/approve/:id', async (req: Request, res: Response) => {
       admin: (req as any).admin.username,
       timestamp: new Date().toISOString(),
     })
+    // Real-time push to ALL connected scanner clients
+    if (hashRows.length > 0) {
+      io?.to('scanner').emit('hash-update', {
+        type: 'confirmed',
+        hashes: [hashRows[0].sha256],
+        tlsh: hashRows[0].tlsh ? [hashRows[0].tlsh] : undefined,
+        timestamp: new Date().toISOString(),
+      })
+    }
 
     return res.json({ success: true, message: 'Hash confirmed' })
   } catch (err: any) {
@@ -516,6 +533,12 @@ router.post('/hashes/confirm-from-scan', validate(hashConfirmFromScanSchema), as
       admin: (req as any).admin.username,
       timestamp: new Date().toISOString(),
     })
+    // Real-time push to ALL connected scanner clients
+    io?.to('scanner').emit('hash-update', {
+      type: 'confirmed',
+      hashes: [sha256.toLowerCase()],
+      timestamp: new Date().toISOString(),
+    })
 
     return res.json({ success: true, message: 'Hash confirmed as cheat and added to database' })
   } catch (err: any) {
@@ -533,7 +556,7 @@ router.get('/safe-files-stats', async (req: Request, res: Response) => {
 
     const recent = await query<any[]>(`
       SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS fileSize,
-             confirm_count AS confirmCount, created_at AS createdAt, last_seen AS lastSeen
+             confirm_count AS confirmCount, first_seen AS createdAt, last_seen AS lastSeen
       FROM safe_files
       ORDER BY last_seen DESC
       LIMIT 30
@@ -556,6 +579,117 @@ router.get('/safe-files-stats', async (req: Request, res: Response) => {
     })
   } catch (err: any) {
     console.error('Safe files stats error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── GET /api/admin/shadow-findings ──────────────
+router.get('/shadow-findings', async (req: Request, res: Response) => {
+  try {
+    const status = (req.query.status as string) || 'shadow'
+    const rows = await query<(ShadowFindingRow & { promoted_by_name: string | null })[]>(`
+      SELECT sf.*, a.username AS promoted_by_name
+      FROM shadow_findings sf
+      LEFT JOIN admins a ON sf.promoted_by = a.id
+      WHERE sf.status = ?
+      ORDER BY sf.occurrence_count DESC, sf.created_at DESC
+      LIMIT 100
+    `, [status])
+
+    const formatted = rows.map(r => ({
+      id: r.id,
+      pc_username: r.pc_username,
+      scan_mode: r.scan_mode,
+      file_path: r.file_path,
+      file_name: r.file_name,
+      file_type: r.file_type,
+      rule_name: r.rule_name,
+      matches: r.matches ? (() => { try { return JSON.parse(r.matches as string) } catch { return [] } })() : [],
+      sha256: r.sha256,
+      tlsh: r.tlsh,
+      occurrence_count: r.occurrence_count,
+      unique_pcs: r.unique_pcs,
+      status: r.status,
+      promoted_by_name: r.promoted_by_name,
+      promoted_at: r.promoted_at,
+      created_at: r.created_at,
+    }))
+
+    const stats = await query<{ total: number; promoted: number; rejected: number }[]>(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'promoted' THEN 1 ELSE 0 END) AS promoted,
+        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected
+      FROM shadow_findings
+    `)
+
+    return res.json({
+      findings: formatted,
+      stats: { total: stats[0]?.total || 0, promoted: stats[0]?.promoted || 0, rejected: stats[0]?.rejected || 0 },
+    })
+  } catch (err: any) {
+    console.error('Shadow findings error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/admin/shadow/promote ─────────────
+router.post('/shadow/promote', validate(shadowPromoteSchema), async (req: Request, res: Response) => {
+  try {
+    const { rule_name, target_status } = req.body
+
+    if (target_status === 'confirmed') {
+      // Promote: move all shadow findings with this rule_name to "promoted"
+      await query(
+        'UPDATE shadow_findings SET status = ?, promoted_by = ?, promoted_at = NOW() WHERE rule_name = ? AND status = ?',
+        ['promoted', (req as any).admin.id, rule_name, 'shadow']
+      )
+
+      // Also insert/update suspicious_hashes for all sha256 entries
+      const shas = await query<{ sha256: string; file_name: string | null; tlsh: string | null }[]>(
+        'SELECT DISTINCT sha256, file_name, tlsh FROM shadow_findings WHERE rule_name = ? AND sha256 IS NOT NULL AND status = ?',
+        [rule_name, 'promoted']
+      )
+      let hashInserted = 0
+      for (const s of shas) {
+        try {
+          await query(
+            `INSERT IGNORE INTO suspicious_hashes (sha256, tlsh, file_name, risk_score, status)
+             VALUES (?, ?, ?, 70, 'pending')`,
+            [s.sha256, s.tlsh || null, s.file_name || 'unknown']
+          )
+          hashInserted++
+        } catch { /* skip */ }
+      }
+      console.log(`  ✅ Shadow rule "${rule_name}" promoted — ${hashInserted} hashes added to suspicious_hashes`)
+    } else {
+      // Reject: mark as false_positive
+      await query(
+        'UPDATE shadow_findings SET status = ?, promoted_by = ?, promoted_at = NOW() WHERE rule_name = ? AND status = ?',
+        ['rejected', (req as any).admin.id, rule_name, 'shadow']
+      )
+    }
+
+    const io = req.app.get('io')
+    io?.to('admin').emit('shadow-update', {
+      type: target_status === 'confirmed' ? 'promoted' : 'rejected',
+      rule_name,
+      admin: (req as any).admin.username,
+      timestamp: new Date().toISOString(),
+    })
+    // Real-time push to ALL connected scanner clients when promoted
+    if (target_status === 'confirmed') {
+      io?.to('scanner').emit('rule-update', {
+        type: 'shadow-promoted',
+        rule_name,
+        rules: [{ name: rule_name, active: true }],
+        timestamp: new Date().toISOString(),
+      })
+    }
+
+    return res.json({ success: true, message: `Rule "${rule_name}" ${target_status === 'confirmed' ? 'promoted' : 'rejected'}` })
+  } catch (err: any) {
+    console.error('Shadow promote error:', err)
     return res.status(500).json({ error: 'Internal server error' })
   }
 })

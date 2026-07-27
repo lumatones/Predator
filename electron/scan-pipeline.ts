@@ -18,7 +18,7 @@ import https from 'https'
 import type { ScanResult } from './types'
 import { ctx } from './types'
 import { getApiEndpoint } from './config'
-import { recordSession } from './persistent-profile'
+import { recordSession, getProfileSummary } from './persistent-profile'
 import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, uploadSafeFiles } from './safe-files-db'
 
 // ═══════════════════════════════════════════════════
@@ -76,6 +76,7 @@ export async function recordScanSession(
   pctx: PipelineContext,
 ): Promise<void> {
   try {
+    const profile = getProfileSummary()
     recordSession({
       mode: pctx.mode as any,
       scanTimeMs: summary.scanTimeMs,
@@ -85,6 +86,9 @@ export async function recordScanSession(
       lowRiskCount: results.filter(r => r.risk === 'low').length,
       topFindings: results.filter(r => r.risk === 'high').slice(0, 5).map(r => r.fileName),
     })
+    if (profile.escalated) {
+      console.log(`  📈 Persistent profile: ${profile.totalScans} scans, ${profile.consistencyPercent}% consistent, trend=${profile.trend}`)
+    }
   } catch { /* persistent scoring optional */ }
 }
 
@@ -104,7 +108,12 @@ export async function submitShadowFindings(
       token_id: pctx.tokenId,
       pc_username: pctx.pcUsername,
       findings: ctx.shadowFindings.map(f => ({
-        path: f.path, fileName: f.fileName, type: f.type, matches: f.matches,
+        path: f.path,
+        fileName: f.fileName,
+        type: f.type,
+        ruleName: f.ruleName,
+        matches: f.matches,
+        sha256: f.sha256,
       })),
     })
   } catch { /* shadow submission optional */ }

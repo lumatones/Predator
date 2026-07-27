@@ -67,6 +67,7 @@ async function init(): Promise<void> {
     CREATE TABLE IF NOT EXISTS suspicious_hashes (
       id            INT AUTO_INCREMENT PRIMARY KEY,
       sha256        CHAR(64) NOT NULL,
+      tlsh          VARCHAR(256) DEFAULT NULL,
       file_name     VARCHAR(255),
       pc_username   VARCHAR(100),
       file_size     INT DEFAULT 0,
@@ -78,6 +79,19 @@ async function init(): Promise<void> {
       UNIQUE KEY uk_sha256 (sha256)
     ) ENGINE=InnoDB
   `)
+
+  // Add tlsh column if upgrading from pre-TLSH schema
+  try {
+    await query('ALTER TABLE suspicious_hashes ADD COLUMN tlsh VARCHAR(256) DEFAULT NULL AFTER sha256')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
+  }
+
+  try {
+    await query('CREATE INDEX idx_tlsh ON suspicious_hashes(tlsh(36))')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
 
   await query(`
     CREATE TABLE IF NOT EXISTS safe_files (
@@ -106,6 +120,47 @@ async function init(): Promise<void> {
 
   try {
     await query('CREATE INDEX idx_sf_last_seen ON safe_files(last_seen)')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
+
+  // ── Shadow Findings table ──
+  await query(`
+    CREATE TABLE IF NOT EXISTS shadow_findings (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      token_id      INT,
+      pc_username   VARCHAR(100) NOT NULL,
+      scan_mode     VARCHAR(20),
+      file_path     VARCHAR(1024),
+      file_name     VARCHAR(255),
+      file_type     VARCHAR(20) DEFAULT 'file',
+      rule_name     VARCHAR(255),
+      matches       JSON,
+      sha256        CHAR(64),
+      tlsh          VARCHAR(256),
+      occurrence_count INT DEFAULT 1,
+      unique_pcs    INT DEFAULT 1,
+      status        ENUM('shadow', 'promoted', 'rejected') DEFAULT 'shadow',
+      promoted_by   INT,
+      promoted_at   DATETIME,
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `)
+
+  try {
+    await query('CREATE INDEX idx_sf_status ON shadow_findings(status)')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
+
+  try {
+    await query('CREATE INDEX idx_sf_rule ON shadow_findings(rule_name(64))')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
+
+  try {
+    await query('CREATE INDEX idx_sf_sha256 ON shadow_findings(sha256)')
   } catch (err: any) {
     if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
   }

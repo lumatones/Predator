@@ -77,6 +77,7 @@ export const submitHashesSchema = z.object({
         file_name: z.string().max(255).optional(),
         file_size: z.number().int().min(0).optional(),
         risk_score: z.number().int().min(0).optional(),
+        tlsh: z.string().max(256).optional(),
       })
     )
     .min(1, 'At least one hash is required')
@@ -95,6 +96,33 @@ export const submitSafeFilesSchema = z.object({
     )
     .min(1)
     .max(500),
+})
+
+// ── Shadow Findings ──
+
+export const submitShadowSchema = z.object({
+  type: z.literal('shadow-findings'),
+  token_id: z.number().int().positive().optional(),
+  pc_username: z.string().max(100).optional(),
+  findings: z
+    .array(
+      z.object({
+        path: z.string(),
+        fileName: z.string(),
+        type: z.string().optional(),
+        ruleName: z.string().optional(),
+        matches: z.array(z.string()).optional(),
+        sha256: z.string().optional(),
+        tlsh: z.string().max(256).optional(),
+      })
+    )
+    .min(1)
+    .max(200),
+})
+
+export const shadowPromoteSchema = z.object({
+  rule_name: z.string().min(1).max(255),
+  target_status: z.enum(['confirmed', 'false_positive']),
 })
 
 // ═══════════════════════════════════════════════════
@@ -217,6 +245,7 @@ export interface ScanResultRow {
 export interface SuspiciousHashRow {
   id: number
   sha256: string
+  tlsh: string | null
   file_name: string | null
   pc_username: string | null
   file_size: number
@@ -233,4 +262,24 @@ export interface SafeFileRow {
   fileSize: number
   confirmCount: number
   lastSeen: string
+}
+
+export interface ShadowFindingRow {
+  id: number
+  token_id: number | null
+  pc_username: string
+  scan_mode: string | null
+  file_path: string | null
+  file_name: string | null
+  file_type: string
+  rule_name: string | null
+  matches: string | null // JSON
+  sha256: string | null
+  tlsh: string | null
+  occurrence_count: number
+  unique_pcs: number
+  status: 'shadow' | 'promoted' | 'rejected'
+  promoted_by: number | null
+  promoted_at: string | null
+  created_at: string
 }

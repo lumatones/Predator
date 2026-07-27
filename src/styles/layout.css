@@ -5,11 +5,11 @@
   z-index: 0;
   overflow: hidden;
   background:
-    /* Deep crimson vignette */
-    radial-gradient(ellipse at 50% 30%, rgba(20,2,2,0) 0%, #0a0505 100%),
-    /* Subtle aurora sweep */
-    radial-gradient(ellipse at 30% 20%, rgba(255,40,40,0.06) 0%, transparent 60%),
-    radial-gradient(ellipse at 70% 60%, rgba(255,60,20,0.04) 0%, transparent 55%);
+    /* Deep vignette — uses theme bg instead of hardcoded red-black */
+    radial-gradient(ellipse at 50% 30%, transparent 0%, var(--bg-primary) 100%),
+    /* Subtle aurora sweep — uses theme accent */
+    radial-gradient(ellipse at 30% 20%, color-mix(in srgb, var(--accent-red) 6%, transparent) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 60%, color-mix(in srgb, var(--accent-red) 4%, transparent) 0%, transparent 55%);
 }
 
 /* Subtle tech grid overlay */
@@ -20,8 +20,8 @@
   z-index: 1;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255,68,68,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,68,68,0.04) 1px, transparent 1px);
+    linear-gradient(color-mix(in srgb, var(--accent-red) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent-red) 4%, transparent) 1px, transparent 1px);
   background-size: 64px 64px;
   opacity: 0.6;
   mask-image: radial-gradient(ellipse at 50% 35%, black 25%, transparent 70%);
@@ -36,8 +36,8 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 120% 80% at 20% 0%, rgba(255,42,42,0.08) 0%, transparent 70%),
-    radial-gradient(ellipse 100% 60% at 80% 100%, rgba(255,70,40,0.05) 0%, transparent 60%);
+    radial-gradient(ellipse 120% 80% at 20% 0%, color-mix(in srgb, var(--accent-red) 8%, transparent) 0%, transparent 70%),
+    radial-gradient(ellipse 100% 60% at 80% 100%, color-mix(in srgb, var(--accent-orange) 5%, transparent) 0%, transparent 60%);
   animation: auroraDrift 20s ease-in-out infinite;
 }
 
@@ -159,13 +159,13 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 68, 68, 0.25);
+  background: color-mix(in srgb, var(--accent-red) 25%, transparent);
   border-radius: 3px;
   transition: background var(--duration-fast) ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 68, 68, 0.45);
+  background: color-mix(in srgb, var(--accent-red) 45%, transparent);
 }
 
 ::-webkit-scrollbar-corner {
@@ -175,7 +175,7 @@
 /* Firefox scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 68, 68, 0.25) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-red) 25%, transparent) transparent;
 }
 
 /* ═══ MAIN CONTAINER ═══ */
