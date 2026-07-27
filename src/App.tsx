@@ -33,6 +33,7 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
   const [cmdVisible, setCmdVisible] = useState(false)
   const [countdown, setCountdown] = useState(100)
   const [redScreen, setRedScreen] = useState(false)
+  const [jokeScreen, setJokeScreen] = useState(false)
   const scaryTriggered = useRef(false)
   const firstHoverDone = useRef(false)
 
@@ -88,10 +89,21 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
     }
   }, [countdown, cmdVisible])
 
+  // Red screen → joke screen transition (5s red, then joke)
+  useEffect(() => {
+    if (!redScreen) return
+    const t = setTimeout(() => {
+      setRedScreen(false)
+      setJokeScreen(true)
+    }, 5000)
+    return () => clearTimeout(t)
+  }, [redScreen])
+
   const dismissCmd = useCallback((e?: React.MouseEvent | KeyboardEvent) => {
     if (e && 'stopPropagation' in e) e.stopPropagation()
     setCmdVisible(false)
     setRedScreen(false)
+    setJokeScreen(false)
     setScaryMode(false)
     setCountdown(100)
     setPhraseIdx(0)
@@ -100,15 +112,25 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
     firstHoverDone.current = false
   }, [])
 
-  // Auto-dismiss everything 2.5s after red screen appears
+  // Auto-dismiss everything if user closes during joke screen
   useEffect(() => {
-    if (!redScreen) return
+    if (!redScreen && !jokeScreen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dismissCmd(e)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [redScreen, jokeScreen, dismissCmd])
+
+  // Joke screen auto-dismiss after 3s
+  useEffect(() => {
+    if (!jokeScreen) return
     const t = setTimeout(() => {
-      setRedScreen(false)
+      setJokeScreen(false)
       dismissCmd()
-    }, 2500)
+    }, 3000)
     return () => clearTimeout(t)
-  }, [redScreen, dismissCmd])
+  }, [jokeScreen, dismissCmd])
 
   // Escape key to dismiss CMD
   useEffect(() => {
@@ -142,25 +164,7 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
                   <stop offset="0%" stopColor="#cc0000" />
                   <stop offset="100%" stopColor="#660000" />
                 </linearGradient>
-                {/* Outer horror glow */}
-                <filter id="horrorGlow" x="-30%" y="-30%" width="160%" height="160%">
-                  <feGaussianBlur stdDeviation="6" result="blur1" />
-                  <feGaussianBlur stdDeviation="12" result="blur2" />
-                  <feMerge>
-                    <feMergeNode in="blur2" />
-                    <feMergeNode in="blur1" />
-                    <feMergeNode in="blur1" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
               </defs>
-
-              {/* Ambient outer red glow — pulsates */}
-              <ellipse cx="90" cy="38" rx="85" ry="32" fill="none" stroke="#ff1111" strokeWidth="6" opacity="0.12" filter="url(#horrorGlow)">
-                <animate attributeName="opacity" values="0.12;0.28;0.12" dur="2s" repeatCount="indefinite" />
-                <animate attributeName="rx" values="85;92;85" dur="2.5s" repeatCount="indefinite" />
-                <animate attributeName="ry" values="32;36;32" dur="2.5s" repeatCount="indefinite" />
-              </ellipse>
 
               {/* ━━━ UPPER TEETH — floating, individual, some cracked ━━━ */}
               {/* Tooth 1 — leftmost, chipped */}
@@ -286,8 +290,16 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
         </div>
       )}
 
+      {/* JOKE SCREEN — same blood-red style, reveals it was a prank */}
+      {jokeScreen && (
+        <div className="red-screen red-screen--joke">
+          <div className="red-screen-text red-screen-text--joke">ЭТО БЫЛА ШУТКА</div>
+          <div className="red-screen-sub red-screen-sub--joke">JUST KIDDING... RELAX</div>
+        </div>
+      )}
+
       {/* Fake CMD terminal overlay */}
-      {cmdVisible && !redScreen && (
+      {cmdVisible && !redScreen && !jokeScreen && (
         <div className="fake-cmd" onClick={dismissCmd}>
           <div className="fake-cmd-titlebar">
             <span className="fake-cmd-dot fake-cmd-close" onClick={dismissCmd} title="Закрыть" />
@@ -305,7 +317,7 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
                   Система завершит работу через: <span className="fake-cmd-timer">{countdown}</span> сек.
                 </>
               ) : (
-                <span className="fake-cmd-done">Шутка :) Нажми чтобы закрыть.</span>
+                <span className="fake-cmd-done" />
               )}
             </div>
           </div>
