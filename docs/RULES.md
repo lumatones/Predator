@@ -1,5 +1,32 @@
 # Правила разработки Predator 🦅
 
+> **Роль AI-агента**: Senior Software Engineer (10+ лет опыта), Security Analyst, Motion Designer, Researcher.
+
+## 🧠 ПРИНЦИПЫ РАБОТЫ
+
+### 1. THINK FIRST (ОБЯЗАТЕЛЬНО)
+Перед каждым действием:
+- Проанализируй задачу
+- Определи риски
+- Подумай о лучших практиках
+- Только потом предлагай решение
+
+**Никогда не пиши код сразу.**
+
+### 2. РАБОТА ПО ЭТАПАМ (СТРОГО)
+- Нельзя перескакивать этапы
+- Каждый этап: доводится до идеала → проверяется → оптимизируется → документируется
+- Если задача большая: разбей на подзадачи, делай по шагам, жди подтверждения
+
+### 3. ИССЛЕДОВАНИЕ (CRITICAL)
+Перед реализацией:
+- Изучи документацию
+- Найди лучшие практики
+- Сравни подходы
+- Обоснуй выбор
+
+---
+
 ## О проекте
 
 **Predator** — система проверки безопасности для GTA 5 RP (Majestic). Состоит из четырёх компонентов:
@@ -10,25 +37,24 @@
 
 ---
 
-## 🏗 Технический стек
+## 🧩 ТЕХНОЛОГИЧЕСКИЙ СТЕК
 
 | Компонент          | Технология                                                    |
 |-------------------|----------------------------------------------------------------|
-| Desktop Frontend  | Vite + React 19 + TypeScript 5.7 + Framer Motion               |
+| Desktop Frontend  | Vite + React 19 + TypeScript 5.7 + Framer Motion + Three.js    |
 | Desktop Shell     | Electron 33 + Vite Plugin Electron                             |
-| Backend           | Node.js + Express 4 + MySQL 8 (WAMP) + JWT + bcrypt            |
-| Admin Site        | Vite + React 19 + React Router 7 + TypeScript                  |
-| Bundling/Installer | electron-builder (portable) + GitHub Releases                  |
+| Backend           | Node.js + Express 4 + MySQL 8 + JWT + bcrypt + Socket.IO       |
+| Admin Site        | Vite + React 19 + React Router 7 + TypeScript + Chart.js       |
+| Bundling          | electron-builder (portable .exe) + GitHub Releases             |
 | Auto-Updater      | electron-updater + GitHub Releases + latest.yml                |
-| Scanner Engine    | 9 категорий угроз, YARA-правила, PE-анализ, энтропия Шеннона   |
+| Scanner Engine    | 9 категорий угроз, YARA, PE-анализ, энтропия Шеннона, TLSH     |
+| Heuristic Engine  | API Hashing, PEB Walking, Masquerading, Behavioral detection   |
+| Memory Analysis   | MiniDumpWriteDump, RWX scanner, Disk-vs-Memory                 |
 | Browser History   | sql.js (WASM) — Chrome, Edge, Brave, Yandex, Opera, Opera GX  |
-| Heuristic Engine  | API Hashing, PEB Walking, Masquerading detection                |
-| Memory Analysis   | MiniDumpWriteDump + string analysis, RWX scanner, Disk-vs-Memory |
-| Cloud Sync        | Периодическая синхронизация хешей читов с backend API           |
-| Авторизация       | JWT (jsonwebtoken) + bcryptjs                                   |
-| Токены            | 32-символьные hex (crypto.randomBytes)                          |
-| Тестирование      | Vitest (unit tests)                                             |
-| Экспорт отчётов   | HTML (Chart.js) + JSON                                          |
+| Cloud Sync        | HTTP polling + WebSocket fallback (хеши читов)                 |
+| Testing           | Vitest (unit) + TypeScript strict mode                         |
+| Export            | HTML (Chart.js) + JSON + Markdown + Telegram                   |
+| UI Effects        | Particles (tsparticles), Glassmorphism, Matrix Rain, 3D (Three.js) |
 
 ---
 
@@ -45,10 +71,10 @@
 - Если что-то пошло не так — откатываемся и обсуждаем.
 
 ### 3. Версионирование
-- Текущая версия: **0.0.21**.
+- Текущая версия: **0.1.14**.
 - После каждого завершённого блока работ → увеличение на **0.0.1**.
-- Формат: `v0.0.1` → `v0.0.2` → `v0.0.3` и т.д.
-- После крупных milestone'ов → `v0.1.0`, `v1.0.0`.
+- Формат: `v0.0.1` → `v0.0.2` → `v0.1.0` → `v0.1.1` и т.д.
+- После крупных milestone'ов → `v0.2.0`, `v1.0.0`.
 
 ### 4. Документирование
 - **RULES.md** — этот файл (правила и процесс).
@@ -241,8 +267,8 @@ Predator/
 
 ## 🗺 Текущий статус
 
-**Версия:** 0.0.21
-**Релиз:** v0.0.21 на GitHub
+**Версия:** 0.1.14
+**Релиз:** v0.1.14 на GitHub
 
 ### ✅ Что сделано
 
@@ -261,7 +287,8 @@ Predator/
 | 0.0.17–0.0.18 | Layout fix, ErrorBoundary, удаление Statistics |
 | 0.0.19 | Vitest тесты, API_BASE env var, сканер на модули |
 | 0.0.20 | CI typecheck fix (10 ошибок) |
-| 0.0.21 | **Рефакторинг**: ScanContext, parsePsJson, CFG, constants.ts, cloud-sync.ts, типизация |
+| 0.0.21 | Рефакторинг: ScanContext, parsePsJson, CFG, constants, cloud-sync, типизация |
+| 0.1.14 | **ScanPipeline** (композируемые post-scan handler'ы), **Signature Registry** (единый источник сигнатур), **MASQUERADING_SYSTEM_TOOLS** (поведенческий детект без FP), Falcon Sandbox интеграция |
 
 ### 🔬 Сканер (6 режимов)
 

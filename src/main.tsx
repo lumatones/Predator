@@ -14,6 +14,7 @@ import './styles/onboarding.css'
 import './styles/components.css'
 import './styles/checker.css'
 import './styles/dashboard.css'
+import './styles/onboarding-v2.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

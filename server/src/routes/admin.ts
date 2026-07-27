@@ -1,34 +1,40 @@
-const express = require('express')
-const bcrypt = require('bcryptjs')
-const crypto = require('crypto')
-const { query } = require('../config/database')
-const { generateToken, verifyToken } = require('../middleware/auth')
+import express from 'express'
+import type { Request, Response } from 'express'
+import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
+import { query } from '../config/database'
+import { generateToken, verifyToken } from '../middleware/auth'
+import {
+  adminLoginSchema,
+  tokensGenerateSchema,
+  hashConfirmFromScanSchema,
+  validate,
+} from '../shared-types'
+import type { TokenRow, RequestRow, AdminRow, ScanResultRow, SuspiciousHashRow } from '../shared-types'
+
 const router = express.Router()
 
 // ── POST /api/admin/login ─────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', validate(adminLoginSchema), async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Введите логин и пароль' })
-    }
 
-    const rows = await query('SELECT * FROM admins WHERE username = ?', [username])
+    const rows = await query<AdminRow[]>('SELECT * FROM admins WHERE username = ?', [username])
     if (rows.length === 0) {
-      return res.status(401).json({ error: 'Неверный логин или пароль' })
+      return res.status(401).json({ error: 'Invalid username or password' })
     }
 
     const admin = rows[0]
     const match = await bcrypt.compare(password, admin.password_hash)
     if (!match) {
-      return res.status(401).json({ error: 'Неверный логин или пароль' })
+      return res.status(401).json({ error: 'Invalid username or password' })
     }
 
     const token = generateToken(admin)
     return res.json({ token, admin: { id: admin.id, username: admin.username, role: admin.role } })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Login error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
@@ -36,113 +42,121 @@ router.post('/login', async (req, res) => {
 router.use(verifyToken)
 
 // ── GET /api/admin/pending ────────────────────
-router.get('/pending', async (req, res) => {
+router.get('/pending', async (req: Request, res: Response) => {
   try {
-    const rows = await query(
+    const rows = await query<RequestRow[]>(
       'SELECT id, pc_username, status, created_at, expires_at FROM requests WHERE status = ? AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY created_at DESC',
       ['pending']
     )
     return res.json(rows)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Pending error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/admin/approve/:id ───────────────
-router.post('/approve/:id', async (req, res) => {
+router.post('/approve/:id', async (req: Request, res: Response) => {
   try {
-    const rows = await query('SELECT * FROM requests WHERE id = ? AND status = ?', [req.params.id, 'pending'])
+    const rows = await query<RequestRow[]>(
+      'SELECT * FROM requests WHERE id = ? AND status = ?',
+      [req.params.id, 'pending']
+    )
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Запрос не найден или уже обработан' })
+      return res.status(404).json({ error: 'Request not found or already processed' })
     }
 
+    const requestId = String(req.params.id)
     await query(
       'UPDATE requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?',
-      ['approved', req.admin.id, req.params.id]
+      ['approved', (req as any).admin.id, requestId]
     )
 
     const io = req.app.get('io')
     io?.to('admin').emit('request-update', {
       type: 'approved',
-      requestId: parseInt(req.params.id),
+      requestId: parseInt(requestId),
       pcUsername: rows[0].pc_username,
-      admin: req.admin.username,
+      admin: (req as any).admin.username,
       timestamp: new Date().toISOString(),
     })
 
-    return res.json({ success: true, message: 'Запрос одобрен' })
-  } catch (err) {
+    return res.json({ success: true, message: 'Request approved' })
+  } catch (err: any) {
     console.error('Approve error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/admin/reject/:id ────────────────
-router.post('/reject/:id', async (req, res) => {
+router.post('/reject/:id', async (req: Request, res: Response) => {
   try {
-    const rows = await query('SELECT * FROM requests WHERE id = ? AND status = ?', [req.params.id, 'pending'])
+    const rows = await query<RequestRow[]>(
+      'SELECT * FROM requests WHERE id = ? AND status = ?',
+      [req.params.id, 'pending']
+    )
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Запрос не найден или уже обработан' })
+      return res.status(404).json({ error: 'Request not found or already processed' })
     }
 
+    const rejectId = String(req.params.id)
     await query(
       'UPDATE requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?',
-      ['rejected', req.admin.id, req.params.id]
+      ['rejected', (req as any).admin.id, rejectId]
     )
 
     const io = req.app.get('io')
     io?.to('admin').emit('request-update', {
       type: 'rejected',
-      requestId: parseInt(req.params.id),
+      requestId: parseInt(rejectId),
       pcUsername: rows[0].pc_username,
-      admin: req.admin.username,
+      admin: (req as any).admin.username,
       timestamp: new Date().toISOString(),
     })
 
-    return res.json({ success: true, message: 'Запрос отклонён' })
-  } catch (err) {
+    return res.json({ success: true, message: 'Request rejected' })
+  } catch (err: any) {
     console.error('Reject error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/admin/tokens/generate ───────────
-router.post('/tokens/generate', async (req, res) => {
+router.post('/tokens/generate', validate(tokensGenerateSchema), async (req: Request, res: Response) => {
   try {
-    const { count = 1 } = req.body
-    const tokens = []
+    const { count } = req.body
+    const tokens: string[] = []
 
     for (let i = 0; i < Math.min(count, 10); i++) {
       const code = crypto.randomBytes(16).toString('hex').toUpperCase()
 
       await query(
         'INSERT INTO tokens (code, created_by) VALUES (?, ?)',
-        [code, req.admin.id]
+        [code, (req as any).admin.id]
       )
 
-      const formatted = code.match(/.{1,8}/g).join('-')
+      const formatted = code.match(/.{1,8}/g)!.join('-')
       tokens.push(formatted)
     }
 
     const io = req.app.get('io')
     io?.to('admin').emit('token-generated', {
       count: tokens.length,
-      admin: req.admin.username,
+      admin: (req as any).admin.username,
       timestamp: new Date().toISOString(),
     })
 
     return res.json({ success: true, tokens })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Generate token error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/admin/tokens ─────────────────────
-router.get('/tokens', async (req, res) => {
+router.get('/tokens', async (req: Request, res: Response) => {
   try {
-    const rows = await query(`
+    const rows = await query<(TokenRow & { created_by_name: string | null })[]>(`
       SELECT t.id, t.code, t.is_active, t.used_by, t.used_at, t.created_at, a.username AS created_by_name
       FROM tokens t
       LEFT JOIN admins a ON t.created_by = a.id
@@ -150,7 +164,6 @@ router.get('/tokens', async (req, res) => {
       LIMIT 50
     `)
 
-    // Явно перечисляем поля — НЕ пробрасываем оригинальный code
     const formatted = rows.map(r => ({
       id: r.id,
       is_active: r.is_active,
@@ -158,42 +171,39 @@ router.get('/tokens', async (req, res) => {
       used_at: r.used_at,
       created_at: r.created_at,
       created_by_name: r.created_by_name,
-      code_display: r.code ? r.code.match(/.{1,8}/g).join('-') : '',
+      code_display: r.code ? r.code.match(/.{1,8}/g)!.join('-') : '',
     }))
 
     return res.json(formatted)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Tokens list error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/admin/tokens/revoke/:id ─────────
-router.post('/tokens/revoke/:id', async (req, res) => {
+router.post('/tokens/revoke/:id', async (req: Request, res: Response) => {
   try {
+    const tokenId = String(req.params.id)
     await query(
       'UPDATE tokens SET is_active = FALSE, revoked_at = NOW() WHERE id = ? AND is_active = TRUE',
-      [req.params.id]
+      [tokenId]
     )
-    return res.json({ success: true, message: 'Токен отозван' })
-  } catch (err) {
+    return res.json({ success: true, message: 'Token revoked' })
+  } catch (err: any) {
     console.error('Revoke error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/admin/history ────────────────────
-router.get('/history', async (req, res) => {
+router.get('/history', async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 100, 200)
+    const limit = Math.min(parseInt((req.query.limit as string) || '100'), 200)
 
-    const usedTokens = await query(`
+    const usedTokens = await query<(TokenRow & { created_by_name: string | null; event_type: string; event_date: string })[]>(`
       SELECT
-        t.id,
-        t.code,
-        t.used_by,
-        t.used_at,
-        t.created_at,
+        t.id, t.code, t.used_by, t.used_at, t.created_at,
         a.username AS created_by_name,
         'token_used' AS event_type,
         t.used_at AS event_date
@@ -204,13 +214,9 @@ router.get('/history', async (req, res) => {
       LIMIT ?
     `, [limit])
 
-    const processedRequests = await query(`
+    const processedRequests = await query<(RequestRow & { approved_by_name: string | null; event_type: string; event_date: string })[]>(`
       SELECT
-        r.id,
-        r.pc_username,
-        r.status,
-        r.created_at,
-        r.approved_at,
+        r.id, r.pc_username, r.status, r.created_at, r.approved_at,
         a.username AS approved_by_name,
         CONCAT('request_', r.status) AS event_type,
         COALESCE(r.approved_at, r.created_at) AS event_date
@@ -232,7 +238,7 @@ router.get('/history', async (req, res) => {
       code_display: t.code?.match(/.{1,8}/g)?.join('-') || '',
     }))
 
-    const merged = [
+    const merged: any[] = [
       ...formattedTokens.map(t => ({
         id: `tok-${t.id}`,
         date: t.event_date,
@@ -249,13 +255,13 @@ router.get('/history', async (req, res) => {
         type: 'request',
         subType: r.status,
         description: r.pc_username,
-        detail: r.status === 'approved' ? 'Одобрен' : 'Отклонён',
+        detail: r.status === 'approved' ? 'Approved' : 'Rejected',
         created_at: r.created_at,
         actor: r.approved_by_name || '—',
       })),
     ]
 
-    merged.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    merged.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     return res.json({
       total: merged.length,
@@ -265,27 +271,27 @@ router.get('/history', async (req, res) => {
         totalRequestsProcessed: processedRequests.length,
       },
     })
-  } catch (err) {
+  } catch (err: any) {
     console.error('History error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/admin/scan-stats ──────────────────
-router.get('/scan-stats', async (req, res) => {
+router.get('/scan-stats', async (req: Request, res: Response) => {
   try {
-    const totalScans = await query('SELECT COUNT(*) AS cnt FROM scan_results')
-    const totalScanned = await query('SELECT SUM(total_scanned) AS cnt FROM scan_results')
-    const totalSuspicious = await query('SELECT SUM(suspicious_files) AS cnt FROM scan_results')
+    const totalScans = await query<{ cnt: number }[]>('SELECT COUNT(*) AS cnt FROM scan_results')
+    const totalScanned = await query<{ cnt: number }[]>('SELECT SUM(total_scanned) AS cnt FROM scan_results')
+    const totalSuspicious = await query<{ cnt: number }[]>('SELECT SUM(suspicious_files) AS cnt FROM scan_results')
 
-    const byMode = await query(`
+    const byMode = await query<{ mode: string; cnt: number; threats: number }[]>(`
       SELECT mode, COUNT(*) AS cnt, SUM(suspicious_files) AS threats
       FROM scan_results
       GROUP BY mode
       ORDER BY cnt DESC
     `)
 
-    const byDay = await query(`
+    const byDay = await query<{ day: string; cnt: number; threats: number }[]>(`
       SELECT DATE(created_at) AS day, COUNT(*) AS cnt, SUM(suspicious_files) AS threats
       FROM scan_results
       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
@@ -293,7 +299,7 @@ router.get('/scan-stats', async (req, res) => {
       ORDER BY day ASC
     `)
 
-    const recent = await query(`
+    const recent = await query<ScanResultRow[]>(`
       SELECT id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, created_at
       FROM scan_results
       ORDER BY created_at DESC
@@ -308,17 +314,17 @@ router.get('/scan-stats', async (req, res) => {
       byDay: byDay || [],
       recent: recent || [],
     })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Scan stats error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/admin/suspicious-hashes ──────────
-router.get('/suspicious-hashes', async (req, res) => {
+router.get('/suspicious-hashes', async (req: Request, res: Response) => {
   try {
-    const status = req.query.status || 'pending'
-    const rows = await query(`
+    const status = (req.query.status as string) || 'pending'
+    const rows = await query<(SuspiciousHashRow & { reviewed_by_name: string | null })[]>(`
       SELECT sh.*, a.username AS reviewed_by_name
       FROM suspicious_hashes sh
       LEFT JOIN admins a ON sh.reviewed_by = a.id
@@ -327,64 +333,66 @@ router.get('/suspicious-hashes', async (req, res) => {
       LIMIT 100
     `, [status])
     return res.json(rows)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Suspicious hashes error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/admin/hashes/approve/:id ────────
-router.post('/hashes/approve/:id', async (req, res) => {
+router.post('/hashes/approve/:id', async (req: Request, res: Response) => {
   try {
+    const hashId = String(req.params.id)
     await query(
       'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND status = ?',
-      ['confirmed', req.admin.id, req.params.id, 'pending']
+      ['confirmed', (req as any).admin.id, hashId, 'pending']
     )
 
     const io = req.app.get('io')
     io?.to('admin').emit('hash-update', {
       type: 'confirmed',
-      hashId: parseInt(req.params.id),
-      admin: req.admin.username,
+      hashId: parseInt(hashId),
+      admin: (req as any).admin.username,
       timestamp: new Date().toISOString(),
     })
 
-    return res.json({ success: true, message: 'Хеш подтверждён' })
-  } catch (err) {
+    return res.json({ success: true, message: 'Hash confirmed' })
+  } catch (err: any) {
     console.error('Hash approve error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/admin/hashes/reject/:id ─────────
-router.post('/hashes/reject/:id', async (req, res) => {
+router.post('/hashes/reject/:id', async (req: Request, res: Response) => {
   try {
+    const hashId = String(req.params.id)
     await query(
       'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND status = ?',
-      ['false_positive', req.admin.id, req.params.id, 'pending']
+      ['false_positive', (req as any).admin.id, hashId, 'pending']
     )
 
     const io = req.app.get('io')
     io?.to('admin').emit('hash-update', {
       type: 'false_positive',
-      hashId: parseInt(req.params.id),
-      admin: req.admin.username,
+      hashId: parseInt(hashId),
+      admin: (req as any).admin.username,
       timestamp: new Date().toISOString(),
     })
 
-    return res.json({ success: true, message: 'Хеш отклонён' })
-  } catch (err) {
+    return res.json({ success: true, message: 'Hash rejected' })
+  } catch (err: any) {
     console.error('Hash reject error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/admin/scan-result-hashes ──────────
-router.get('/scan-result-hashes', async (req, res) => {
+router.get('/scan-result-hashes', async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 100, 500)
+    const limit = Math.min(parseInt((req.query.limit as string) || '100'), 500)
 
-    const rows = await query(`
+    const rows = await query<(ScanResultRow & { results_json: string | null })[]>(`
       SELECT sr.id, sr.pc_username, sr.mode, sr.results_json, sr.created_at
       FROM scan_results sr
       WHERE sr.results_json IS NOT NULL
@@ -394,7 +402,7 @@ router.get('/scan-result-hashes', async (req, res) => {
       LIMIT ?
     `, [limit])
 
-    const hashMap = new Map()
+    const hashMap = new Map<string, any>()
 
     for (const row of rows) {
       try {
@@ -430,7 +438,7 @@ router.get('/scan-result-hashes', async (req, res) => {
             sha256,
             file_name: fileName,
             file_size: fileSize,
-            pc_usernames: new Set(),
+            pc_usernames: new Set<string>(),
             first_seen: row.created_at,
             last_seen: row.created_at,
             occurrences: 0,
@@ -449,11 +457,11 @@ router.get('/scan-result-hashes', async (req, res) => {
     }
 
     const allHashes = Array.from(hashMap.keys())
-    const existingStatuses = new Map()
+    const existingStatuses = new Map<string, string>()
 
     if (allHashes.length > 0) {
       const placeholders = allHashes.map(() => '?').join(',')
-      const existingRows = await query(
+      const existingRows = await query<{ sha256: string; status: string }[]>(
         `SELECT sha256, status FROM suspicious_hashes WHERE sha256 IN (${placeholders})`,
         allHashes
       )
@@ -479,55 +487,51 @@ router.get('/scan-result-hashes', async (req, res) => {
       total: result.length,
       hashes: result.slice(0, 100),
     })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Scan result hashes error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/admin/hashes/confirm-from-scan ───
-router.post('/hashes/confirm-from-scan', async (req, res) => {
+router.post('/hashes/confirm-from-scan', validate(hashConfirmFromScanSchema), async (req: Request, res: Response) => {
   try {
     const { sha256, file_name, file_size } = req.body
-
-    if (!sha256 || typeof sha256 !== 'string' || sha256.length !== 64) {
-      return res.status(400).json({ error: 'Неверный формат SHA256' })
-    }
 
     await query(
       `INSERT IGNORE INTO suspicious_hashes (sha256, file_name, file_size, risk_score, status, reviewed_by, reviewed_at)
        VALUES (?, ?, ?, ?, 'confirmed', ?, NOW())`,
-      [sha256.toLowerCase(), file_name || 'unknown', file_size || 0, 80, req.admin.id]
+      [sha256.toLowerCase(), file_name || 'unknown', file_size || 0, 80, (req as any).admin.id]
     )
 
     await query(
       'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE sha256 = ? AND status = ?',
-      ['confirmed', req.admin.id, sha256.toLowerCase(), 'pending']
+      ['confirmed', (req as any).admin.id, sha256.toLowerCase(), 'pending']
     )
 
     const io = req.app.get('io')
     io?.to('admin').emit('hash-update', {
       type: 'confirmed',
       sha256: sha256.toLowerCase().slice(0, 16),
-      admin: req.admin.username,
+      admin: (req as any).admin.username,
       timestamp: new Date().toISOString(),
     })
 
-    return res.json({ success: true, message: 'Хеш подтверждён как чит и добавлен в базу' })
-  } catch (err) {
+    return res.json({ success: true, message: 'Hash confirmed as cheat and added to database' })
+  } catch (err: any) {
     console.error('Confirm from scan error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/admin/safe-files-stats ──────────────
-router.get('/safe-files-stats', async (req, res) => {
+router.get('/safe-files-stats', async (req: Request, res: Response) => {
   try {
-    const total = await query('SELECT COUNT(*) AS cnt FROM safe_files')
-    const totalConfirm50 = await query('SELECT COUNT(*) AS cnt FROM safe_files WHERE confirm_count >= 50')
-    const totalConfirm10 = await query('SELECT COUNT(*) AS cnt FROM safe_files WHERE confirm_count >= 10')
+    const total = await query<{ cnt: number }[]>('SELECT COUNT(*) AS cnt FROM safe_files')
+    const totalConfirm50 = await query<{ cnt: number }[]>('SELECT COUNT(*) AS cnt FROM safe_files WHERE confirm_count >= 50')
+    const totalConfirm10 = await query<{ cnt: number }[]>('SELECT COUNT(*) AS cnt FROM safe_files WHERE confirm_count >= 10')
 
-    const recent = await query(`
+    const recent = await query<any[]>(`
       SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS fileSize,
              confirm_count AS confirmCount, created_at AS createdAt, last_seen AS lastSeen
       FROM safe_files
@@ -535,7 +539,7 @@ router.get('/safe-files-stats', async (req, res) => {
       LIMIT 30
     `)
 
-    const topConfirmed = await query(`
+    const topConfirmed = await query<any[]>(`
       SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS fileSize,
              confirm_count AS confirmCount, last_seen AS lastSeen
       FROM safe_files
@@ -550,10 +554,10 @@ router.get('/safe-files-stats', async (req, res) => {
       recent,
       topConfirmed,
     })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Safe files stats error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
-module.exports = router
+export = router

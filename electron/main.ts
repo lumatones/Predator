@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -6,9 +6,13 @@ import { autoUpdater } from 'electron-updater'
 import { registerScanHandlers, startCloudSync, initSafeFilesDb } from './scanner'
 import { registerSystemInfoHandlers } from './system-info'
 import { loadConfig, saveConfig, getApiBase } from './config'
+import { startSignatureWatcher, stopSignatureWatcher } from './signature-watcher'
 
 let mainWindow: BrowserWindow | null = null
 let _updateCheckInterval: ReturnType<typeof setInterval> | null = null
+let tray: Tray | null = null
+let minimizeToTray = true
+let isQuitting = false
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 
@@ -96,12 +100,16 @@ function createWindow() {
     mainWindow?.show()
   })
 
-  mainWindow.on('closed', () => {
-    mainWindow = null
+  mainWindow.on('close', (event) => {
+    if (!isQuitting && minimizeToTray && process.platform !== 'darwin') {
+      event.preventDefault()
+      mainWindow?.hide()
+      return
+    }
   })
 
-  // Cleanup streaming intervals when window is destroyed
   mainWindow.on('closed', () => {
+    mainWindow = null
     if (_updateCheckInterval) {
       clearInterval(_updateCheckInterval)
       _updateCheckInterval = null
@@ -132,9 +140,13 @@ app.whenReady().then(async () => {
   // Initialize safe-files DB from community whitelist BEFORE scan handlers
   await initSafeFilesDb()
 
+  // Setup system tray
+  setupTray()
+
   registerScanHandlers()
   startCloudSync()
   registerSystemInfoHandlers()
+  startSignatureWatcher(mainWindow!)
 
   // ── Update check helpers ──
 
@@ -175,8 +187,86 @@ app.on('window-all-closed', () => {
   }
 })
 
+// ── Minimize to tray instead of closing ──
+
+app.on('before-quit', () => {
+  isQuitting = true
+})
+
+function setupTray() {
+  if (tray) return
+
+  const iconPath = path.join(__dirname, '../resources/icon.png')
+  let icon: Electron.NativeImage
+  try {
+    icon = nativeImage.createFromPath(iconPath)
+    // macOS tray icons should be 16x16 or 22x22 template images
+    if (process.platform === 'darwin') {
+      icon = icon.resize({ width: 16, height: 16 })
+      icon.setTemplateImage(true)
+    } else {
+      icon = icon.resize({ width: 16, height: 16 })
+    }
+  } catch {
+    // Fallback: create empty 16x16 icon
+    icon = nativeImage.createEmpty()
+  }
+
+  tray = new Tray(icon)
+  tray.setToolTip('Predator Anti-Cheat')
+
+  const updateContextMenu = () => {
+    const menu = Menu.buildFromTemplate([
+      {
+        label: 'Показать Predator',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show()
+            mainWindow.focus()
+          } else {
+            createWindow()
+          }
+        },
+      },
+      {
+        label: 'Свернуть в трей',
+        click: () => {
+          mainWindow?.hide()
+        },
+      },
+      { type: 'separator' },
+      {
+        label: minimizeToTray ? '✓ Сворачивать в трей при закрытии' : 'Сворачивать в трей при закрытии',
+        click: () => {
+          minimizeToTray = !minimizeToTray
+          updateContextMenu()
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Выход',
+        click: () => {
+          isQuitting = true
+          app.quit()
+        },
+      },
+    ])
+    tray!.setContextMenu(menu)
+  }
+
+  updateContextMenu()
+
+  tray.on('double-click', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
 app.on('will-quit', () => {
   writeCrashLog('INFO', 'App quitting')
+  stopSignatureWatcher()
   if (_updateCheckInterval) {
     clearInterval(_updateCheckInterval)
     _updateCheckInterval = null
@@ -286,4 +376,17 @@ ipcMain.handle('set-api-base', async (_event, url: string) => {
   } catch {
     return getApiBase()
   }
+})
+
+// ── Tray IPC ──
+
+ipcMain.handle('minimize-to-tray', async () => {
+  mainWindow?.hide()
+})
+
+ipcMain.handle('get-minimize-to-tray', async () => minimizeToTray)
+
+ipcMain.handle('set-minimize-to-tray', async (_event, value: boolean) => {
+  minimizeToTray = !!value
+  return minimizeToTray
 })

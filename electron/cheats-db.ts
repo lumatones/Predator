@@ -642,3 +642,46 @@ export const TARGET_EXTENSIONS = new Set([
   '.sys', '.drv',
   '.zip', '.rar', '.7z', '.msi', // Archives — need content scanning
 ])
+
+// ═══════════════════════════════════════════════════
+// 12. MASQUERADING SYSTEM TOOLS — subset for behavioral process detection
+// ═══════════════════════════════════════════════════
+//
+// This SUBSET of MASQUERADING_FILENAMES contains ONLY system utilities
+// and installers that have NO legitimate reason to:
+//   - Run persistently in the background
+//   - Use >200MB of memory
+//   - Spawn multiple instances of themselves
+//
+// Excluded from this subset:
+//   - Browsers (Chrome/Edge/FF) — legitimately use GBs and spawn many children
+//   - Apps (Discord/Spotify/Steam) — legitimately use 200MB+
+//   - Always-running system services (svchost/lsass/winlogon) — always present
+//   - JVM processes (java.exe/javaw.exe) — legitimately use GBs for apps
+//
+// Used by scanMasqueradingProcesses() for BEHAVIORAL detection.
+// MASQUERADING_FILENAMES is still used for file-level detection in heuristic.ts
+// (where digital signature and path checks provide proper context).
+
+export const MASQUERADING_SYSTEM_TOOLS = new Set([
+  // Installers — should NOT be running persistently, and should be <5MB if running
+  'dxwebsetup.exe',           // Microsoft DirectX Web Setup (~300KB legit, never running)
+  'vcredist.exe',             // Visual C++ redistributable
+  'vcredist_x64.exe',
+  'dotnet-runtime.exe',       // .NET runtime installer
+  'nvidia-installer.exe',     // NVIDIA driver installer
+  'amd-software.exe',         // AMD software installer
+  'directx_installer.exe',    // Alternative DirectX installer name
+  'd3dcompiler_installer.exe', // D3D compiler installer
+
+  // Simple utilities — tiny memory, 1 instance max
+  'notepad.exe',              // Simple text editor
+
+  // Anti-cheat / security tools (1 instance, moderate memory)
+  'vanguard.exe',             // Riot Vanguard (~50MB, 1 instance — safe)
+
+  // NOTE: Game process names (gta5.exe, fivem.exe, ragemp_v.exe, altv.exe,
+  // socialclub.exe, rockstar-games-launcher.exe) are intentionally NOT here.
+  // They legitimately use >200MB when gaming. Detection via hash matching +
+  // file-level heuristic (signature + path) instead.
+])

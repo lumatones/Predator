@@ -1,0 +1,388 @@
+/* ═══════════════════════════════════════════════════
+   ONBOARDING V2
+   ═══════════════════════════════════════════════════ */
+
+/* ── 5-Step Indicator ── */
+.onb-steps-v2 {
+  max-width: 480px;
+}
+
+.onb-steps-v2 .onb-step-line {
+  flex: 0 1 20px;
+  margin: 0 var(--space-1) var(--space-6) var(--space-1);
+}
+
+.onb-steps-v2 .onb-step-line.done {
+  background: var(--color-success);
+}
+
+.onb-steps-v2 .onb-step-line.active {
+  background: linear-gradient(90deg, var(--color-success), var(--accent-red));
+}
+
+/* ── Welcome Step ── */
+.ob-welcome {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+}
+
+.ob-welcome-glow {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ob-welcome-title {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: -0.3px;
+}
+
+.ob-welcome-desc {
+  position: relative;
+  z-index: 1;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: var(--leading-relaxed);
+  max-width: 340px;
+}
+
+.ob-welcome-features {
+  display: flex;
+  gap: var(--space-3);
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.ob-feature-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-2);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  transition: all var(--duration-fast) ease;
+  cursor: default;
+  text-align: center;
+}
+
+.ob-feature-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.ob-feature-label {
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.ob-feature-desc {
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.ob-welcome-btn {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Demo Scan Step ── */
+.ob-demo {
+  width: 100%;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ob-demo-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.ob-demo-icon-wrap {
+  margin: var(--space-4) 0;
+}
+
+.ob-demo-shield {
+  filter: drop-shadow(0 0 20px var(--accent-red)40);
+}
+
+/* Progress bar */
+.ob-demo-progress-wrap {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: var(--space-4) 0;
+}
+
+.ob-demo-progress-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.ob-demo-progress-text {
+  display: block;
+  text-align: center;
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: var(--space-2);
+}
+
+.ob-demo-phase {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-code);
+  margin-bottom: var(--space-3);
+  opacity: 0.8;
+}
+
+.ob-demo-findings-count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-code);
+  font-size: 28px;
+  font-weight: var(--fw-bold);
+  margin: var(--space-3) 0;
+}
+
+.ob-demo-count-label {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-normal);
+  color: var(--text-secondary);
+}
+
+/* Terminal */
+.ob-demo-terminal {
+  width: 100%;
+  max-width: 380px;
+  height: 148px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-code);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.ob-demo-terminal-line {
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ob-demo-terminal-line.warn {
+  color: var(--accent-orange);
+}
+
+.ob-demo-terminal-line.ok {
+  color: var(--color-success);
+}
+
+/* Demo done */
+.ob-demo-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.ob-demo-done-icon {
+  margin-bottom: var(--space-2);
+}
+
+.ob-demo-summary {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.ob-demo-finding {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  transition: all var(--duration-fast) ease;
+}
+
+.ob-demo-finding:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-hover);
+}
+
+.ob-demo-finding-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.ob-demo-finding-text {
+  flex: 1;
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  font-family: var(--font-code);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ob-demo-finding-badge {
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  font-family: var(--font-code);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.ob-demo-scanning {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Tooltip ── */
+.predator-tooltip {
+  pointer-events: none;
+  user-select: none;
+}
+
+.tooltip-inner {
+  background: rgba(12, 12, 28, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  line-height: var(--leading-normal);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  white-space: normal;
+}
+
+.tooltip-arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: rgba(12, 12, 28, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transform: rotate(45deg);
+}
+
+.tooltip-arrow-top {
+  bottom: -4px;
+  left: 50%;
+  margin-left: -4px;
+  border-top: none;
+  border-left: none;
+}
+
+.tooltip-arrow-bottom {
+  top: -4px;
+  left: 50%;
+  margin-left: -4px;
+  border-bottom: none;
+  border-right: none;
+}
+
+.tooltip-arrow-left {
+  right: -4px;
+  top: 50%;
+  margin-top: -4px;
+  border-left: none;
+  border-bottom: none;
+}
+
+.tooltip-arrow-right {
+  left: -4px;
+  top: 50%;
+  margin-top: -4px;
+  border-right: none;
+  border-top: none;
+}
+
+.predator-tooltip-trigger {
+  display: inline-flex;
+  cursor: help;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.2);
+  transition: border-color var(--duration-fast) ease;
+}
+
+.predator-tooltip-trigger:hover,
+.predator-tooltip-trigger:focus-visible {
+  border-color: var(--accent-red);
+  outline: none;
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+  .ob-welcome-features {
+    flex-wrap: wrap;
+  }
+  .ob-feature-card {
+    flex: 1 1 100%;
+  }
+  .ob-demo-terminal {
+    max-width: 100%;
+  }
+  .ob-demo-summary {
+    max-width: 100%;
+  }
+  .ob-demo-finding-text {
+    font-size: 10px;
+  }
+  .onb-steps-v2 {
+    max-width: 100%;
+  }
+  .onb-steps-v2 .onb-step-label {
+    font-size: 7px;
+  }
+}

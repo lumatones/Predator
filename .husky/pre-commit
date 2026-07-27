@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Pre-commit: typecheck ALL TypeScript projects.
+# Uses tsc incremental cache — runs in <2s on cache hit.
+
+set -e
+
+echo ""
+echo "  🔍 Typechecking Predator (root)..."
+npx tsc --noEmit
+
+echo ""
+echo "  🔍 Typechecking Predator (server)..."
+cd server && npx tsc --noEmit
+
+echo ""
+echo "  ✅ All typechecks passed"

@@ -201,7 +201,7 @@ export function scanWmiPersistence(): ScanResult[] {
 // running at ~240MB with self-spawning child process
 // ═══════════════════════════════════════════════════
 
-import { MASQUERADING_FILENAMES } from '../cheats-db'
+import { MASQUERADING_SYSTEM_TOOLS } from '../cheats-db'
 
 /**
  * Scan for masquerading processes with behavioral anomalies.
@@ -224,7 +224,7 @@ export function scanMasqueradingProcesses(): ScanResult[] {
         const parts = line.match(/"([^"]+)","(\d+)","(\d+)","([^"]+)"/)
         if (!parts) continue
         const name = parts[1].toLowerCase()
-        if (!MASQUERADING_FILENAMES.has(name)) continue
+        if (!MASQUERADING_SYSTEM_TOOLS.has(name)) continue
         const pid = parseInt(parts[2], 10)
         const memStr = parts[3].replace(/[^\d]/g, '')
         const memKB = parseInt(memStr, 10) || 0

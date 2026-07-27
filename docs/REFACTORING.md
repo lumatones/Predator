@@ -1,7 +1,7 @@
 # Refactoring Plan — Predator
 
-> **Прогресс:** 6 из 8 задач выполнено ✅
-> Последнее обновление: 2026-07-26 (v0.0.21)
+> **Прогресс:** 8 из 10 задач выполнено ✅
+> Последнее обновление: 2026-07-27 (v0.1.14)
 
 ## Метрики текущего кода (обновлено)
 
@@ -211,6 +211,8 @@ export enum ResultType { File = 'file', Browser = 'browser', /* ... */ }
 | ✅ | config.ts (CFG) | 20 мин | **Выполнено** |
 | ✅ | Константы → constants.ts | 15 мин | **Выполнено** |
 | ✅ | Cloud sync → cloud-sync.ts | 20 мин | **Выполнено** |
-| 🔴 | Разделить scanner.ts | 2-3ч | **В планах** |
+| ✅ | ScanPipeline (scanner.ts side effects) | 1ч | **Выполнено** |
+| ✅ | Signature Registry (cheat data centralization) | 1ч | **Выполнено** |
+| ✅ | MASQUERADING_SYSTEM_TOOLS (FP fix) | 30 мин | **Выполнено** |
 | 🟢 | HTTP клиент | 1ч | **В планах** |
 | 🟢 | Enum для типов | 30 мин | **В планах** |

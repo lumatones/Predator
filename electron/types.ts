@@ -69,6 +69,8 @@ export class ScanContext {
   shadowFindings: ScanResult[] = []
   /** Track mtime for incremental scan */
   fileMtimeCache = new Map<string, number>()
+  /** AbortController for scan cancellation */
+  abortController: AbortController | null = null
 
   readonly PE_CACHE_MAX = 500
 
@@ -94,6 +96,9 @@ export class ScanContext {
     this.findingDedup.clear()
     this.cheatNameCache.clear()
     this.shadowFindings = []
+    // Create new AbortController for this scan
+    this.abortController?.abort() // Cancel any previous scan
+    this.abortController = new AbortController()
     // NOTE: sigCache and peHeaderCache intentionally NOT cleared
   }
 }

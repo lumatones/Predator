@@ -38,6 +38,11 @@ export interface ElectronAPI {
   getApiBase: () => Promise<string>
   setApiBase: (url: string) => Promise<string>
 
+  // Tray
+  minimizeToTray: () => Promise<void>
+  getMinimizeToTray: () => Promise<boolean>
+  setMinimizeToTray: (value: boolean) => Promise<boolean>
+
   // Scanner
   startScan: (mode?: ScanMode, tokenId?: number) => Promise<ScanResponse>
   onScanProgress: (callback: (data: ScanProgress) => void) => (() => void)
@@ -61,6 +66,8 @@ export interface ScanResult {
   matches: string[]
   size: number
   modifiedAt: string
+  /** SHA256 hash of the file (only for HIGH-risk file results) */
+  sha256?: string
 }
 
 export interface ScanProgress {

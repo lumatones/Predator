@@ -1,76 +1,82 @@
-const express = require('express')
-const { query } = require('../config/database')
+import express from 'express'
+import type { Request, Response } from 'express'
+import { query } from '../config/database'
+import {
+  checkTokenSchema,
+  useTokenSchema,
+  requestAccessSchema,
+  submitScanSchema,
+  submitHashesSchema,
+  submitSafeFilesSchema,
+  validate,
+} from '../shared-types'
+import type { TokenRow, RequestRow, SuspiciousHashRow } from '../shared-types'
+
 const router = express.Router()
 
 // ── POST /api/auth/token ──────────────────────
-router.post('/token', async (req, res) => {
+router.post('/token', validate(checkTokenSchema), async (req: Request, res: Response) => {
   try {
     const { token } = req.body
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ valid: false, error: 'Токен не указан' })
-    }
 
     const clean = token.replace(/[-\s]/g, '').toUpperCase()
     if (clean.length !== 32) {
-      return res.status(400).json({ valid: false, error: 'Неверный формат токена' })
+      return res.status(400).json({ valid: false, error: 'Invalid token format' })
     }
 
-    const rows = await query(
+    const rows = await query<TokenRow[]>(
       'SELECT id, code, is_active, used_by FROM tokens WHERE code = ?',
       [clean]
     )
 
     if (rows.length === 0) {
-      return res.status(404).json({ valid: false, error: 'Токен не найден' })
+      return res.status(404).json({ valid: false, error: 'Token not found' })
     }
 
     const tok = rows[0]
 
     if (!tok.is_active) {
-      return res.status(403).json({ valid: false, error: 'Токен отозван' })
+      return res.status(403).json({ valid: false, error: 'Token revoked' })
     }
 
     if (tok.used_by) {
-      return res.status(403).json({ valid: false, error: 'Токен уже использован' })
+      return res.status(403).json({ valid: false, error: 'Token already used' })
     }
 
     return res.json({ valid: true, token_id: tok.id })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Token check error:', err)
-    return res.status(500).json({ valid: false, error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ valid: false, error: 'Internal server error' })
   }
 })
 
 // ── POST /api/auth/token/use ───────────────────
-router.post('/token/use', async (req, res) => {
+router.post('/token/use', validate(useTokenSchema), async (req: Request, res: Response) => {
   try {
     const { token, pc_username } = req.body
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ valid: false, error: 'Токен не указан' })
-    }
 
     const clean = token.replace(/[-\s]/g, '').toUpperCase()
     if (clean.length !== 32) {
-      return res.status(400).json({ valid: false, error: 'Неверный формат токена' })
+      return res.status(400).json({ valid: false, error: 'Invalid token format' })
     }
 
-    const rows = await query(
+    const rows = await query<TokenRow[]>(
       'SELECT id, code, is_active, used_by FROM tokens WHERE code = ?',
       [clean]
     )
 
     if (rows.length === 0) {
-      return res.status(404).json({ valid: false, error: 'Токен не найден' })
+      return res.status(404).json({ valid: false, error: 'Token not found' })
     }
 
     const tok = rows[0]
 
     if (!tok.is_active) {
-      return res.status(403).json({ valid: false, error: 'Токен отозван' })
+      return res.status(403).json({ valid: false, error: 'Token revoked' })
     }
 
     if (tok.used_by) {
-      return res.status(403).json({ valid: false, error: 'Токен уже использован' })
+      return res.status(403).json({ valid: false, error: 'Token already used' })
     }
 
     await query(
@@ -78,25 +84,22 @@ router.post('/token/use', async (req, res) => {
       [pc_username || 'unknown', tok.id]
     )
 
-    return res.json({ valid: true, token_id: tok.id, message: 'Токен активирован' })
-  } catch (err) {
+    return res.json({ valid: true, token_id: tok.id, message: 'Token activated' })
+  } catch (err: any) {
     console.error('Token use error:', err)
-    return res.status(500).json({ valid: false, error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ valid: false, error: 'Internal server error' })
   }
 })
 
 // ── POST /api/auth/request ────────────────────
-router.post('/request', async (req, res) => {
+router.post('/request', validate(requestAccessSchema), async (req: Request, res: Response) => {
   try {
     const { pc_username } = req.body
-    if (!pc_username || typeof pc_username !== 'string') {
-      return res.status(400).json({ error: 'Имя ПК не указано' })
-    }
 
-    const expiryMinutes = parseInt(process.env.REQUEST_EXPIRY_MINUTES) || 30
+    const expiryMinutes = parseInt(process.env.REQUEST_EXPIRY_MINUTES || '30')
     const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000)
 
-    const result = await query(
+    const result = await query<{ insertId: number }>(
       'INSERT INTO requests (pc_username, expires_at) VALUES (?, ?)',
       [pc_username.trim(), expiresAt]
     )
@@ -113,63 +116,58 @@ router.post('/request', async (req, res) => {
     return res.json({
       success: true,
       request_id: result.insertId,
-      message: 'Запрос отправлен. Ожидайте подтверждения администратора.',
+      message: 'Request sent. Awaiting admin approval.',
     })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Request error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/auth/status/:id ──────────────────
-router.get('/status/:id', async (req, res) => {
+router.get('/status/:id', async (req: Request, res: Response) => {
   try {
-    const rows = await query(
+    const rows = await query<RequestRow[]>(
       'SELECT id, pc_username, status, created_at FROM requests WHERE id = ?',
       [req.params.id]
     )
 
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Запрос не найден' })
+      return res.status(404).json({ error: 'Request not found' })
     }
 
     return res.json(rows[0])
-  } catch (err) {
+  } catch (err: any) {
     console.error('Status error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/auth/submit-scan ─────────────────
-router.post('/submit-scan', async (req, res) => {
+router.post('/submit-scan', validate(submitScanSchema), async (req: Request, res: Response) => {
   try {
     const { token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, results } = req.body
 
-    // token_id обязателен — нельзя обойти авторизацию через pc_username
-    if (!token_id || !Number.isInteger(token_id) || token_id <= 0) {
-      return res.status(400).json({ error: 'token_id обязателен и должен быть положительным числом' })
-    }
-
-    const tokRows = await query(
+    const tokRows = await query<TokenRow[]>(
       'SELECT id, code, is_active, used_by FROM tokens WHERE id = ?',
       [token_id]
     )
 
     if (tokRows.length === 0) {
-      return res.status(403).json({ error: 'Токен не найден' })
+      return res.status(403).json({ error: 'Token not found' })
     }
 
     const tok = tokRows[0]
 
     if (tok.is_active) {
-      return res.status(403).json({ error: 'Токен не был активирован. Используйте токен через экран авторизации.' })
+      return res.status(403).json({ error: 'Token not activated. Use token via authorization screen.' })
     }
 
     if (!tok.used_by) {
-      return res.status(403).json({ error: 'Токен не был использован' })
+      return res.status(403).json({ error: 'Token not used' })
     }
 
-    const result = await query(
+    const result = await query<{ insertId: number }>(
       `INSERT INTO scan_results (token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, results_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -197,42 +195,33 @@ router.post('/submit-scan', async (req, res) => {
       })
     } catch { /* ws event optional */ }
 
-    return res.json({ success: true, message: 'Результаты сохранены' })
-  } catch (err) {
+    return res.json({ success: true, message: 'Results saved' })
+  } catch (err: any) {
     console.error('Submit scan error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/auth/submit-hashes ──────────────
-router.post('/submit-hashes', async (req, res) => {
+router.post('/submit-hashes', validate(submitHashesSchema), async (req: Request, res: Response) => {
   try {
     const { token_id, pc_username, hashes } = req.body
 
-    if (!hashes || !Array.isArray(hashes) || hashes.length === 0) {
-      return res.status(400).json({ error: 'Не указаны хеши' })
-    }
-
-    // token_id обязателен
-    if (!token_id || !Number.isInteger(token_id) || token_id <= 0) {
-      return res.status(400).json({ error: 'token_id обязателен и должен быть положительным числом' })
-    }
-
-    const tokRows = await query(
+    const tokRows = await query<TokenRow[]>(
       'SELECT id, is_active, used_by FROM tokens WHERE id = ?',
       [token_id]
     )
 
     if (tokRows.length === 0) {
-      return res.status(403).json({ error: 'Токен не найден' })
+      return res.status(403).json({ error: 'Token not found' })
     }
 
     const tok = tokRows[0]
     if (tok.is_active) {
-      return res.status(403).json({ error: 'Токен не был активирован. Используйте токен через экран авторизации.' })
+      return res.status(403).json({ error: 'Token not activated. Use token via authorization screen.' })
     }
     if (!tok.used_by) {
-      return res.status(403).json({ error: 'Токен не был использован' })
+      return res.status(403).json({ error: 'Token not used' })
     }
 
     let inserted = 0
@@ -258,17 +247,17 @@ router.post('/submit-hashes', async (req, res) => {
     } catch { /* ws event optional */ }
 
     return res.json({ success: true, inserted, total: hashes.length })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Submit hashes error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/auth/fetch-hashes ────────────────
-router.get('/fetch-hashes', async (req, res) => {
+router.get('/fetch-hashes', async (req: Request, res: Response) => {
   try {
-    const after = req.query.after || '2000-01-01'
-    const rows = await query(
+    const after = (req.query.after as string) || '2000-01-01'
+    const rows = await query<(SuspiciousHashRow & { file_size: number; created_at: string })[]>(
       'SELECT sha256, file_name, file_size, created_at FROM suspicious_hashes WHERE status = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500',
       ['confirmed', after]
     )
@@ -281,34 +270,31 @@ router.get('/fetch-hashes', async (req, res) => {
         added_at: r.created_at,
       })),
     })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Fetch hashes error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/auth/safe-hashes ─────────────────
-router.get('/safe-hashes', async (req, res) => {
+router.get('/safe-hashes', async (req: Request, res: Response) => {
   try {
-    const after = req.query.after || '2000-01-01'
-    const rows = await query(
+    const after = (req.query.after as string) || '2000-01-01'
+    const rows = await query<(SuspiciousHashRow & { sha256: string })[]>(
       'SELECT sha256, file_name AS fileName, file_size AS fileSize, created_at AS addedAt FROM suspicious_hashes WHERE status = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500',
       ['confirmed', after]
     )
     return res.json(rows.map(r => r.sha256))
-  } catch (err) {
+  } catch (err: any) {
     console.error('Safe hashes error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── POST /api/auth/submit-safe-files ───────────
-router.post('/submit-safe-files', async (req, res) => {
+router.post('/submit-safe-files', validate(submitSafeFilesSchema), async (req: Request, res: Response) => {
   try {
     const { entries } = req.body
-    if (!Array.isArray(entries) || entries.length === 0) {
-      return res.status(400).json({ error: 'Не указаны safe-файлы' })
-    }
 
     let updated = 0
     let inserted = 0
@@ -318,7 +304,7 @@ router.post('/submit-safe-files', async (req, res) => {
       if (!entry.size || typeof entry.size !== 'number') continue
 
       try {
-        const existing = await query(
+        const existing = await query<{ id: number; confirm_count: number }[]>(
           'SELECT id, confirm_count FROM safe_files WHERE partial_hash = ? AND file_size = ?',
           [entry.partialHash, entry.size]
         )
@@ -340,25 +326,25 @@ router.post('/submit-safe-files', async (req, res) => {
     }
 
     return res.json({ success: true, inserted, updated })
-  } catch (err) {
+  } catch (err: any) {
     console.error('Submit safe files error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
 // ── GET /api/auth/safe-files (community whitelist) ──
-router.get('/safe-files', async (req, res) => {
+router.get('/safe-files', async (req: Request, res: Response) => {
   try {
-    const since = req.query.since || '2000-01-01'
-    const rows = await query(
+    const since = (req.query.since as string) || '2000-01-01'
+    const rows = await query<any[]>(
       'SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS size, confirm_count AS confirmCount, last_seen AS lastSeen FROM safe_files WHERE last_seen > ? AND confirm_count >= 2 ORDER BY confirm_count DESC LIMIT 2000',
       [since]
     )
     return res.json(rows)
-  } catch (err) {
+  } catch (err: any) {
     console.error('Safe files error:', err)
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' })
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
-module.exports = router
+export = router

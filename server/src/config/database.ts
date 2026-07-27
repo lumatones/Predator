@@ -1,12 +1,13 @@
-const mysql = require('mysql2/promise')
+import mysql from 'mysql2/promise'
+import type { Pool, RowDataPacket, ResultSetHeader } from 'mysql2/promise'
 
-let pool = null
-const DB_NAME = () => process.env.DB_NAME || 'predator'
+let pool: Pool | null = null
+const DB_NAME = (): string => process.env.DB_NAME || 'predator'
 
-function getPool(withoutDb = false) {
+function getPool(withoutDb: boolean = false): Pool {
   if (pool && !withoutDb) return pool
 
-  const config = {
+  const config: mysql.PoolOptions = {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '3306'),
     user: process.env.DB_USER || 'root',
@@ -25,35 +26,34 @@ function getPool(withoutDb = false) {
   return mysql.createPool(config)
 }
 
-async function ensureDatabase() {
+async function ensureDatabase(): Promise<void> {
   const tempPool = getPool(true)
   try {
     await tempPool.execute(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME()}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`)
-    console.log(`  ✓ Database "${DB_NAME()}" ensured`)
+    console.log(`  \u2713 Database "${DB_NAME()}" ensured`)
   } finally {
     await tempPool.end()
   }
 }
 
-async function query(sql, params = []) {
+async function query<T = RowDataPacket[]>(sql: string, params: any[] = []): Promise<T> {
   const conn = getPool()
-  // Используем query() вместо execute() для совместимости с LIMIT ?
-  // Prepared statements (execute) не поддерживают LIMIT с параметрами
   const [rows] = await conn.query(sql, params)
-  return rows
+  return rows as T
 }
 
-async function testConnection() {
+async function testConnection(): Promise<boolean> {
   try {
     await ensureDatabase()
     const conn = getPool()
-    await conn.getConnection()
-    console.log('  ✓ MySQL connected')
+    const connection = await conn.getConnection()
+    connection.release()
+    console.log('  \u2713 MySQL connected')
     return true
-  } catch (err) {
-    console.error('  ✗ MySQL connection failed:', err.message)
+  } catch (err: any) {
+    console.error('  \u2717 MySQL connection failed:', err.message)
     return false
   }
 }
 
-module.exports = { getPool, query, testConnection }
+export { getPool, query, testConnection }

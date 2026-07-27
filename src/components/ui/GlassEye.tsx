@@ -4,7 +4,7 @@ import { motion, useSpring, useMotionValue, useReducedMotion } from 'framer-moti
 // ── Types ──
 
 interface GlassEyeProps {
-  /** Position in the viewport */
+  /** Position in the viewport (ignored when inline) */
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'center'
   /** Size of the glass card in px */
   size?: number
@@ -12,6 +12,8 @@ interface GlassEyeProps {
   scanLine?: boolean
   /** Intensity of the creepy "look away" behavior (0-1) */
   creepiness?: number
+  /** Render inline (position: relative) — for use inside flex/grid containers */
+  inline?: boolean
 }
 
 // ── Constants ──
@@ -38,6 +40,7 @@ export default function GlassEye({
   size = 100,
   scanLine = true,
   creepiness = 0.6,
+  inline = false,
 }: GlassEyeProps) {
   const prefersReduced = useReducedMotion()
   const isReduced = prefersReduced === true
@@ -148,11 +151,11 @@ export default function GlassEye({
 
   return (
     <motion.div
-      className={`glass-eye ${POSITION_CLASSES[position] || POSITION_CLASSES['bottom-right']}`}
+      className={`glass-eye${inline ? ' glass-eye--inline' : ''} ${POSITION_CLASSES[position] || POSITION_CLASSES['bottom-right']}`}
       style={{
         width: size,
         height: size,
-        ...(position === 'center' ? { marginLeft: -size / 2, marginTop: -size / 2 } : {}),
+        ...(!inline && position === 'center' ? { marginLeft: -size / 2, marginTop: -size / 2 } : {}),
       }}
       initial={isReduced ? false : { opacity: 0, scale: 0.8, filter: 'blur(8px)' }}
       animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}

@@ -20,7 +20,7 @@
 
 Predator is a desktop application that scans a user's PC for traces of cheat software. It performs multi-layered analysis across files, processes, registry, network, DMA hardware, browser history, and game directories.
 
-**Version**: 0.0.26 | **Stack**: Electron 33 + React 19 + TypeScript 5.7 + Vite 6
+**Version**: 0.1.14 | **Stack**: Electron 33 + React 19 + TypeScript 5.7 + Vite 6
 
 Full ecosystem: Desktop App -> API Server -> Admin Panel.
 
@@ -81,7 +81,10 @@ After authorization, the main screen offers:
 | **Heuristics** | Shannon entropy (packed/encrypted detection), PE header anomalies, section entropy, suspicious extension/name categories |
 | **YARA** | 13 rules covering: injectors, debuggers, hooks, kernel drivers, spoofers, bypasses, overlays, network tools, obfuscators |
 | **Auto-YARA** | Self-learning engine: extracts strings from high-risk files, clusters by TLSH similarity, Jaccard distance matching, false positive correction |
+| **Signature Registry** | Single source of truth for ALL detection data (keywords, patterns, categories) with query API |
+| **Behavioral** | Process-level behavioral detection: high memory (>200MB), self-spawning, multiple instances, VMProtect loader patterns |
 | **Cloud Sync** | Real-time WebSocket + HTTP polling fallback for hash updates every 5 minutes |
+| **ScanPipeline** | Composable post-scan handler chain: session recording, shadow telemetry, auto-whitelist, hash submission, result upload |
 | **Shadow Rules** | New signatures deployed in silent mode — collect telemetry without flagging users until validated |
 
 ### Platform Coverage
@@ -125,9 +128,22 @@ Desktop App (Electron)       Backend API (Express)         Admin Panel (React)
         |                          |                            |
         |                          |<-- JWT auth ---------------|
         |                          |-- pending/approve/reject ->|
+
+Desktop App Internal:
+  scanner.ts ──► ScanPipeline (5 handlers)
+       │              ├── SessionRecorder
+       │              ├── ShadowSubmitter
+       │              ├── AutoWhitelister
+       │              ├── HashSubmitter
+       │              └── ResultUploader
+       │
+       └──► Signature Registry (query API)
+               ├── SUSPICIOUS_CATEGORIES (9)
+               ├── ALL_CHEAT_KEYWORDS (~150)
+               └── SUSPICIOUS_PATTERNS (58 regex)
 ```
 
-- **Desktop App**: Electron 33 + React 19 + TypeScript. IPC bridge between scanner (Node.js) and UI (Vite/React)
+- **Desktop App**: Electron 33 + React 19 + TypeScript. ScanPipeline for post-scan side effects, Signature Registry for detection data
 - **Backend**: Express 4 + MySQL 8 + Socket.IO + JWT. Token management, scan results storage, hash cloud database
 - **Admin Panel**: React 18 + TypeScript + Chart.js. Login, pending requests, token management, scan history, hash review
 

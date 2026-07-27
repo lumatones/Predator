@@ -8,11 +8,17 @@ interface TabCacheEntry {
   summary: ScanResponse['summary']
 }
 const tabCache = new Map<ScanMode, TabCacheEntry>()
-import { exportHtml, exportJson } from '../utils/export-report'
+import { exportHtml, exportJson, exportMarkdown, exportPdf, sendToTelegram } from '../utils/export-report'
 import { submitScan } from '../api'
 import { Magnetic } from '../components/ui/Magnetic'
 import { Button } from '../components/ui/Button'
 import PredatorLogo3D from '../components/ui/PredatorLogo3D'
+import { ScanTerminal } from '../components/ui/ScanTerminal'
+import { FileDetailModal } from '../components/ui/FileDetailModal'
+import { ThreatMap } from '../components/ui/ThreatMap'
+import { CompactScanOverlay } from '../components/ui/CompactScanOverlay'
+import { ScanningDots } from '../components/ui/AnimatedIcons'
+import { useSound } from '../hooks/useSound'
 import {
   IconFolder,
   IconGear,
@@ -301,6 +307,10 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
   const [serverMsg, setServerMsg] = useState('')
   const [copiedPath, setCopiedPath] = useState('')
   const [tabCounts, setTabCounts] = useState<Map<ScanMode, number>>(new Map())
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [compactMode, setCompactMode] = useState(false)
+  const [telegramSending, setTelegramSending] = useState(false)
+  const { play: playSound } = useSound()
   const scanRef = useRef<boolean>(false)
   const isMounted = useRef(true)
 
@@ -338,6 +348,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
 
     tabCache.delete(activeTab)
 
+    playSound('swoosh')
     setPhase('scanning')
     setError('')
     setResults([])
@@ -364,6 +375,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       setResults(mock.results)
       setSummary(mock.summary)
       tabCache.set(activeTab, { results: mock.results, summary: mock.summary })
+      playSound(mock.summary.suspiciousFiles > 0 ? 'alarm' : 'complete')
       setPhase('done')
       scanRef.current = false
       setTabCounts(prev => { const next = new Map(prev); next.set(activeTab, mock.results.length); return next; })
@@ -383,6 +395,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
         setSummary(response.summary)
         tabCache.set(activeTab, { results: response.results, summary: response.summary })
         setTabCounts(prev => { const next = new Map(prev); next.set(activeTab, response.results.length); return next; })
+        playSound(response.summary.suspiciousFiles > 0 ? 'alarm' : 'complete')
         setPhase('done')
         submitToServer(activeTab, response.summary, response.results)
       }
@@ -395,7 +408,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       scanRef.current = false
       if (typeof unsubscribeProgress === 'function') unsubscribeProgress()
     }
-  }, [activeTab, currentTab, t, tokenId])
+  }, [activeTab, currentTab, t, tokenId, playSound])
 
   const handleClear = useCallback(() => {
     tabCache.clear()
@@ -410,11 +423,25 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     setSearchQuery('')
   }, [])
 
-  const handleExport = useCallback((format: 'html' | 'json') => {
+  const handleExport = useCallback((format: 'html' | 'json' | 'md') => {
     if (!summary) return
-    const content = format === 'html' ? exportHtml(results, summary) : exportJson(results, summary)
-    const ext = format === 'html' ? 'html' : 'json'
-    const blob = new Blob([content], { type: format === 'html' ? 'text/html' : 'application/json' })
+    let content: string
+    let ext: string
+    let mime: string
+    if (format === 'html') {
+      content = exportHtml(results, summary)
+      ext = 'html'
+      mime = 'text/html'
+    } else if (format === 'md') {
+      content = exportMarkdown(results, summary)
+      ext = 'md'
+      mime = 'text/markdown'
+    } else {
+      content = exportJson(results, summary)
+      ext = 'json'
+      mime = 'application/json'
+    }
+    const blob = new Blob([content], { type: mime })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -424,6 +451,40 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     setExportMsg('✓')
     setTimeout(() => setExportMsg(''), 2000)
   }, [results, summary])
+
+  const handleExportPdf = useCallback(() => {
+    if (!summary) return
+    exportPdf(results, summary)
+    setExportMsg('✓')
+    setTimeout(() => setExportMsg(''), 2000)
+  }, [results, summary])
+
+  const handleTelegramExport = useCallback(async () => {
+    if (!summary || telegramSending) return
+    setTelegramSending(true)
+    try {
+      let botToken = ''
+      let chatId = ''
+      if (window.electronAPI?.getConfig) {
+        const cfg = await window.electronAPI.getConfig()
+        botToken = (cfg as any).telegramBotToken || ''
+        chatId = (cfg as any).telegramChatId || ''
+      }
+      if (!botToken || !chatId) {
+        setExportMsg('⚙ Настройте Telegram бота в конфиге')
+        setTimeout(() => setExportMsg(''), 3000)
+        return
+      }
+      const res = await sendToTelegram(botToken, chatId, results, summary)
+      setExportMsg(res.success ? '✓ TG' : '✗ Ошибка')
+      setTimeout(() => setExportMsg(''), 3000)
+    } catch {
+      setExportMsg('✗ Ошибка')
+      setTimeout(() => setExportMsg(''), 3000)
+    } finally {
+      setTelegramSending(false)
+    }
+  }, [results, summary, telegramSending])
 
   const handleTabChange = useCallback((tab: ScanMode) => {
     if (tab === activeTab) return
@@ -512,7 +573,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
           <Magnetic key={tab.id} strength={0.15}>
           <button
             className={`checker-tab${activeTab === tab.id ? ' active' : ''}`}
-            onClick={() => handleTabChange(tab.id)}
+            onClick={() => { playSound('tick'); handleTabChange(tab.id) }}
             role="tab"
             aria-selected={activeTab === tab.id}
             data-color={tab.color}
@@ -542,7 +603,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
         ))}
       </div>
 
-      <p className="checker-desc" style={{ marginBottom: 16 }}>{t(currentTab.desc)}</p>
+      {phase !== 'scanning' && <p className="checker-desc" style={{ marginBottom: 16 }}>{t(currentTab.desc)}</p>}
 
       {/* Tab content with transitions */}
       <div className={`tab-content${tabTransition === 'exit' ? ' exit' : ''}${tabTransition === 'enter' ? ' enter' : ''}`}>
@@ -568,36 +629,35 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
         </div>
       )}
 
-      {/* Scanning: 3D shield with progress */}
+      {/* Scanning: Live terminal */}
       {phase === 'scanning' && (
-        <div style={{ position: 'relative', minHeight: 300 }}>
-          <div className="checker-scanning show-after-eye">
-            <div className="checker-radar-3d">
-              <PredatorLogo3D accent={accent} light={light} dark={dark} size={80} phase="scanning" />
-            </div>
-
-              <div className="checker-scanning-phase" key={progress?.phase || 'scanning'}>
-                {progress?.phase === 'analyzing' ? 'Анализ результатов' : 'Сканирование'}
-              </div>
-              <div className="checker-scanning-sub" key={progress?.currentDir}>
-                {progress?.currentDir || 'Поиск подозрительных файлов...'}
-              </div>
-
-              <div className="checker-progress-header">
-                <span className="checker-progress-label">{t('scanning')}</span>
-                <span className="checker-progress-pct"><span className="pct-num">{Math.round(calcScanPercent(progress))}</span>%</span>
-              </div>
-
-              <div className="checker-progress-bar">
-                <div className="checker-progress-fill" style={{ width: `${calcScanPercent(progress)}%` }} />
-              </div>
-
-              <div className="checker-progress-info">
-                <span>{t('found')}: <span className="found-num">{progress?.filesFound || 0}</span></span>
-                <span>{progress?.filesScanned || 0} {t('filesScanned')}</span>
-              </div>
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <ScanningDots size={20} color={accent} />
+            <button
+              className={`checker-compact-toggle${compactMode ? ' active' : ''}`}
+              onClick={() => setCompactMode(c => !c)}
+              title="Компактный режим"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {compactMode ? (
+                  <><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></>
+                ) : (
+                  <><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></>
+                )}
+              </svg>
+              {compactMode ? (lang === 'ru' ? 'Развернуть' : 'Expand') : (lang === 'ru' ? 'Компактно' : 'Compact')}
+            </button>
           </div>
-        </div>
+          {!compactMode && (
+            <ScanTerminal
+              progress={progress}
+              phase={progress?.phase || 'scanning'}
+              accent={accent}
+              light={light}
+            />
+          )}
+        </>
       )}
 
       {/* Error */}
@@ -655,6 +715,10 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                 <span className="checker-summary-dot">•</span><span>{t('time')}: {formatTime(summary.scanTimeMs, t('sec'))}</span>
               </div>
             </div>
+          )}
+
+          {results.length > 0 && summary && summary.suspiciousFiles > 0 && (
+            <ThreatMap results={results} />
           )}
 
           {results.length > 0 && (
@@ -736,9 +800,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                                 className={`result-row${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? ' selected' : ''}`}
                                 data-risk={r.risk}
                                 variants={itemVariants}
-                                onClick={() => setSelectedResult(
-                                  selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? null : r
-                                )}
+                                onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}
                               >
                                 <div className="result-row-main">
                                   <div className="result-info">
@@ -846,11 +908,23 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                 </svg>
                 {t('exportHtml')}
               </Button>
-              <Button className="checker-action-btn export" size="sm" onClick={() => handleExport('json')} title={t('exportJson')}>
+              <Button className="checker-action-btn export" size="sm" onClick={() => handleExport('md')} title="Markdown">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
-                {t('exportJson')}
+                MD
+              </Button>
+              <Button className="checker-action-btn export" size="sm" onClick={handleExportPdf} title="PDF (печать)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                PDF
+              </Button>
+              <Button className="checker-action-btn export" size="sm" onClick={handleTelegramExport} title="Отправить в Telegram">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+                </svg>
+                {telegramSending ? '...' : 'TG'}
               </Button>
               <span className="checker-export-msg">{exportMsg}</span>
             </div>
@@ -859,6 +933,34 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
         </div>
       )}
       </div>{/* /tab-content */}
+
+      {/* File Detail Modal */}
+      {selectedResult && (
+        <FileDetailModal
+          open={detailModalOpen}
+          onClose={() => setDetailModalOpen(false)}
+          fileName={selectedResult.fileName}
+          filePath={selectedResult.path}
+          fileType={selectedResult.type}
+          risk={selectedResult.risk}
+          matches={selectedResult.matches}
+          size={selectedResult.size}
+          sha256={selectedResult.sha256}
+        />
+      )}
+
+      {/* Compact Scan Overlay */}
+      <CompactScanOverlay
+        open={compactMode && phase === 'scanning'}
+        onClose={() => setCompactMode(false)}
+        onExpand={() => setCompactMode(false)}
+        progress={progress}
+        mode={activeTab}
+        modeLabel={t(currentTab.label)}
+        accent={accent}
+        light={light}
+        lang={lang}
+      />
     </div>
   )
 }

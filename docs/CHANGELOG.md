@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.1.14 — Архитектурный рефакторинг (2026-07-27)
+
+### 🏗 Архитектура
+
+**ScanPipeline** — композируемая цепочка пост-скановых обработчиков:
+- `electron/scan-pipeline.ts` — 5 изолированных handler'ов (SessionRecorder, ShadowSubmitter, AutoWhitelister, HashSubmitter, ResultUploader)
+- IPC handler сокращён с 200 строк до 20
+- Отказ одного handler'а не влияет на остальные
+
+**Signature Registry** — единый источник данных для сигнатур:
+- `electron/signature-registry.ts` — ALL_CHEAT_KEYWORDS, SUSPICIOUS_PATTERNS, SUSPICIOUS_CATEGORIES
+- Query API: `matchKeywords()`, `matchPatterns()`, `getCategory()`
+- `heuristic.ts`: -200 строк inline-данных, только scoring logic
+
+**MASQUERADING_SYSTEM_TOOLS** — подмножество для поведенческого детекта:
+- Исключены браузеры (chrome/edge/firefox) и приложения (discord/steam)
+- Только инсталляторы и утилиты: dxwebsetup.exe, vcredist.exe, notepad.exe, vanguard.exe
+- 3 сигнала: память >200MB, множественные экземпляры, VMProtect-паттерн
+
+### 🔬 Поведенческий детект
+
+**Falcon Sandbox анализ dxwebsetup.exe:**
+- CrowdStrike 100% malicious, VMProtect, Barys family
+- Добавлен `B('barys')` в KNOWN_BINARY_SIGNATURES
+- Интегрирован в runProcessScan() и runQuickScan()
+
+### 📄 Документация
+
+- Architecture Review Report (HTML + Mermaid-диаграммы)
+- Полная инвентаризация архитектуры: 130+ файлов, 5 deepening opportunities
+
+---
+
 ## v0.0.21 — Рефакторинг, типизация, новый релизный скрипт (2026-07-26)
 
 ### 🧹 Рефакторинг

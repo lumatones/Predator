@@ -1,13 +1,11 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import crypto from 'crypto'
 import fs from 'fs'
-import http from 'http'
-import https from 'https'
 import path from 'path'
 import { execSync } from 'child_process'
 
-import { getApiEndpoint } from './config'
 import { startCloudSync, stopCloudSync, fetchCheatHashes } from './cloud-sync'
+import { runPostScanPipeline } from './scan-pipeline'
 import { EXTENDED_CHEAT_KEYWORDS, EXTENDED_SCAN_PATHS, QUICK_CHEAT_KEYWORDS } from './constants'
 
 import { scanProcessForAmsiEtw } from './etw-amsi-patch'
@@ -28,7 +26,6 @@ import {
 
 import { heuristicFileScan } from './heuristic'
 import { fuzzyMatchFile } from './fuzzy-hash'
-import { recordSession } from './persistent-profile'
 
 import { walkDirAsync } from './modes/files'
 import { scanRunningProcessesV2, scanNamedPipes, scanWmiPersistence } from './modes/processes'
@@ -42,7 +39,9 @@ import { runEtwScan } from './etw-provider'
 import { runForensicScan } from './forensic-traces'
 import { runAntiForensicScan } from './anti-forensic'
 import { runPcCleanerScan } from './pc-cleaner-detection'
-import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, syncSafeFilesFromServer, uploadSafeFiles, getSafeFilesCount } from './safe-files-db'
+import { loadSafeFilesDb, syncSafeFilesFromServer, getSafeFilesCount } from './safe-files-db'
+import { runAntiTamperScan } from './anti-tamper'
+import { runParallel } from './workers/worker-pool'
 
 // ═══════════════════════════════════════════════════
 // FULL SCAN (was extended) — 9-phase deep scan
@@ -51,76 +50,99 @@ import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, syncSafeFilesFromServe
 async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
   let filesScanned = 0
+  const signal = ctx.abortController?.signal
+  const aborted = () => signal?.aborted ?? false
 
   clearFindingDedup()
-  // NOTE: sigCache intentionally NOT cleared — digital signatures persist between scans.
+
+  // ── Phase 0: Anti-Tamper Check ──
+  await sendProgress(win, { phase: 'scanning', currentDir: 'Anti-tamper integrity check...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 0 })
+  results.push(...safeCall('runAntiTamperScan', () => runAntiTamperScan()))
+  if (aborted()) return { results, filesScanned }
+
   // Each check spawns PowerShell (2s timeout). Keeping the cache saves 2s PER FILE.
   await sendProgress(win, { phase: 'scanning', currentDir: 'Advanced process scanning...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 1 })
   results.push(...safeCall('scanRunningProcessesV2', () => scanRunningProcessesV2()))
 
+  if (aborted()) return { results, filesScanned }
+
   // Phase 2 — heuristic file scan (with incremental + pre-filter + fuzzy hash)
   await sendProgress(win, { phase: 'scanning', currentDir: `Heuristic file scan (${EXTENDED_SCAN_PATHS.length} directories)...`, filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 2 })
   for (const dir of EXTENDED_SCAN_PATHS) {
-    await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 2 })
+    await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: 10, dirsDone: 2 })
     try {
+      // Collect all file paths from directory walker
+      const filePaths: string[] = []
       let dirFileCount = 0
-      const DIR_FILE_LIMIT = 2000 // Prevent hangs on huge dirs (e.g., Temp had 50K+ files)
+      const DIR_FILE_LIMIT = 2000
       for await (const filePath of walkDirAsync(dir)) {
         dirFileCount++
         if (dirFileCount > DIR_FILE_LIMIT) {
-          console.warn(`[Predator] Directory file limit reached: ${dir} (${dirFileCount} files, limit ${DIR_FILE_LIMIT})`)
+          console.warn(`[Predator] Directory file limit reached: ${dir} (${dirFileCount})`)
           break
         }
-        filesScanned++
-        // Always run heuristic scan (expensive but thorough)
-        let hr = heuristicFileScan(filePath)
-        let riskScore = hr?.riskScore || 0
-        // Location bonus — files in Downloads/Desktop/Temp are extra suspicious (BEFORE threshold check!)
-        const fpLower = filePath.toLowerCase()
-        if (fpLower.includes('downloads') || fpLower.includes('download') || fpLower.includes('desktop') || fpLower.includes('temp') || fpLower.includes('загрузки')) {
-          riskScore += 10
-        }
-        // Fuzzy hash check for .exe/.dll (catches polymorphic variants)
-        const ext = path.extname(filePath).toLowerCase()
-        if ((ext === '.exe' || ext === '.dll') && riskScore < 40) {
-          const fuzzyMatch = fuzzyMatchFile(filePath, 25)
-          if (fuzzyMatch && fuzzyMatch.matched) {
-            riskScore = Math.max(riskScore, 60)
-            if (!hr) hr = { riskScore: 60, suspicions: [] }
-            hr.suspicions.push(`fuzzy-hash:matched (distance=${fuzzyMatch.distance})`)
+        filePaths.push(filePath)
+      }
+
+      // ── PARALLEL: Process files concurrently via worker pool ──
+      if (filePaths.length > 0) {
+        const scanResults = await runParallel(filePaths, async (filePath) => {
+          let hr = heuristicFileScan(filePath)
+          let riskScore = hr?.riskScore || 0
+          // Location bonus
+          const fpLower = filePath.toLowerCase()
+          if (fpLower.includes('downloads') || fpLower.includes('download') || fpLower.includes('desktop') || fpLower.includes('temp') || fpLower.includes('загрузки')) {
+            riskScore += 10
           }
-        }
-        if (hr && riskScore > 20) {
-          const risk = riskScore > 80 ? 'high' : riskScore > 50 ? 'medium' : 'low'
-          // Compute SHA256 for HIGH-risk files (for cloud signature database)
-          let sha256Hash: string | undefined
-          if (risk === 'high' && (ext === '.exe' || ext === '.dll' || ext === '.sys')) {
-            try {
-              const h = crypto.createHash('sha256')
-              const fd = fs.openSync(filePath, 'r')
-              const stat2 = fs.statSync(filePath)
-              const hashBuf = Buffer.alloc(Math.min(stat2.size, 50 * 1024 * 1024))
-              fs.readSync(fd, hashBuf, 0, hashBuf.length, 0)
-              fs.closeSync(fd)
-              h.update(hashBuf)
-              sha256Hash = h.digest('hex')
-            } catch (_e) { /* hash computation optional */ }
+          // Fuzzy hash for .exe/.dll
+          const ext = path.extname(filePath).toLowerCase()
+          if ((ext === '.exe' || ext === '.dll') && riskScore < 40) {
+            const fuzzyMatch = fuzzyMatchFile(filePath, 25)
+            if (fuzzyMatch && fuzzyMatch.matched) {
+              riskScore = Math.max(riskScore, 60)
+              if (!hr) hr = { riskScore: 60, suspicions: [] }
+              hr.suspicions.push(`fuzzy-hash:matched (distance=${fuzzyMatch.distance})`)
+            }
           }
-          results.push({
-            path: filePath,
-            fileName: path.basename(filePath),
-            type: 'file',
-            risk,
-            matches: hr.suspicions.slice(0, 5),
-            size: 0,
-            modifiedAt: new Date().toISOString(),
-            sha256: sha256Hash,
-          })
+          if (hr && riskScore > 20) {
+            const risk = riskScore > 80 ? 'high' : riskScore > 50 ? 'medium' : 'low'
+            let sha256Hash: string | undefined
+            if (risk === 'high' && (ext === '.exe' || ext === '.dll' || ext === '.sys')) {
+              try {
+                const h = crypto.createHash('sha256')
+                const fd = fs.openSync(filePath, 'r')
+                const stat2 = fs.statSync(filePath)
+                const hashBuf = Buffer.alloc(Math.min(stat2.size, 50 * 1024 * 1024))
+                fs.readSync(fd, hashBuf, 0, hashBuf.length, 0)
+                fs.closeSync(fd)
+                h.update(hashBuf)
+                sha256Hash = h.digest('hex')
+              } catch { /* hash optional */ }
+            }
+            return {
+              path: filePath,
+              fileName: path.basename(filePath),
+              type: 'file' as const,
+              risk,
+              matches: hr.suspicions.slice(0, 5),
+              size: 0,
+              modifiedAt: new Date().toISOString(),
+              sha256: sha256Hash,
+            } satisfies ScanResult
+          }
+          return null
+        }, { concurrency: 4, signal: ctx.abortController?.signal })
+
+        // Filter nulls and add to results
+        for (const r of scanResults) {
+          if (r) results.push(r)
         }
-        await yieldToEventLoop()
+        filesScanned += filePaths.length
       }
     } catch (_e) { /* skip */ }
   }
+
+  if (aborted()) return { results, filesScanned }
 
   // Phase 3-5: parallel execution (registry + prefetch + network are independent)
   await sendProgress(win, { phase: 'scanning', currentDir: 'Parallel: registry + prefetch + network...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 3 })
@@ -134,11 +156,15 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   await sendProgress(win, { phase: 'scanning', currentDir: 'Parallel: exec + memory + behavior...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
   results.push(...safeCall('scanMasqueradingProcesses', () => scanMasqueradingProcesses()))
 
+  if (aborted()) return { results, filesScanned }
+
   // Phase 5b — game integrity + modules + handles
   await sendProgress(win, { phase: 'scanning', currentDir: 'Game integrity...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
   results.push(...safeCall('scanGameIntegrity', () => scanGameIntegrity()))
   results.push(...safeCall('scanGameModules', () => scanGameModules()))
   results.push(...safeCall('scanOpenHandles', () => scanOpenHandles()))
+
+  if (aborted()) return { results, filesScanned }
 
   // Phase 5c — named pipes + WMI + AMSI/ETW patch + ETW kernel monitor
   await sendProgress(win, { phase: 'scanning', currentDir: 'IPC & persistence...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 5 })
@@ -155,6 +181,7 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
     )
     const processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
     for (const proc of processes) {
+        if (aborted()) break
         const mods: string[] = proc.Mods || []
         const patchResult = await scanProcessForAmsiEtw(Number(proc.Id), (proc.Name || '').toLowerCase())
         if (patchResult && (patchResult.amsiPatched || patchResult.etwPatched) && patchResult.riskScore > 20) {
@@ -193,6 +220,8 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
       }
   } catch (_e) { /* PowerShell AMSI scan failed */ }
 
+  if (aborted()) return { results, filesScanned }
+
   // Phase 6 — DMA + scheduled tasks + IOMMU
   await sendProgress(win, { phase: 'scanning', currentDir: 'DMA devices + IOMMU...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 6 })
   results.push(...safeCall('scanDmaDevices', () => scanDmaDevices()))
@@ -200,9 +229,13 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   await sendProgress(win, { phase: 'scanning', currentDir: 'Scheduled tasks...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 6 })
   results.push(...safeCall('scanScheduledTasks', () => scanScheduledTasks()))
 
+  if (aborted()) return { results, filesScanned }
+
   // Phase 7 — registry cheat scan
   await sendProgress(win, { phase: 'scanning', currentDir: 'Registry cheat scan...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 7 })
   results.push(...safeCall('scanRegistryForCheats', () => scanRegistryForCheats()))
+
+  if (aborted()) return { results, filesScanned }
 
   // Phase 8 — browser history
   await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 8 })
@@ -213,13 +246,19 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
     console.error('[scan] scanBrowserHistory crashed:', (err as Error).message || err)
   }
 
+  if (aborted()) return { results, filesScanned }
+
   // Phase 9 — Forensic artifact scan (Prefetch, Amcache, BAM, UserAssist, EventLogs...)
   await sendProgress(win, { phase: 'scanning', currentDir: 'Forensic artifact scan...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 9 })
   results.push(...safeCall('runForensicScan', () => runForensicScan()))
 
+  if (aborted()) return { results, filesScanned }
+
   // Phase 10 — Anti-forensic scan (log clearing, cleaning tools, tampering)
   await sendProgress(win, { phase: 'scanning', currentDir: 'Anti-forensic integrity check...', filesFound: results.length, filesScanned, totalDirs: 12, dirsDone: 10 })
   results.push(...safeCall('runAntiForensicScan', () => runAntiForensicScan()))
+
+  if (aborted()) return { results, filesScanned }
 
   // Phase 11 — Enhanced PC cleaning detection (USN journal, timestomping, ShellBags, MRU)
   await sendProgress(win, { phase: 'scanning', currentDir: 'PC cleaning detection...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 11 })
@@ -236,26 +275,43 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
 async function runQuickScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
   let filesScanned = 0
+  const signal = ctx.abortController?.signal
+  const aborted = () => signal?.aborted ?? false
 
   clearFindingDedup()
+
+  // ── Phase 0: Anti-Tamper ──
+  results.push(...safeCall('runAntiTamperScan', () => runAntiTamperScan()))
+  if (aborted()) return { results, filesScanned }
+
   // NOTE: sigCache intentionally NOT cleared — persists between scans.
   await sendProgress(win, { phase: 'scanning', currentDir: 'Processes...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 1 })
   results.push(...safeCall('scanRunningProcessesV2', () => scanRunningProcessesV2()))
   results.push(...safeCall('scanMasqueradingProcesses', () => scanMasqueradingProcesses()))
 
+  if (aborted()) return { results, filesScanned }
+
   await sendProgress(win, { phase: 'scanning', currentDir: 'Prefetch...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 2 })
   results.push(...safeCall('scanPrefetchV2', () => scanPrefetchV2()))
+
+  if (aborted()) return { results, filesScanned }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Registry...', filesFound: results.length, filesScanned, totalDirs: 5, dirsDone: 3 })
   results.push(...safeCall('scanRegistryDeepV2', () => scanRegistryDeepV2()))
   results.push(...safeCall('scanRegistryForCheats', () => scanRegistryForCheats()))
 
+  if (aborted()) return { results, filesScanned }
+
   await sendProgress(win, { phase: 'scanning', currentDir: 'Pipes & persistence...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 4 })
   results.push(...safeCall('scanNamedPipes', () => scanNamedPipes()))
   results.push(...safeCall('scanWmiPersistence', () => scanWmiPersistence()))
 
+  if (aborted()) return { results, filesScanned }
+
   await sendProgress(win, { phase: 'scanning', currentDir: 'Network...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 5 })
   results.push(...safeCall('scanNetstatV2', () => scanNetstatV2()))
+
+  if (aborted()) return { results, filesScanned }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Browser history...', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 6 })
   try {
@@ -265,9 +321,8 @@ async function runQuickScan(win: BrowserWindow | null): Promise<{ results: ScanR
     console.error('[scan] scanBrowserHistory crashed:', (err as Error).message || err)
   }
 
-  await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 6, dirsDone: 6 })
-  filesScanned = results.length
-  return { results, filesScanned }
+  await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned: results.length, totalDirs: 6, dirsDone: 6 })
+  return { results, filesScanned: results.length }
 }
 
 // ═══════════════════════════════════════════════════
@@ -280,17 +335,30 @@ async function runQuickScan(win: BrowserWindow | null): Promise<{ results: ScanR
 
 async function runCleanerScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
+  const signal = ctx.abortController?.signal
+  const aborted = () => signal?.aborted ?? false
 
   clearFindingDedup()
+
+  // ── Phase 0: Anti-Tamper ──
+  results.push(...safeCall('runAntiTamperScan', () => runAntiTamperScan()))
+  if (aborted()) return { results, filesScanned: 0 }
+
   // NOTE: sigCache intentionally NOT cleared — persists between scans.
   await sendProgress(win, { phase: 'scanning', currentDir: 'PC cleaning detection...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 1 })
   results.push(...safeCall('runPcCleanerScan', () => runPcCleanerScan()))
 
+  if (aborted()) return { results, filesScanned: 0 }
+
   await sendProgress(win, { phase: 'scanning', currentDir: 'Anti-forensic integrity check...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 2 })
   results.push(...safeCall('runAntiForensicScan', () => runAntiForensicScan()))
 
+  if (aborted()) return { results, filesScanned: 0 }
+
   await sendProgress(win, { phase: 'scanning', currentDir: 'Forensic artifact scan...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 3 })
   results.push(...safeCall('runForensicScan', () => runForensicScan()))
+
+  if (aborted()) return { results, filesScanned: 0 }
 
   // DMA + IOMMU check (HWID spoofing often involves disabling IOMMU)
   await sendProgress(win, { phase: 'scanning', currentDir: 'IOMMU / DMA integrity...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 4 })
@@ -321,6 +389,16 @@ export async function initSafeFilesDb(): Promise<void> {
 }
 
 export function registerScanHandlers() {
+  // ── Cancel active scan ──
+  ipcMain.handle('cancel-scan', async () => {
+    if (ctx.abortController) {
+      ctx.abortController.abort()
+      console.log('  Scan cancelled by user')
+      return { success: true }
+    }
+    return { success: false, error: 'No active scan' }
+  })
+
   ipcMain.handle('start-scan', async (event, mode: ScanMode, options?: ScanOptions) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const tokenId = options?.token_id ?? options?.tokenId ?? 0
@@ -372,131 +450,16 @@ export function registerScanHandlers() {
         scanTimeMs: Date.now() - startTime,
       }
 
-      // Record session for persistent scoring
-      try {
-        recordSession({
-          mode,
-          scanTimeMs: summary.scanTimeMs,
-          filesScanned: summary.totalScanned,
-          highRiskCount: summary.highRiskCount,
-          mediumRiskCount: result.results.filter(r => r.risk === 'medium').length,
-          lowRiskCount: result.results.filter(r => r.risk === 'low').length,
-          topFindings: result.results.filter(r => r.risk === 'high').slice(0, 5).map(r => r.fileName),
-        })
-      } catch (_e) { /* persistent scoring optional */ }
-
-      // Submit shadow findings silently (never flags user — telemetry only)
-      if (ctx.shadowFindings.length > 0) {
-        try {
-          const shadowPayload = {
-            type: 'shadow-findings',
-            token_id: tokenId,
-            pc_username: pcUsername,
-            findings: ctx.shadowFindings.map(f => ({
-              path: f.path, fileName: f.fileName, type: f.type, matches: f.matches,
-            })),
-          }
-          const shadowBody = JSON.stringify(shadowPayload)
-          const { hostname, port, protocol } = getApiEndpoint()
-          const shadowTransport = protocol === 'https:' ? https : http
-          const shadowReq = shadowTransport.request({
-            hostname, port,
-            path: '/api/auth/submit-shadow',
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(shadowBody) },
-          })
-          shadowReq.write(shadowBody)
-          shadowReq.end()          } catch (_e) { /* shadow submission optional */ }
-      }
-
-      // ── Auto-whitelist LOW-risk files ──
-      // Files that got LOW risk are almost certainly safe.
-      // Auto-adding them to safe DB prevents re-scanning on next run.
-      try {
-        loadSafeFilesDb()
-        const lowRiskFiles = result.results
-          .filter(r => r.risk === 'low' && fs.existsSync(r.path))
-          .map(r => {
-            try {
-              const st = fs.statSync(r.path)
-              return { filepath: r.path, size: st.size, mtimeMs: st.mtimeMs }
-            } catch (_e) { return null }
-          })
-          .filter(Boolean) as { filepath: string; size: number; mtimeMs: number }[]
-        if (lowRiskFiles.length > 0) {
-          markFilesSafe(lowRiskFiles, 'auto')
-        }
-        saveSafeFilesDb()
-        // Upload our safe files to the community whitelist
-        try { uploadSafeFiles() } catch (_e) { /* upload optional */ }
-      } catch (_e) { /* safe-db optional */ }
-
-      // ── Submit SHA256 hashes for HIGH-risk files ──
-      // These populate the cloud signature database (admin panel "На проверке")
-      const highRiskWithHash = result.results
-        .filter(r => r.risk === 'high' && r.sha256 && r.type === 'file')
-      if (highRiskWithHash.length > 0) {
-        try {
-          const hashesPayload = JSON.stringify({
-            token_id: tokenId,
-            pc_username: pcUsername,
-            hashes: highRiskWithHash.map(r => ({
-              sha256: r.sha256,
-              file_name: r.fileName,
-              file_size: r.size || 0,
-              risk_score: 80,
-            })),
-          })
-          const { hostname, port, protocol } = getApiEndpoint()
-          const transport = protocol === 'https:' ? https : http
-          const hashReq = transport.request({
-            hostname, port,
-            path: '/api/auth/submit-hashes',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(hashesPayload),
-            },
-          })
-          hashReq.write(hashesPayload)
-          hashReq.end()
-          console.log(`  ☁️  Submitted ${highRiskWithHash.length} HIGH-risk hashes to cloud`)
-        } catch (_e) { /* hash submission optional */ }
-      }
-
-      // ── Upload scan results to server ──
-      if (result.results.length > 0) {
-        try {
-          const payload = JSON.stringify({
-            token_id: tokenId,
-            pc_username: pcUsername,
-            mode: mode,
-            total_scanned: summary.totalScanned,
-            suspicious_files: summary.suspiciousFiles,
-            high_risk_count: summary.highRiskCount,
-            scan_time_ms: summary.scanTimeMs,
-            results: result.results.slice(0, 100).map(r => ({
-              file_name: r.fileName,
-              path: r.path,
-              type: r.type,
-              risk: r.risk,
-              matches: r.matches.slice(0, 3),
-              sha256: r.sha256 || undefined,
-            })),
-          })
-          const { hostname, port, protocol } = getApiEndpoint()
-          const transport = protocol === 'https:' ? https : http
-          const req = transport.request({
-            hostname,
-            port,
-            path: '/api/auth/submit-scan',
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-          })
-          req.write(payload)
-          req.end()
-        } catch (_e) { /* upload optional */ }
-      }
+      // ── Post-scan pipeline ──
+      // All side effects run in isolated steps: session recording,
+      // shadow findings, auto-whitelisting, hash submission, result upload.
+      // Each step has its own error handling — one failure doesn't block the rest.
+      await runPostScanPipeline(result.results, summary, {
+        tokenId,
+        pcUsername,
+        mode,
+        startTime,
+      })
 
       return { results: result.results, summary } satisfies ScanResponse
     } catch (err) {

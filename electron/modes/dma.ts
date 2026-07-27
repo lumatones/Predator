@@ -2,9 +2,11 @@ import { execSync } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
 import { BrowserWindow } from 'electron'
-import { ScanResult, addFindingDedup, sendProgress, execCmd, parsePsJson, _WR } from '../types'
+import { ScanResult, addFindingDedup, sendProgress, execCmd, parsePsJson, _WR, ctx } from '../types'
 import { scanBrowserHistory } from './browser'
 import { getScanPaths } from '../cheats-db'
+import { runAntiTamperScan } from '../anti-tamper'
+import { safeCall } from '../utils/safe-spread'
 
 const KNOWN_DMA_VENDORS = [
   { name: 'Xilinx FPGA', ids: ['10ee'] },
@@ -358,9 +360,17 @@ $info | ConvertTo-Json -Compress
  */
 export async function runDmaScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
+  const signal = ctx.abortController?.signal
+  const aborted = () => signal?.aborted ?? false
+
+  // ── Phase 0: Anti-Tamper ──
+  results.push(...safeCall('runAntiTamperScan', () => runAntiTamperScan()))
+  if (aborted()) return { results, filesScanned: 0 }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking PCI devices...', filesFound: 0, filesScanned: 0, totalDirs: 5, dirsDone: 1 })
   results.push(...scanDmaDevices())
+
+  if (aborted()) return { results, filesScanned: results.length }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking USB devices...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 2 })
   const usbOut = queryPnpDevices("PNPClass='USB'")
@@ -368,8 +378,12 @@ export async function runDmaScan(win: BrowserWindow | null): Promise<{ results: 
     results.push({ path: 'USB Devices', fileName: 'USB Device: Possible DMA interface', type: 'hardware', risk: 'medium', matches: ['usb:FTDI device (common DMA interface)'], size: 0, modifiedAt: new Date().toISOString() })
   }
 
+  if (aborted()) return { results, filesScanned: results.length }
+
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking registry...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 3 })
   results.push(...scanDmaRegistry())
+
+  if (aborted()) return { results, filesScanned: results.length }
 
   await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history for DMA...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 4 })
   const dmaKw = ['dma', 'fpga', 'pcileech', 'fuser', 'screamer', 'kmem']
