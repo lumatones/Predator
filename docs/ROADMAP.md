@@ -1,692 +1,373 @@
-# Predator — Professional Development Plan
+# Predator — Professional Development Roadmap v2.0
 
-> **Version**: 1.0 | **Updated**: 2026-07-27 | **Current Product**: v0.1.14
-> **Principle**: THINK FIRST → Research → Propose → Implement by stages
-> **Role**: Senior Engineer (10+ yrs) + Security Analyst + Motion Designer + Researcher
-
----
-
-## VISION
-
-Transform Predator from a working prototype into a **professional anti-cheat ecosystem** — a product at the level of CrowdStrike/ESET for GTA 5 RP.
-
-**4 Pillars:**
-```
-DESKTOP EXE ←→ SERVER API ←→ ADMIN DASHBOARD
-                    ↕
-              PUBLIC WEBSITE
-```
+> **Версия документа**: 2.0 | **Обновлено**: 2026-07-28
+> **Текущая версия продукта**: v0.3.1
+> **Принцип**: THINK FIRST → Research → Propose → Implement by stages
 
 ---
 
-## PILLAR 1: DESKTOP EXE APP (Electron + React + TypeScript)
+## 📊 СВОДКА: ЧТО УЖЕ СДЕЛАНО (от v0.1.14 до v0.3.1)
 
-**Current**: 40 TS (electron) + 51 TSX (src) files. Scanner engine is deep. Architecture: ScanPipeline + Signature Registry = clean.
-**Goal**: Industrial-grade anti-cheat client. Flawless UI/UX. 20%+ test coverage. 99.9% crash-free.
+### EXE-приложение
+- ✅ ScanPipeline — 5-step post-scan цепочка (SessionRecorder → ShadowSubmitter → AutoWhitelister → HashSubmitter → ResultUploader)
+- ✅ Signature Registry — единый источник сигнатур (9 категорий, 200+ keywords, 60+ regex)
+- ✅ Parallel file scanning — worker_threads pool (4 воркера) с runParallel()
+- ✅ Scan cancellation — AbortController + ctx.abortController
+- ✅ Anti-tamper (anti-tamper.ts) + Anti-debug (modes/anti-debug.ts)
+- ✅ TelemetryQueue — надёжная очередь с retry + persistence
+- ✅ Persistent Profiles — эскалация риска при повторных подозрительных сканах
+- ✅ Safe-files DB — локальная БД + синхронизация с серверным community whitelist
+- ✅ Shadow findings — silent telemetry для rule discovery без FP у пользователя
+- ✅ GlassEye Easter egg — RPG-диалоги, пиксельная озвучка, Cheshire-cat улыбка, красный экран смерти + joke-screen
+- ✅ 14 SVG-иконок (все emoji заменены)
+- ✅ Onboarding flow (WelcomeStep → DemoScanStep → язык → тема → авторизация)
+- ✅ Husky pre-commit (tsc --noEmit)
+- ✅ 4 тестовых файла (heuristic, heuristic-extended, scan-pipeline, signature-registry)
 
-### 1.1 SCANNER ENGINE (electron/)
+### Сервер
+- ✅ TypeScript миграция (JS → TS)
+- ✅ Zod валидация на ВСЕХ эндпоинтах (shared-types.ts)
+- ✅ Rate limiting (general 100/min, authWrite 10/min)
+- ✅ CORS whitelist (ALLOWED_ORIGINS из .env)
+- ✅ Helmet security headers
+- ✅ Prometheus метрики (middleware/metrics.ts)
+- ✅ API v1 с версионированием (routes/v1.ts)
+- ✅ Auto-classifier (services/classifier.ts)
+- ✅ Shadow findings pipeline (submit → collect → promote/reject)
+- ✅ Safe-files community whitelist (submit → aggregate → distribute)
+- ✅ WebSocket (Socket.IO) — комнаты admin + scanner, 7 типов событий
+- ✅ JWT auth (ленивая загрузка JWT_SECRET — фикс dotenv)
+- ✅ Server bind к 0.0.0.0:3001 (внешний IP)
 
-**Current**: scanner.ts orchestrator (now ~300 lines after ScanPipeline extraction). 7 scan modes. heuristic.ts = scoring logic. cheats-db.ts = signatures. signature-registry.ts = central data.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No parallel file scanning (sequential walkDirAsync) | Full scan takes 5+ min on large drives | P0 |
-| ALL_CHEAT_KEYWORDS has ~30% duplicates (DB arrays + hardcoded overlap) | Wasted CPU, redundant matching | P1 |
-| matchKeywords() unused by heuristicFileScan (still iterates inline) | Inconsistent filtering, MIN_KEYWORD_LENGTH applied twice | P1 |
-| No scan cancellation mid-flight | User stuck waiting | P1 |
-| PowerShell commands have no timeout recovery | Hangs on locked files | P1 |
-| No incremental scan (re-scan everything every time) | Wasted time on already-analyzed files | P2 |
-| No scan scheduler (manual trigger only) | Can't run background periodic scans | P2 |
-
-**Improvements**:
-```
-v0.1.15: Parallel file scanning (worker_threads pool, 4-8 workers)
-v0.1.16: Deduplicate ALL_CHEAT_KEYWORDS with Set
-v0.1.17: Migrate heuristicFileScan to use matchKeywords() + matchPatterns()
-v0.1.18: Scan cancellation via AbortController
-v0.1.19: PowerShell executor with timeout + retry + CircuitBreaker
-v0.2.0:  Incremental scan (file hash cache, skip unchanged)
-v0.2.1:  Scan scheduler (cron-like: every 6h, on boot, on game launch)
-```
-
-**Success criteria**:
-- Full scan time reduced by 40% (parallel workers)
-- 0 duplicate keyword matches
-- Scan cancellation within 2 seconds
-- 0 PowerShell timeout hangs
-
-### 1.2 DETECTION DATABASE (cheats-db.ts + signature-registry.ts)
-
-**Current**: 730-line flat data file. 250+ process names. 100+ file hashes. 150+ binary signatures. 58 regex patterns. 9 categories. Query API (matchKeywords, matchPatterns, getCategory).
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No versioning for signature data | Can't rollback bad signatures | P1 |
-| No community contribution pipeline | New cheats require code PR | P1 |
-| Hot-reload not implemented | Requires app restart to update signatures | P2 |
-| No signature effectiveness metrics | Don't know which sigs actually catch cheats | P2 |
-| Binary signatures lack context (why each was added) | Hard to maintain, risk of FPs | P2 |
-
-**Improvements**:
-```
-v0.2.2: Signature versioning (sig-version.json, semantic version)
-v0.2.3: Community JSON format (cheats.json → parsed at runtime)
-v0.2.4: Hot-reload via cloud-sync (fetch signatures without restart)
-v0.2.5: Telemetry: track which signatures fire (anonymized)
-v0.3.0: Signature metadata: date_added, source, false_positive_rate
-```
-
-**Success criteria**:
-- New cheat added in < 5 min (edit JSON, push, all clients get it)
-- 0 app restarts for signature updates
-- FP rate tracked and visible in admin panel
-
-### 1.3 SCAN MODES (electron/modes/)
-
-**Current**: 7 scan modes (files, processes, games, network, registry, browser, dma). Each ~100-300 lines.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No combined report (each mode reports separately) | User sees fragmented results | P1 |
-| Game detection requires manual PID finding | Misses processes if GTA isn't running | P1 |
-| Network scan is basic (netstat grep) | Missing: packet inspection, DNS tunneling | P2 |
-| Browser history scan is slow (SQLite WASM parse all) | 10-30s per browser | P2 |
-| DMA scan: no firmware fingerprint database | Relies on generic PCI class codes | P2 |
-
-**Improvements**:
-```
-v0.2.6: Unified scan report (all modes → single risk assessment)
-v0.2.7: Process tree detection (parent-child analysis)
-v0.2.8: Enhanced network: DNS tunneling, known C2 IPs, bad ASNs
-v0.2.9: Browser: incremental scan (only new history entries)
-v0.3.0: DMA firmware DB: known cheat FPGA bitstreams
-```
-
-### 1.4 REACT UI (src/)
-
-**Current**: 51 TSX files. App.tsx (400 lines, god component). Checker.tsx (scan UI). Dashboard.tsx (system monitor). 14 SVG icons. Glassmorphism + ParticleBackground + Framer Motion. 4 themes.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| App.tsx is a god component (10+ state vars, 15+ callbacks) | Any change risks breaking onboarding/theme/auth | P0 |
-| Checker UI overflows on small screens (<1200px) | Buttons cut off, tabs hidden | P1 |
-| No dark/light mode system (4 fixed themes) | Can't match OS preference | P2 |
-| export-report.ts still has Unicode emoji (not SVG) | Brand inconsistency | P1 |
-| No accessibility (ARIA labels, keyboard nav, screen reader) | Can't be used by visually impaired | P2 |
-| No i18n framework (manual T object) | Hard to add new languages | P3 |
-| No toast notification system for errors | Errors are silent | P1 |
-| No confirmation dialogs before destructive actions | Accidental scan stop | P2 |
-
-**Improvements**:
-```
-v0.1.15: Fix Checker UI overflow (responsive grid, flexible tabs)
-v0.1.16: Replace emoji in export-report.ts with SVG icons
-v0.1.17: Extract useOnboarding(), useThemeEngine(), useUpdateManager() from App.tsx
-v0.1.18: Add ToastProvider for error/success notifications
-v0.1.19: Add ConfirmDialog component for destructive actions
-v0.2.0:  Auto-theme based on OS preference (match-media)
-v0.2.1:  ARIA labels + keyboard navigation (Tab, Enter, Escape)
-v0.3.0:  i18n framework (react-i18next) — add .json locale files
-```
-
-**Success criteria**:
-- App.tsx < 150 lines (currently 400)
-- Checker UI works on 1024x768 minimum
-- All user-facing text in locale files (RU + EN)
-- Tab-key navigable, screen-reader friendly
-
-### 1.5 PERFORMANCE
-
-**Current**: No profiling. 0 optimization work done beyond basic caching (sigCache, peHeaderCache).
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No startup time measurement | Unknown how long app takes to launch | P1 |
-| No memory profiling | Possible leaks in long-running scans | P1 |
-| No file I/O batching | Each file is fs.statSync + fs.openSync separately | P2 |
-| No result virtualization (render all findings) | 500+ results = laggy scroll | P2 |
-| No lazy loading for icons/components | Everything bundled upfront | P3 |
-
-**Improvements**:
-```
-v0.2.5: Startup profiling (measure main process boot time)
-v0.2.6: Memory profiling (heap snapshots, find leaks)
-v0.2.7: File I/O batching (readdir + stat in one pass)
-v0.2.8: Virtual scrolling for scan results (react-window)
-v0.2.9: Code splitting (lazy load Dashboard, ThreatMap, Settings)
-```
-
-**Success criteria**:
-- App startup < 3 seconds (cold)
-- 0 memory growth after 10 consecutive scans
-- 500-result list renders in < 50ms
-- Bundle size reduced by 30% (code splitting)
-
-### 1.6 TESTING
-
-**Current**: 0.3% coverage. 1 test file (heuristic.test.ts, 3 tests).
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| 0 tests for scanner core (runFullScan, runQuickScan) | Any refactoring = risk of breaking | P0 |
-| 0 tests for ScanPipeline handlers | Post-scan side effects untested | P0 |
-| 0 tests for Signature Registry | Data integrity not verified | P1 |
-| 0 tests for heuristicFileScan | Core scoring logic untested | P1 |
-| 0 E2E tests | Can't verify user flows | P2 |
-| 0 integration tests (IPC bridge) | Main↔Renderer broken silently | P2 |
-
-**Improvements**:
-```
-v0.1.15: Unit tests for ScanPipeline (5 handlers, 3+ test cases each)
-v0.1.16: Unit tests for Signature Registry (matchKeywords, matchPatterns, data integrity)
-v0.1.17: Unit tests for heuristicFileScan (known inputs -> expected scores)
-v0.1.18: Unit tests for scanner modes (mock file system + process list)
-v0.1.19: Integration tests for IPC bridge (main <-> renderer round-trip)
-v0.2.0:  E2E tests with Playwright (full scan flow, admin login, token auth)
-v0.2.5:  Snapshot tests for UI components (prevent visual regressions)
-v0.3.0:  CI pipeline: run all tests on PR (GitHub Actions)
-```
-
-**Success criteria**:
-- Core scanner: 80%+ branch coverage
-- ScanPipeline: 100% handler coverage
-- Signature Registry: 100% data integrity tests
-- E2E: 10+ user flows covered
-
-### 1.7 SECURITY & ANTI-TAMPER
-
-**Current**: Basic. app.asar integrity check via file size. No debugger detection. No VM detection. No process hollowing detection.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No debugger detection (Cheat Engine, x64dbg, IDA) | Cheats can attach to Predator process | P0 |
-| No VM/sandbox detection | Cheat devs test their bypasses in VMs | P1 |
-| No process hollowing detection | Cheats can inject into Predator | P1 |
-| No code signing verification for our own .exe | Tampered binary runs silently | P1 |
-| No encrypted config storage | API keys, tokens in plain JSON | P1 |
-| No runtime integrity (check .text section hash) | In-memory patching undetected | P2 |
-
-**Improvements**:
-```
-v0.1.20: Anti-debug: check IsDebuggerPresent, NtQueryInformationProcess, PEB.BeingDebugged
-v0.1.21: VM detection: check registry (VBOX, VMware), MAC prefixes, hypervisor CPUID
-v0.2.0:  Code signing: verify Authenticode signature of our own .exe on startup
-v0.2.1:  Encrypted config store (AES-256-GCM, key derived from machine GUID)
-v0.2.5:  Anti-DLL-injection: enumerate loaded modules, check signatures
-v0.3.0:  Runtime integrity: CRC32 of .text section vs known good hash
-```
-
-**Success criteria**:
-- Debugger detected within 500ms of attachment
-- VM detected on startup (block scan in VM)
-- 0 plain-text secrets in app.asar
+### Админ-дашборд
+- ✅ 8 страниц (HomePage, Dashboard, History, Login, Pending, SafeFiles, SuspiciousHashes, Tokens)
+- ✅ WebSocket real-time обновления
+- ✅ 14 компонентов (AnimatedNumber, CommandPalette, Confetti, HashRow, Layout, MatrixRain, ParticleBackground, PredatorLogo3D, Skeleton, SpeedometerGauge, Toast, TypewriterText, CountdownCircle, CommandPalette.css)
+- ✅ Glassmorphism UI theme
 
 ---
 
-## PILLAR 2: SERVER API (Node.js + Express -> TypeScript)
+## 🏗️ МОДУЛЬ 1: EXE-ПРИЛОЖЕНИЕ (Electron + React + TypeScript)
 
-**Current**: 6 JS files (~800 lines total). Express + MySQL + Socket.IO + JWT. No TypeScript. No validation. No tests. No rate limiting. No API versioning.
-**Goal**: Production-grade REST API. TypeScript-first. 85%+ test coverage. 100+ concurrent users. <100ms p95 latency.
+**Текущий размер**: 60+ файлов (electron 32 + src 30+). Ядро сканера — глубокое (11 фаз full scan).
+**Цель**: Industrial-grade anti-cheat client. Flawless UI/UX. 20%+ test coverage. 99.9% crash-free.
 
-### 2.1 MIGRATION TO TYPESCRIPT
+### 1.1 СКАНЕР-ДВИЖОК (electron/)
 
-**Current**: Plain JS (server/src/). No type safety. require() based. Magic strings everywhere.
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 1.1 | **Дедупликация ALL_CHEAT_KEYWORDS** — убрать дубликаты через `[...new Set(array)]` | 🔴 P0 | 30 мин | ~30% CPU уходит на повторный matching |
+| 1.2 | **PowerShell executor с таймаутом + CircuitBreaker** — обёртка над execSync с retry (3 попытки, exponential backoff) | 🔴 P0 | 2ч | При locked-файлах PowerShell виснет на 8с, блокируя весь pipeline |
+| 1.3 | **Инкрементальный скан** — fileMtimeCache уже есть в ScanContext. Добавить проверку `hasFileChanged()` перед heuristicFileScan | 🟡 P1 | 3ч | Повторные сканы тратят 5+ минут на неизменённые файлы |
+| 1.4 | **Scan scheduler** — cron-подобный (каждые 6h, при старте, при запуске игры). IPC handler `schedule-scan` + `setInterval` в main | 🟡 P1 | 4ч | Пользователи забывают сканироваться. Автоматизация = защита |
+| 1.5 | **Унифицированный отчёт** — все 7+ scan modes → единый risk assessment (low/medium/high + итоговый score) | 🟡 P1 | 5ч | Пользователь видит разрозненные результаты. Нужен единый вердикт |
+| 1.6 | **Process tree detection** — анализ parent-child связей процессов (explorer.exe → подозрительный.exe) | 🟡 P1 | 4ч | Cheat-лоадеры маскируются под дочерние процессы легитимных приложений |
+| 1.7 | **Enhanced network scan** — DNS tunneling detection, known C2 IPs, bad ASN lookup | 🟢 P2 | 6ч | Текущий netstat grep ловит только прямые соединения |
+| 1.8 | **DMA firmware fingerprint DB** — хэши известных cheat FPGA bitstreams (Screamer, CaptainDMA, LeetDMA) | 🟢 P2 | 4ч | DMA-читы обходят софтверные проверки. Нужны хардверные сигнатуры |
+| 1.9 | **ML-based anomaly detection** — обучить модель на известных cheat-паттернах (supervised: random forest / XGBoost) | 🔵 P3 | 3 нед | Долгосрочная защита от полиморфных читов |
 
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No TypeScript | Runtime type errors in production | P0 |
-| require() instead of ES imports | No tree-shaking, harder refactoring | P1 |
-| No shared types with desktop app | Duplicated type definitions | P1 |
-| Magic strings for DB columns, statuses, roles | Typos cause silent bugs | P1 |
+### 1.2 БАЗА СИГНАТУР (signature-registry.ts + cheats-db.ts)
 
-**Improvements**:
-```
-v0.1.15: Migrate to TypeScript (ts-node -> tsx for dev, tsc for build)
-v0.1.16: Create shared-types/ package (ScanResult, Token, Request, Hash)
-v0.1.17: Replace magic strings with const enums (RequestStatus, HashStatus, AdminRole)
-v0.1.18: Add tsconfig.json with strict: true, noImplicitAny
-```
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 2.1 | **Версионирование сигнатур** — `sig-version.json` с semantic version. Клиент проверяет версию при старте | 🟡 P1 | 2ч | Нельзя откатить плохие сигнатуры |
+| 2.2 | **Hot-reload из облака** — клиент уже получает сигнатуры через `/api/v1/signatures` (v1.ts). Нужно применить их БЕЗ перезапуска | 🟡 P1 | 3ч | API v1 уже возвращает сигнатуры. Клиент их игнорирует — не применяет |
+| 2.3 | **Community JSON формат** — `cheats.json` (валидируется Zod) → парсится при старте. Админы могут добавлять читы без кода | 🟢 P2 | 4ч | Новый чит требует PR в репозиторий. Это часы, а не минуты |
+| 2.4 | **Сигнатурная телеметрия** — отслеживать какие сигнатуры реально срабатывают (hit rate) | 🟢 P2 | 3ч | Не знаем, какие правила эффективны, а какие — мусор |
+| 2.5 | **Метаданные сигнатур** — date_added, source, false_positive_rate, last_hit | 🔵 P3 | 2ч | Без метаданных невозможно чистить устаревшие правила |
 
-**Success criteria**:
-- 0 `any` types in production code
-- Shared types package imported by both server + desktop
-- Compile-time errors for DB column typos
+### 1.3 REACT UI (src/)
 
-### 2.2 AUTH & SECURITY
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 3.1 | **Декомпозиция App.tsx** — вынести useOnboarding(), useThemeEngine(), useUpdateManager(), useEasterEgg() в отдельные хуки | 🔴 P0 | 3ч | App.tsx ~400 строк, 10+ state vars. Любое изменение рискует сломать онбординг/темы/авторизацию |
+| 3.2 | **Фикс Checker UI overflow** — responsive grid, гибкие табы (4 колонки на весь экран, 2 на среднем, 1 на узком) | 🔴 P0 | 2ч | Текущий UI выходит за край экрана на <1200px. Кнопки скрыты |
+| 3.3 | **Виртуальный скролл результатов** — react-window для списка находок (500+ results → lag) | 🟡 P1 | 3ч | 500+ результатов = лагает скролл. Каждый результат рендерит div целиком |
+| 3.4 | **Code splitting** — lazy load Dashboard, ThreatMap, Settings, Onboarding | 🟡 P1 | 2ч | Весь бандл грузится upfront. Тяжёлые компоненты (Three.js) не нужны при старте |
+| 3.5 | **i18n фреймворк** — react-i18next + JSON locale файлы (RU, EN). Заменить ручной объект T | 🟢 P2 | 6ч | Текущий T-объект (ручной) — невозможно добавить новый язык без правки кода |
+| 3.6 | **ARIA accessibility** — labels, keyboard nav (Tab/Enter/Escape), screen-reader friendly | 🟢 P2 | 4ч | Приложение непригодно для слабовидящих |
+| 3.7 | **Error Boundary на каждый page** — сейчас ErrorBoundary только на одном уровне | 🟡 P1 | 1ч | Крэш в Checker роняет всё приложение |
+| 3.8 | **ConfirmDialog перед деструктивными действиями** — остановка скана, сброс настроек | 🟢 P2 | 1ч | Случайный клик = потеря прогресса скана |
+| 3.9 | **export-report.ts — заменить emoji на SVG** | 🔴 P0 | 30 мин | Единственное место, где ещё остались Unicode emoji. Бренд- inconsistency |
+| 3.10| **PWA/оффлайн-режим** — Service Worker для кэширования UI | 🔵 P3 | 4ч | Приложение полностью зависит от сети для первого запуска |
 
-**Current**: JWT with hardcoded fallback secret (fixed). Token validation skippable via pc_username (fixed). No rate limiting. CORS open (*). No request body validation.
+### 1.4 ПРОИЗВОДИТЕЛЬНОСТЬ
 
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| token_id still optional in submit-scan/submit-hashes (bypassed via pc_username only) | Need to verify against deployed code | P0 |
-| No rate limiting | Brute-force login, token guessing, spam | P1 |
-| CORS: origin '*' | Any website can call API | P1 |
-| No request body validation (no Zod/Joi) | Malformed data hits DB, causes crashes | P1 |
-| No API key rotation mechanism | Compromised key = permanent access | P2 |
-| No audit log for admin actions | Can't trace who approved what | P2 |
-| JWT in localStorage (not httpOnly cookie) | XSS can steal admin token | P2 |
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 4.1 | **Стартап-профилирование** — замер времени от app.whenReady() до ready-to-show | 🟡 P1 | 1ч | Не знаем реальное время запуска приложения |
+| 4.2 | **Memory profiling** — heap snapshots до/после 10 последовательных full scan | 🟡 P1 | 2ч | Возможны memory leaks при долгой работе |
+| 4.3 | **File I/O batching** — readdir + stat за один проход вместо отдельных statSync на каждый файл | 🟢 P2 | 3ч | Каждый файл = отдельный fs.statSync. Двойная работа |
+| 4.4 | **Image lazy loading** — иконки грузятся по требованию, а не все сразу | 🔵 P3 | 2ч | 14 SVG иконок = 14 отдельных файлов в бандле |
 
-**Improvements**:
-```
-v0.1.15: Verify token_id enforcement in submit-scan + submit-hashes
-v0.1.16: Add express-rate-limit: 100 req/min general, 5 req/min auth
-v0.1.17: CORS: explicit origin list (admin URL, desktop app origin)
-v0.1.18: Zod schemas for ALL request bodies (7 endpoints)
-v0.1.19: Helmet.js for security headers (CSP, HSTS, X-Frame-Options)
-v0.2.0:  Admin audit log table (who did what, when, from which IP)
-v0.2.5:  httpOnly cookie for admin JWT (instead of localStorage)
-```
+### 1.5 ТЕСТИРОВАНИЕ
 
-**Success criteria**:
-- 0 unvalidated request bodies
-- Rate limit: 429 on 6th auth attempt in 1 min
-- CORS blocks requests from unauthorized origins
-- All admin actions logged and queryable
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 5.1 | **Тесты scanner core** — runFullScan/runQuickScan с замоканными модулями (файловая система + процесс-лист) | 🔴 P0 | 6ч | 0 тестов для главной функции приложения |
+| 5.2 | **Тесты для всех 5 ScanPipeline handlers** — recordScanSession, submitShadowFindings, autoWhitelistLowRisk, submitAllFindings, uploadScanResults | 🔴 P0 | 3ч | Post-scan side effects не тестируются совсем |
+| 5.3 | **E2E тесты с Playwright** — полный флоу: открытие → онбординг → авторизация → full scan → просмотр результатов | 🟡 P1 | 8ч | Невозможно проверить пользовательские сценарии |
+| 5.4 | **Integration тесты IPC bridge** — main ↔ renderer round-trip (get-config, start-scan, cancel-scan) | 🟡 P1 | 4ч | IPC сломается — никто не узнает до продакшена |
+| 5.5 | **CI: все тесты на PR** — GitHub Actions запускает vitest + Playwright при каждом PR | 🟡 P1 | 2ч | Тесты есть, но в CI не запускаются |
+| 5.6 | **Тесты для всех scan modes** — processes, games, network, registry, browser, dma | 🟢 P2 | 6ч | Каждый mode ~100-300 строк, 0 тестов |
+| **Цель покрытия**: | Core scanner 80%+ | ScanPipeline 100% | Signature Registry 100% | Всего: 20%+ строк |
 
-### 2.3 DATABASE
+### 1.6 БЕЗОПАСНОСТЬ
 
-**Current**: MySQL via mysql2. 5 tables (tokens, admins, requests, scan_results, suspicious_hashes). Index on suspicious_hashes.status only. No migrations system. Raw SQL strings.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No migration system (manual SQL init) | Schema drift between dev/prod | P0 |
-| No connection pooling config | Default pool (10 connections) may not be enough | P1 |
-| No query timeout config | Slow queries block connections | P1 |
-| No slow query logging | Unknown which queries are bottlenecks | P2 |
-| No read replicas | Single DB = single point of failure | P3 |
-| No data archival (scan_results grow infinitely) | DB size grows ~1GB/month | P2 |
-
-**Improvements**:
-```
-v0.1.20: Add knex.js or drizzle-orm for migrations + query builder
-v0.1.21: Connection pool: min=5, max=50, acquireTimeout=10000
-v0.1.22: Query timeout: 30s default, 10s for GET endpoints
-v0.2.0:  Slow query log (>1s) to separate file
-v0.2.5:  TTL on scan_results (DELETE WHERE created_at < NOW() - INTERVAL 90 DAY)
-v0.3.0:  Read replica for analytics queries (optional)
-```
-
-### 2.4 API DESIGN
-
-**Current**: Monolithic route files (auth.js = 10 endpoints in 1 file). No versioning. Inconsistent error responses. No pagination on list endpoints.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| Monolithic route files (auth.js, admin.js) | 300+ line files, hard to navigate | P1 |
-| No API versioning (/api/v1/...) | Breaking changes affect all clients | P2 |
-| Inconsistent error format (some {error}, some {message}) | Client-side error parsing fragile | P1 |
-| No pagination on /tokens, /suspicious-hashes, /history | Large responses, slow loading | P2 |
-| No request ID (X-Request-ID) | Can't trace errors across logs | P2 |
-
-**Improvements**:
-```
-v0.1.23: Split auth.js: auth/token.js, auth/request.js, auth/scan.js, auth/hash.js
-v0.1.24: Split admin.js: admin/login.js, admin/requests.js, admin/tokens.js, admin/hashes.js
-v0.1.25: Standardized error format: { error: { code, message, requestId } }
-v0.1.26: Add X-Request-ID middleware (uuid)
-v0.2.0:  Pagination: { data, meta: { page, limit, total, hasMore } }
-v0.3.0:  API versioning: mount /api/v1/*, deprecate /api/* gradually
-```
-
-### 2.5 WEBSOCKET
-
-**Current**: Socket.IO on same port. admin room for real-time events. 6 event types. No auth on WS connection. No reconnection state sync.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No auth on WebSocket connection | Anyone can join admin room | P0 |
-| No reconnection state sync | Admin misses events during disconnect | P1 |
-| No heartbeat monitoring | Stale connections not cleaned | P2 |
-| Events not typed (magic strings) | Typos in event names = silent failure | P2 |
-
-**Improvements**:
-```
-v0.1.15: WS auth middleware (verify JWT on connection, reject if invalid)
-v0.1.16: Event type enum (WsEvent enum: NEW_REQUEST, SCAN_RESULT, etc.)
-v0.1.17: Reconnection sync: on reconnect, send missed events backlog (last 5 min)
-v0.1.18: Heartbeat: ping every 25s, disconnect if no pong in 10s
-```
-
-### 2.6 SERVER TESTING
-
-**Current**: 0 tests. No test framework configured.
-
-**Improvements**:
-```
-v0.2.0:  vitest + supertest: integration tests for all endpoints
-v0.2.1:  Test DB: separate test_database, seeded before each test suite
-v0.2.2:  CI: run server tests on PR (GitHub Actions)
-v0.2.5:  Coverage target: 80%+ lines, 70%+ branches
-```
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 6.1 | **Шифрованное хранение конфига** — AES-256-GCM, ключ из machine GUID | 🟡 P1 | 3ч | API ключи, токены в plain JSON. Любой читатель asar увидит |
+| 6.2 | **Code signing verification** — проверять Authenticode подпись своего .exe при старте | 🟡 P1 | 2ч | Подменённый бинарник запустится молча |
+| 6.3 | **Runtime integrity** — CRC32 секции .text vs известный хэш | 🟢 P2 | 4ч | In-memory patching не детектится |
+| 6.4 | **Anti-DLL-injection** — перечислять загруженные модули, проверять подписи | 🟢 P2 | 3ч | Читы могут инжектиться в процесс Predator |
 
 ---
 
-## PILLAR 3: ADMIN DASHBOARD (React + TypeScript)
+## 🖥️ МОДУЛЬ 2: СЕРВЕР (Express + TypeScript + MySQL)
 
-**Current**: 34 TSX files. Login, Dashboard, Tokens, History pages. WebSocket real-time updates. Glassmorphism UI theme.
-**Goal**: Professional admin panel. RBAC. Audit trail. Analytics dashboard. Bulk operations.
+**Текущее состояние**: TypeScript, Zod, rate limiting, helmet, Prometheus, API v1, WebSocket, auto-classifier, shadow findings, safe-files. ~1400 строк кода.
 
-### 3.1 AUTH & ACCESS CONTROL
+### 2.1 БАЗА ДАННЫХ
 
-**Current**: Single admin role. JWT in localStorage. No session timeout. No role hierarchy.
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 7.1 | **Миграции (Knex или Drizzle)** — заменить ручной `init.ts` + `schema.sql` на программные миграции | 🔴 P0 | 4ч | Schema drift между dev/prod. Ручной SQL init — ошибки ждут |
+| 7.2 | **TTL на scan_results** — `DELETE WHERE created_at < NOW() - INTERVAL 90 DAY` | 🟡 P1 | 1ч | Таблица растёт на ~1GB/месяц. Через год будет 12GB |
+| 7.3 | **Connection pooling config** — min=5, max=50, acquireTimeout=10000 | 🟡 P1 | 30 мин | Дефолтный пул (10 коннектов) — узкое горлышко |
+| 7.4 | **Slow query log** — запросы >1с в отдельный файл | 🟢 P2 | 30 мин | Не знаем какие запросы тормозят |
+| 7.5 | **Индексы на часто-запрашиваемые колонки** — scan_results.token_id, suspicious_hashes.partial_hash, shadow_findings.rule_name | 🟡 P1 | 1ч | Без индексов — full table scan на каждый запрос |
+| 7.6 | **Репликация (read replica)** — для аналитических запросов | 🔵 P3 | 2 нед | Production-требование для масштабирования |
 
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| Single role (superadmin) | Can't give limited access to moderators | P1 |
-| No session timeout | Token valid for 24h even if admin left | P1 |
-| No failed login tracking | Brute force undetected | P2 |
-| No 2FA option | Single factor = vulnerable | P3 |
+### 2.2 АУДИТ И БЕЗОПАСНОСТЬ
 
-**Improvements**:
-```
-v0.2.0:  RBAC: superadmin, admin, moderator roles (per-endpoint permissions)
-v0.2.1:  Session timeout: auto-logout after 30min inactivity
-v0.2.2:  Failed login tracking: lock account after 5 failures (15 min)
-v0.3.0:  TOTP 2FA for superadmin accounts
-```
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 8.1 | **Admin audit log** — таблица `admin_actions` (admin_id, action, target_type, target_id, ip, timestamp) | 🟡 P1 | 3ч | Невозможно отследить кто одобрил/отклонил конкретный запрос через месяц |
+| 8.2 | **WebSocket auth middleware** — проверять JWT при подключении к комнате admin/scanner | 🟡 P1 | 2ч | Любой может подключиться к WebSocket и слушать админские события |
+| 8.3 | **httpOnly cookie для admin JWT** — вместо localStorage | 🟢 P2 | 2ч | XSS может украсть admin токен |
+| 8.4 | **API key rotation** — механизм ротации для компрометированных ключей | 🟢 P2 | 2ч | Скомпрометированный ключ = перманентный доступ |
 
-### 3.2 REQUEST MANAGEMENT
+### 2.3 API ДИЗАЙН
 
-**Current**: Pending requests list. Approve/reject buttons. No bulk actions. No filtering. No search.
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 9.1 | **Пагинация на всех list-эндпоинтах** — `/tokens`, `/suspicious-hashes`, `/history`, `/pending`, `/safe-files` | 🟡 P1 | 3ч | Без пагинации ответы растут бесконечно |
+| 9.2 | **Стандартизированный формат ошибок** — `{ error: { code, message, requestId } }` на ВСЕХ эндпоинтах | 🟡 P1 | 2ч | Часть эндпоинтов возвращает `{error: "..."}`, часть `{valid: false, error: "..."}` |
+| 9.3 | **X-Request-ID middleware** — uuid на каждый запрос | 🟢 P2 | 30 мин | Невозможно trace'ить ошибки по логам |
+| 9.4 | **Разделение монолитных роутов** — auth.ts (250 строк) → auth/token.ts + auth/request.ts + auth/scan.ts + auth/hash.ts | 🟢 P2 | 3ч | 250-строчный файл — тяжело навигировать |
 
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No bulk approve/reject | 50+ pending = click 50 times | P1 |
-| No search by pc_username | Can't find specific user | P1 |
-| No date range filter | Can't see "today's requests" | P2 |
-| No request notes (why rejected) | User gets no explanation | P2 |
+### 2.4 ТЕСТИРОВАНИЕ
 
-**Improvements**:
-```
-v0.1.15: Bulk select + approve/reject (checkboxes + toolbar)
-v0.1.16: Search bar (pc_username, fuzzy match)
-v0.1.17: Date range filter (today, last 7d, last 30d, custom)
-v0.1.18: Rejection reason dropdown (suspicious, spam, duplicate, other)
-```
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 10.1 | **Интеграционные тесты API** — vitest + supertest: все 24 эндпоинта × 2 случая (успех + ошибка) | 🔴 P0 | 6ч | 0 тестов на сервере. Любой рефакторинг = риск продакшен-сбоя |
+| 10.2 | **Test DB** — отдельная `test_predator` база, seeded перед каждым suite | 🟡 P1 | 2ч | Без тестовой БД нельзя тестировать эндпоинты |
+| 10.3 | **CI для серверных тестов** — GitHub Actions запускает тесты при PR | 🟡 P1 | 1ч | Тесты будут написаны, но не будут запускаться |
+| **Цель покрытия**: | 80%+ lines | 70%+ branches | Все 24 эндпоинта покрыты |
 
-### 3.3 TOKEN MANAGEMENT
+### 2.5 МОНИТОРИНГ И OPS
 
-**Current**: Generate tokens (1-10). List tokens (50). Revoke. No search. No export. No usage stats.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No batch generation (generate 100 for event) | Manual clicking | P2 |
-| No token usage analytics | Don't know which tokens are active | P1 |
-| No CSV export for tokens | Can't share token list externally | P2 |
-| No token expiration | Tokens valid forever after use | P2 |
-
-**Improvements**:
-```
-v0.1.19: Token usage dashboard (active, used, revoked counts + chart)
-v0.1.20: CSV export (all tokens, filtered)
-v0.2.0:  Token expiration: auto-revoke after N days if unused
-v0.2.5:  Batch generation: 50, 100, 500 with progress bar
-```
-
-### 3.4 HASH REVIEW WORKFLOW
-
-**Current**: List pending hashes. Approve/reject individually. No diff view. No bulk actions. No hash lookup.
-
-**Gaps**:
-| Gap | Impact | Priority |
-|-----|--------|----------|
-| No bulk confirm/reject | 100+ pending hashes = tedious | P1 |
-| No hash detail view (which PCs submitted, when) | Can't assess credibility | P1 |
-| No VirusTotal integration | Can't verify hash against 70+ AV engines | P2 |
-| No "similar hash" detection | Duplicate cheats get separate entries | P2 |
-
-**Improvements**:
-```
-v0.2.1: Hash detail panel: first seen, last seen, PC count, related scans
-v0.2.2: Bulk confirm/reject with checkboxes
-v0.2.5: VirusTotal API lookup (GET /api/admin/hashes/:sha256/vt)
-v0.3.0: Fuzzy hash matching (ssdeep) — detect hash variants
-```
-
-### 3.5 ANALYTICS & REPORTING
-
-**Current**: Basic scan stats (total scans, by mode, by day). No player stats. No threat trends. No export.
-
-**Improvements**:
-```
-v0.2.0:  Player leaderboard (most scanned, most detections)
-v0.2.1:  Threat trend chart (detections over time, 30d/90d)
-v0.2.2:  Geographic map (player locations by IP geolocation)
-v0.2.5:  PDF report generation (weekly summary, exportable)
-v0.3.0:  Custom dashboard builder (choose widgets, arrange)
-```
-
-### 3.6 ADMIN UI/UX
-
-**Current**: Clean but basic. No dark/light toggle. No responsive mobile view. No keyboard shortcuts.
-
-**Improvements**:
-```
-v0.1.15: Responsive sidebar (collapsible, mobile hamburger)
-v0.1.16: Keyboard shortcuts (A=approve, R=reject, N=next, F=search)
-v0.1.17: Toast notifications for all actions (approve/reject/generate)
-v0.2.0:  Dark mode toggle (sync with OS preference)
-v0.2.5:  Command palette (Ctrl+K: search tokens, requests, hashes)
-```
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 11.1 | **Grafana dashboard** — визуализация Prometheus метрик (latency, requests/sec, active users, scan modes) | 🟢 P2 | 3ч | Метрики собираются, но не визуализированы |
+| 11.2 | **Alerting** — алерты на: 500 errors > 5%, latency p95 > 500ms, DB connection lost | 🟢 P2 | 2ч | Никто не узнает о падении сервера |
+| 11.3 | **Health check endpoint для мониторинга** — `/api/health` проверяет DB + Redis (если будет) | 🟢 P2 | 1ч | Текущий health check не проверяет зависимости |
+| 11.4 | **Graceful shutdown** — дообработка pending запросов при SIGTERM | 🟢 P2 | 2ч | При деплое теряются in-flight запросы |
 
 ---
 
-## PILLAR 4: PUBLIC WEBSITE (Next.js + PostgreSQL)
+## 🎛️ МОДУЛЬ 3: АДМИН-ДАШБОРД (React + TypeScript)
 
-**Current**: Not started. 0 files.
-**Goal**: Public-facing website with verified player database, statistics, and download page. SEO-optimized. Community trust builder.
+**Текущее состояние**: 8 страниц, 14 компонентов, WebSocket real-time, чистый glassmorphism UI.
+**Цель**: Профессиональная админ-панель. RBAC. Аудитория. Bulk-операции. Аналитика.
 
-### 4.1 ARCHITECTURE
+### 3.1 УПРАВЛЕНИЕ ЗАПРОСАМИ (Pending.tsx)
 
-```
-Server API (Express) —sync—> PostgreSQL (public DB)
-                                    |
-                              Next.js (SSR/ISR)
-                              /players
-                              /players/:id
-                              /stats
-                              /api/docs
-                              /download
-```
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 12.1 | **Bulk approve/reject** — чекбоксы + тулбар с кнопками «Одобрить всё» / «Отклонить всё» | 🔴 P0 | 3ч | 50+ pending = 50 кликов. Админы тратят часы |
+| 12.2 | **Поиск по pc_username** — fuzzy search + debounce | 🟡 P1 | 1ч | Нельзя найти конкретного пользователя среди сотен запросов |
+| 12.3 | **Фильтр по дате** — сегодня / 7 дней / 30 дней / свой период | 🟡 P1 | 2ч | Не видно «свежих» запросов — всё вперемешку |
+| 12.4 | **Причина отказа** — dropdown (spam / suspicious / duplicate / other) при reject | 🟢 P2 | 1ч | Пользователь не получает объяснения почему отказано |
 
-**Stack**:
-- **Next.js 14+** (App Router) — SSR + ISR for SEO
-- **Tailwind CSS** — consistent with desktop app theme
-- **Prisma ORM** — type-safe DB queries
-- **PostgreSQL** — separate from MySQL (operational DB)
-- **Vercel** — hosting (free tier for start)
+### 3.2 УПРАВЛЕНИЕ ТОКЕНАМИ (Tokens.tsx)
 
-### 4.2 PAGES
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 13.1 | **Bulk-генерация** — 50, 100, 500 токенов с прогресс-баром | 🟡 P1 | 2ч | Текущий лимит — 10 за раз. Для ивентов нужно 100+ |
+| 13.2 | **CSV экспорт** — выгрузка списка токенов в CSV | 🟢 P2 | 1ч | Нельзя поделиться списком токенов с организаторами серверов |
+| 13.3 | **Дашборд использования токенов** — active / used / revoked counts + круговая диаграмма | 🟢 P2 | 3ч | Не видно общей картины использования токенов |
+| 13.4 | **Авто-отзыв неиспользованных токенов** — через N дней, конфигурируемо | 🔵 P3 | 2ч | Токены висят вечно даже если не используются |
 
-| Page | Content | Data Source |
-|------|---------|-------------|
-| `/` | Landing: what is Predator, why use it, download CTA | Static + download count API |
-| `/players` | Searchable player database (verified scans only) | PostgreSQL via Prisma |
-| `/players/:id` | Player profile: scan history, stats, verification badge | PostgreSQL via Prisma |
-| `/stats` | Public statistics: total scans, detections, top threats | PostgreSQL via Prisma |
-| `/download` | Desktop app download (latest .exe from GitHub Releases) | GitHub Releases API |
-| `/api/docs` | Public API docs (for community bots: Discord, Telegram) | Static MDX |
-| `/blog` | Changelog, security research, cheat analysis (optional) | MDX files |
+### 3.3 РЕВЬЮ ХЭШЕЙ (SuspiciousHashes.tsx + SafeFiles.tsx)
 
-### 4.3 DATA SYNC (Server -> PostgreSQL)
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 14.1 | **Bulk confirm/reject хэшей** — чекбоксы + batch-операции | 🔴 P0 | 2ч | 100+ pending-хэшей = 100 кликов |
+| 14.2 | **Детальная панель хэша** — first seen, last seen, PC count, related scans, VirusTotal lookup | 🟡 P1 | 4ч | Админ не видит контекст хэша — только sha256 + file_name |
+| 14.3 | **VirusTotal интеграция** — `GET /api/admin/hashes/:sha256/vt` → данные от 70+ AV | 🟢 P2 | 3ч | Ручная проверка хэша на VirusTotal замедляет ревью |
+| 14.4 | **Fuzzy hash matching (ssdeep)** — детектить варианты одного чита | 🔵 P3 | 6ч | Один и тот же чит с разными хэшами = N записей |
 
-**Current**: Server writes to MySQL only. No PostgreSQL.
+### 3.4 БЕЗОПАСНОСТЬ АДМИНКИ
 
-**Improvements**:
-```
-v0.3.0: Create sync service: every 5 min, copy new/modified rows to PostgreSQL
-v0.3.1: Initial data migration: all approved hashes + verified scans
-v0.3.2: GDPR compliance: player opt-out, data deletion request form
-v0.3.3: Rate limit public API: 60 req/min per IP
-```
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 15.1 | **RBAC (роли)** — superadmin / admin / moderator с per-endpoint permissions | 🟡 P1 | 5ч | Все админы имеют полный доступ. Модератор не должен генерировать токены |
+| 15.2 | **Session timeout** — авто-логаут через 30 мин неактивности | 🟡 P1 | 2ч | Токен JWT валиден 24ч. Админ ушёл — панель открыта |
+| 15.3 | **Failed login tracking** — блокировка после 5 неудачных попыток (на 15 мин) | 🟢 P2 | 2ч | Брутфорс админского пароля не детектится |
+| 15.4 | **2FA (TOTP)** — для superadmin аккаунтов | 🔵 P3 | 4ч | Однофакторная аутентификация — уязвимость |
 
-### 4.4 PLAYER DATABASE
+### 3.5 АНАЛИТИКА
 
-**Features**:
-- Search by Steam ID, FiveM license, Rockstar Social Club ID
-- Verification badge: "Verified by Predator — 3 scans, 0 detections"
-- Risk indicators: last scan date, detection count, scan frequency
-- Privacy: players can opt out (remove from public DB)
-- API: JSON endpoint for Discord bots (isPlayerVerified?id=xxx)
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 16.1 | **Player leaderboard** — топ игроков по сканам/детектам | 🟢 P2 | 3ч | Интересно для комьюнити, но не критично |
+| 16.2 | **Threat trend chart** — детекты по времени (30d/90d), line chart | 🟢 P2 | 3ч | Не видно трендов — растёт ли количество читеров |
+| 16.3 | **PDF report generation** — еженедельный отчёт, экспортируемый | 🔵 P3 | 6ч | Для стейкхолдеров / server owners |
+| 16.4 | **Custom dashboard builder** — drag-and-drop виджетов | 🔵 P3 | 2 нед | Долгосрочная фича для кастомизации |
 
-### 4.5 COMMUNITY FEATURES (v1.0+)
+### 3.6 UI/UX АДМИНКИ
 
-- Report a cheater (submit evidence, triggers re-scan request)
-- Top servers leaderboard (most verified players)
-- Integration guides (how to require Predator verification on your server)
-- Whitelabel: server owners can embed verification widget
+| # | Задача | Приоритет | Сложность | Срок | Почему важно |
+|---|--------|-----------|-----------|------|-------------|
+| 17.1 | **Keyboard shortcuts** — A=approve, R=reject, N=next, F=search, Esc=close | 🟢 P2 | 2ч | Без клавиатуры админы кликают мышкой сотни раз |
+| 17.2 | **Toast notifications** — для approve/reject/generate действий (сейчас есть toast, но не везде используется) | 🟡 P1 | 1ч | Не все действия показывают подтверждение |
+| 17.3 | **Responsive mobile view** — sidebar → hamburger, таблицы →卡片 | 🔵 P3 | 4ч | Админка только для десктопа. Мобильная версия = must-have для оперативного ревью |
 
 ---
 
-## TIMELINE
+## 📅 TIMELINE: ФАЗЫ ПО СПРИНТАМ
 
-### Phase 1: Foundation (v0.1.15 → v0.2.0) — 2-3 weeks
+### 🔥 SPRINT 1: CRITICAL FIXES (v0.3.2 → v0.4.0) — 1-2 недели
 
-**Desktop EXE**:
-- [x] ScanPipeline refactoring (done)
-- [x] Signature Registry (done)
-- [x] MASQUERADING_SYSTEM_TOOLS (done)
-- [ ] Fix Checker UI overflow (responsive)
-- [ ] Replace emoji in export-report.ts
-- [ ] Extract hooks from App.tsx (useOnboarding, useThemeEngine)
-- [ ] ToastProvider + error notifications
+**EXE (4 задачи, P0):**
+- [ ] 1.1 Дедупликация ALL_CHEAT_KEYWORDS (30 мин)
+- [ ] 1.2 PowerShell executor с таймаутом + CircuitBreaker (2ч)
+- [ ] 3.1 Декомпозиция App.tsx на хуки (3ч)
+- [ ] 3.2 Фикс Checker UI overflow (2ч)
+- [ ] 3.9 export-report.ts — emoji → SVG (30 мин)
 
-**Server API**:
-- [ ] Verify token_id enforcement
-- [ ] Rate limiting (express-rate-limit)
-- [ ] CORS whitelist
-- [ ] Zod validation on all endpoints
-- [ ] Migrate to TypeScript
+**Сервер (3 задачи, P0):**
+- [ ] 7.1 Миграции (Knex или Drizzle) (4ч)
+- [ ] 10.1 Интеграционные тесты API — supertest для всех 24 эндпоинтов (6ч)
+- [ ] 10.2 Test DB (2ч)
 
-**Admin Dashboard**:
-- [ ] Bulk approve/reject requests
-- [ ] Search + date filters
-- [ ] Responsive sidebar
-- [ ] Keyboard shortcuts
+**Админка (2 задачи, P0):**
+- [ ] 12.1 Bulk approve/reject запросов (3ч)
+- [ ] 14.1 Bulk confirm/reject хэшей (2ч)
 
-**Testing**:
-- [ ] ScanPipeline handler tests
-- [ ] Signature Registry tests
-- [ ] heuristicFileScan tests
+**Итого**: ~30 часов работы. 11 задач.
 
-### Phase 2: Hardening (v0.2.0 → v0.3.0) — 4-6 weeks
+### ⚡ SPRINT 2: HARDENING (v0.4.0 → v0.5.0) — 2-3 недели
 
-**Desktop EXE**:
-- [ ] Parallel file scanning (worker_threads)
-- [ ] Scan cancellation (AbortController)
-- [ ] Incremental scan (file hash cache)
-- [ ] Anti-debug + VM detection
-- [ ] App.tsx < 150 lines
-- [ ] Auto-theme (match-media)
+**EXE (6 задач, P1):**
+- [ ] 1.3 Инкрементальный скан (3ч)
+- [ ] 2.2 Hot-reload сигнатур из облака (3ч)
+- [ ] 3.3 Виртуальный скролл результатов — react-window (3ч)
+- [ ] 3.5 i18n — react-i18next (6ч)
+- [ ] 5.1 Тесты scanner core (6ч)
+- [ ] 5.2 Тесты ScanPipeline handlers (3ч)
+- [ ] 6.1 Шифрованное хранение конфига (3ч)
 
-**Server API**:
-- [ ] Split monolithic routes
-- [ ] Pagination on all list endpoints
-- [ ] Admin audit log
-- [ ] WebSocket auth middleware
-- [ ] Test DB + integration tests
+**Сервер (4 задачи, P1):**
+- [ ] 7.5 Индексы на часто-запрашиваемые колонки (1ч)
+- [ ] 8.1 Admin audit log (3ч)
+- [ ] 8.2 WebSocket auth middleware (2ч)
+- [ ] 9.1 Пагинация на list-эндпоинтах (3ч)
 
-**Admin Dashboard**:
-- [ ] RBAC (superadmin, admin, moderator)
-- [ ] Session timeout
-- [ ] Token analytics dashboard
-- [ ] Hash detail panel
-- [ ] CSV export
+**Админка (4 задачи, P1):**
+- [ ] 13.1 Bulk-генерация токенов (2ч)
+- [ ] 14.2 Hash detail panel (4ч)
+- [ ] 15.1 RBAC роли (5ч)
+- [ ] 15.2 Session timeout (2ч)
 
-### Phase 3: Scale (v0.3.0 → v0.5.0) — 2-3 months
+**Итого**: ~49 часов. 15 задач.
 
-**Desktop EXE**:
-- [ ] Scan scheduler (periodic background scans)
-- [ ] Hot-reload signatures from cloud
-- [ ] Runtime integrity checks
-- [ ] Virtual scrolling (react-window)
-- [ ] Code splitting (lazy load modules)
-- [ ] i18n (react-i18next, RU + EN)
+### 🚀 SPRINT 3: SCALE (v0.5.0 → v0.6.0) — 3-4 недели
 
-**Server API**:
-- [ ] API versioning (/api/v1/)
-- [ ] Prometheus metrics
-- [ ] Data archival (TTL on old scans)
-- [ ] Connection pooling optimization
+**EXE (5 задач, P1/P2):**
+- [ ] 1.4 Scan scheduler (4ч)
+- [ ] 1.5 Унифицированный отчёт (5ч)
+- [ ] 2.3 Community JSON формат (4ч)
+- [ ] 3.4 Code splitting (2ч)
+- [ ] 5.3 E2E тесты Playwright (8ч)
 
-**Admin Dashboard**:
-- [ ] VirusTotal integration
-- [ ] PDF report generation
-- [ ] Player leaderboard
-- [ ] Threat trend charts
-- [ ] Command palette (Ctrl+K)
+**Сервер (3 задачи, P2):**
+- [ ] 7.2 TTL на scan_results (1ч)
+- [ ] 9.4 Разделение монолитных роутов (3ч)
+- [ ] 11.1 Grafana dashboard (3ч)
 
-### Phase 4: Ecosystem (v0.5.0 → v1.0.0) — 3-6 months
+**Админка (3 задачи, P2):**
+- [ ] 14.3 VirusTotal интеграция (3ч)
+- [ ] 16.1 Player leaderboard (3ч)
+- [ ] 16.2 Threat trend chart (3ч)
 
-**New: PUBLIC WEBSITE**
-- [ ] Next.js project setup + Tailwind + Prisma
-- [ ] Landing page
+**Итого**: ~39 часов. 11 задач.
+
+### 🏁 SPRINT 4: ECOSYSTEM (v0.6.0 → v1.0.0) — 2-3 месяца
+
+**EXE:**
+- [ ] 1.9 ML-based anomaly detection (3 нед)
+- [ ] 3.6 ARIA accessibility (4ч)
+- [ ] 3.10 PWA/оффлайн-режим (4ч)
+- [ ] 6.3 Runtime integrity checks (4ч)
+
+**Сервер:**
+- [ ] 7.6 Репликация (read replica) (2 нед)
+- [ ] 8.3 httpOnly cookie для JWT (2ч)
+- [ ] 9.4 Health check с проверкой зависимостей (1ч)
+- [ ] 11.2 Alerting (2ч)
+- [ ] 11.4 Graceful shutdown (2ч)
+
+**Админка:**
+- [ ] 15.4 2FA TOTP (4ч)
+- [ ] 16.3 PDF reports (6ч)
+- [ ] 16.4 Custom dashboard (2 нед)
+- [ ] 17.3 Responsive mobile (4ч)
+
+**Новое — ПУБЛИЧНЫЙ САЙТ (Next.js):**
+- [ ] Landing page с download CTA
 - [ ] Player database (/players, /players/:id)
-- [ ] Public statistics (/stats)
-- [ ] Download page (/download)
-- [ ] API docs (/api/docs)
-- [ ] Data sync service (MySQL -> PostgreSQL)
-- [ ] Community features (report, leaderboard, integration guides)
-
-**Desktop EXE**:
-- [ ] ML-based anomaly detection (supervised: known cheat patterns)
-- [ ] Community signature contributions
-- [ ] Discord Rich Presence integration
-- [ ] 3D Threat Map (Three.js globe)
-
-**Server API**:
-- [ ] Webhook system (Discord, Telegram notifications)
-- [ ] Multi-region deployment (EU + NA)
-- [ ] Read replicas for analytics
+- [ ] Public stats (/stats)
+- [ ] API docs для комьюнити-ботов
+- [ ] Data sync: MySQL → PostgreSQL
 
 ---
 
-## RISK REGISTER
+## ⚠️ РИСКИ
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| False positives cause user distrust | Medium | High | FP tracking dashboard, easy appeal process |
-| Cheat devs bypass detection | High | Medium | ML layer, behavioral detection, frequent signature updates |
-| Server downtime during tournament season | Low | High | Offline mode, multi-region failover |
-| GDPR/privacy complaint | Medium | Medium | Opt-out system, data minimization, encryption at rest |
-| GitHub Actions CI flakiness (seen in v0.0.19) | Medium | Low | Retry with backoff, separate typecheck from build |
-| Electron security vulnerability (CVE) | Low | High | Dependabot, electron update policy, CSP headers |
-| DB performance degradation (scan_results growth) | Medium | Medium | TTL archival, index optimization, query monitoring |
-
----
-
-## SUCCESS METRICS (v1.0.0)
-
-| Metric | Current | Target v1.0.0 |
-|--------|---------|---------------|
-| Test coverage (desktop) | 0.3% | 20%+ |
-| Test coverage (server) | 0% | 80%+ |
-| Test coverage (admin) | 0% | 50%+ |
-| App startup time | ~5s | <3s |
-| Full scan time | 5-10 min | <3 min |
-| False positive rate | Unknown | <2% (tracked) |
-| Crash rate | Unknown | <0.1% (monitored) |
-| API p95 latency | Unknown | <100ms |
-| Concurrent users (API) | 10 | 100+ |
-| Signature update time | Code PR (hours) | <5 min (JSON push) |
-| New language add time | N/A | <1 day (locale JSON) |
+| Риск | Вероятность | Влияние | Митигация |
+|------|-----------|--------|-----------|
+| False positives → user distrust | Средняя | Высокое | FP tracking dashboard, лёгкий appeal process |
+| Cheat devs bypass detection | Высокая | Среднее | ML layer + behavioral detection + частые обновления сигнатур |
+| Server downtime в турнирный сезон | Низкая | Высокое | Оффлайн-режим, multi-region failover |
+| GDPR/privacy complaint | Средняя | Среднее | Opt-out система, data minimization, encryption at rest |
+| GitHub Actions CI flakiness | Средняя | Низкое | Retry с backoff, раздельные typecheck/build |
+| Electron CVE vulnerability | Низкая | Высокое | Dependabot, electron-updater policy, CSP headers |
+| DB degradation (scan_results growth) | Высокая | Среднее | TTL archival (90 дней), index optimization |
+| Token abuse (один токен — много PC) | Средняя | Высокое | device fingerprinting, rate-limit per token |
 
 ---
 
-*Plan maintained by the Predator team. Review and update every sprint.*
-*Principle: THINK FIRST → Research → Propose → Implement by stages. Never skip analysis.*
+## 📈 МЕТРИКИ УСПЕХА (v1.0.0)
+
+| Метрика | Сейчас | Цель v1.0.0 |
+|--------|--------|--------------|
+| **Test coverage (desktop)** | ~2% (4 теста) | 20%+ (150+ тестов) |
+| **Test coverage (server)** | 0% | 80%+ (48+ тестов) |
+| **Test coverage (admin)** | 0% | 50%+ |
+| **App startup time** | ~5s | <3s |
+| **Full scan time** | 5-10 мин | <3 мин (parallel + incremental) |
+| **False positive rate** | Unknown | <2% (tracked в Prometheus) |
+| **Crash rate** | Unknown | <0.1% (crash.log мониторинг) |
+| **API p95 latency** | ~200ms | <100ms |
+| **Concurrent users (API)** | ~10 | 100+ |
+| **Signature update time** | Code PR (часы) | <5 мин (JSON push → hot-reload) |
+| **App.tsx lines** | ~400 | <150 (разбит на хуки) |
+| **Admin bulk ops** | Нет | Approve/reject за 2 клика |
+| **i18n languages** | 2 (ручной T) | 2+ (JSON locale, легко добавить) |
+
+---
+
+*План поддерживается командой Predator. Обновляется каждый спринт.*
+*Принцип: THINK FIRST → Research → Propose → Implement by stages. Никогда не пропускать анализ.*

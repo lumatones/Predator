@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, memo } from 'react'
+import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, User, Check, X } from 'lucide-react'
+import { CheckCircle, User, Check, X, CheckSquare, Square } from 'lucide-react'
 import { useAuth } from '../App'
-import { getPending, approveRequest, rejectRequest, PendingRequest } from '../api'
+import { getPending, approveRequest, rejectRequest, approveBatch, rejectBatch, PendingRequest } from '../api'
 import CountdownCircle from '../components/CountdownCircle'
 import { SkeletonPendingCard } from '../components/Skeleton'
-import { useToasts, ToastContainer, type ToastType } from '../components/Toast'
+import { useToasts, ToastContainer } from '../components/Toast'
 import { springEase } from '../constants'
 
 export default memo(function Pending() {
@@ -16,6 +16,32 @@ export default memo(function Pending() {
   const { toasts, addToast, removeToast } = useToasts()
   const [actionId, setActionId] = useState<number | null>(null)
   const [exitAction, setExitAction] = useState<{ id: number; action: 'approve' | 'reject' } | null>(null)
+
+  // ── Bulk selection ──
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkLoading, setBulkLoading] = useState(false)
+
+  const allSelected = requests.length > 0 && selectedIds.size === requests.length
+  const someSelected = selectedIds.size > 0
+
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleSelectAll = useCallback(() => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(requests.map(r => r.id)))
+    }
+  }, [allSelected, requests])
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   async function load() {
     if (!auth) return
@@ -65,6 +91,39 @@ export default memo(function Pending() {
     }
   }
 
+  // ── Bulk actions ──
+  async function handleApproveBatch() {
+    if (!auth || selectedIds.size === 0) return
+    setBulkLoading(true)
+    const ids = Array.from(selectedIds)
+    try {
+      const res = await approveBatch(auth.token, ids)
+      addToast('success', `Одобрено: ${res.approved} из ${res.total}`)
+      setRequests(prev => prev.filter(r => !selectedIds.has(r.id)))
+      clearSelection()
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Ошибка')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  async function handleRejectBatch() {
+    if (!auth || selectedIds.size === 0) return
+    setBulkLoading(true)
+    const ids = Array.from(selectedIds)
+    try {
+      const res = await rejectBatch(auth.token, ids)
+      addToast('success', `Отклонено: ${res.rejected} из ${res.total}`)
+      setRequests(prev => prev.filter(r => !selectedIds.has(r.id)))
+      clearSelection()
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Ошибка')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const containerVariants = {
     hidden: {},
     show: { transition: { staggerChildren: 0.06 } },
@@ -83,11 +142,59 @@ export default memo(function Pending() {
           <p>Пользователи, ожидающие подтверждения {requests.length > 0 && `(${requests.length})`}</p>
         </div>
         <div className="page-actions">
+          {requests.length > 0 && (
+            <button
+              className="btn btn-outline btn-sm select-all-btn"
+              onClick={toggleSelectAll}
+            >
+              {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+              {allSelected ? 'Снять всё' : 'Выбрать всё'}
+            </button>
+          )}
           <button className="btn btn-outline" onClick={load} disabled={loading}>
             {loading ? 'Загрузка...' : 'Обновить'}
           </button>
         </div>
       </div>
+
+      {/* ── Bulk action toolbar ── */}
+      <AnimatePresence>
+        {someSelected && (
+          <motion.div
+            className="bulk-toolbar"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+          <span className="bulk-toolbar-count">Выбрано: {selectedIds.size} из {requests.length}</span>
+          <div className="bulk-toolbar-actions">
+            <button
+              className="btn btn-green btn-sm"
+              onClick={handleApproveBatch}
+              disabled={bulkLoading}
+            >
+              <Check size={14} />
+              {bulkLoading ? '...' : 'Одобрить выбранные'}
+            </button>
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={handleRejectBatch}
+              disabled={bulkLoading}
+            >
+              <X size={14} />
+              {bulkLoading ? '...' : 'Отклонить выбранные'}
+            </button>
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={clearSelection}
+              disabled={bulkLoading}
+            >
+              Снять выделение
+            </button>
+          </div>
+        </motion.div>
+      )}
+      </AnimatePresence>
 
       {error && (
         <div className="pending-error">
@@ -137,6 +244,13 @@ export default memo(function Pending() {
                 }
               >
                 <div className="pending-card-header">
+                  <button
+                    className={`pending-checkbox ${selectedIds.has(r.id) ? 'checked' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(r.id) }}
+                    title={selectedIds.has(r.id) ? 'Снять выделение' : 'Выбрать'}
+                  >
+                    {selectedIds.has(r.id) ? <CheckSquare size={18} /> : <Square size={18} />}
+                  </button>
                   <div className="pending-avatar">
                     <User size={20} />
                   </div>

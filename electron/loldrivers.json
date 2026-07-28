@@ -1,0 +1,380 @@
+[
+  {
+    "fileNames": ["gdrv.sys", "gdrv3.sys"],
+    "serviceNames": ["gdrv", "gdrv3"],
+    "description": "GIGABYTE driver — arbitrary physical memory R/W",
+    "abusedBy": ["Process Hacker", "EAC bypass loaders", "kernel R/W tools"]
+  },
+  {
+    "fileNames": ["RTCore64.sys", "RTCore32.sys"],
+    "serviceNames": ["RTCore64", "RTCore32"],
+    "description": "MSI Afterburner driver — arbitrary MSR write / kernel memory R/W",
+    "abusedBy": ["EAC bypass", "BE bypass", "Vanguard bypass loaders"]
+  },
+  {
+    "fileNames": ["Capcom.sys"],
+    "serviceNames": ["Capcom"],
+    "description": "Capcom Anti-Cheat driver — insufficient access control allows kernel R/W",
+    "abusedBy": ["P2C (pay-to-cheat) frameworks", "EFI bootkit loaders"]
+  },
+  {
+    "fileNames": ["kprocesshacker.sys", "kprocesshacker2.sys", "kprocesshacker3.sys"],
+    "serviceNames": ["kprocesshacker", "kprocesshacker2", "kprocesshacker3"],
+    "description": "Process Hacker kernel driver — powerful system manipulation",
+    "abusedBy": ["Manual mappers", "process killer tools", "handle hijacking"]
+  },
+  {
+    "fileNames": ["winio64.sys", "winio32.sys"],
+    "serviceNames": ["WinIO", "winio64"],
+    "description": "WinIO driver — port and memory I/O",
+    "abusedBy": ["Hardware communication tools", "DMA card initialization"]
+  },
+  {
+    "fileNames": ["phymem.sys"],
+    "serviceNames": ["phymem", "PhysicalMemory"],
+    "description": "Physical Memory driver — raw physical memory access",
+    "abusedBy": ["Memory dump tools", "kernel R/W scripts"]
+  },
+  {
+    "fileNames": ["dbk64.sys", "dbk32.sys", "dbkupd.exe"],
+    "serviceNames": ["DBK64", "DBK32", "dbkdrv"],
+    "description": "Cheat Engine DBK driver — kernel-level memory access",
+    "abusedBy": ["Cheat Engine (kernel mode)", "memory scanners"]
+  },
+  {
+    "fileNames": ["cpuz.sys", "cpuz143.sys", "cpuz150.sys"],
+    "serviceNames": ["cpuz143", "cpuz150", "cpuz"],
+    "description": "CPU-Z driver — vulnerable IOCTL allows kernel R/W",
+    "abusedBy": ["Driver exploit chains", "manual mappers"]
+  },
+  {
+    "fileNames": ["interception.sys"],
+    "serviceNames": ["interception"],
+    "description": "Interception driver — kernel-level keyboard/mouse input hook",
+    "abusedBy": ["KMBox automation", "hardware aimbot scripts", "input injection tools"]
+  },
+  {
+    "fileNames": ["GameDriverX64.sys", "GameDriver.sys"],
+    "serviceNames": ["GameDriverX64", "GameDriver"],
+    "description": "CVE-2025-61155 — GameDriverX64 anti-cheat driver abused to kill EDR/anti-cheat processes via IOCTL 0x222040",
+    "abusedBy": ["Interlock ransomware", "Hotta Killer", "cheat EDR-killers"]
+  },
+  {
+    "fileNames": ["iqvw64e.sys"],
+    "serviceNames": ["iqvw64e"],
+    "description": "Intel Network Adapter Diagnostic Driver — vulnerable IOCTL allows kernel R/W",
+    "abusedBy": ["KDMapper variants", "BYOVD exploit chains"]
+  },
+  {
+    "fileNames": ["nvoclock.sys"],
+    "serviceNames": ["nvoclock", "NVOCLOCK"],
+    "description": "NVIDIA overclocking driver — vulnerable IOCTL allows MSR write / kernel execution",
+    "abusedBy": ["Cheat kernel loaders", "manual mappers"]
+  },
+  {
+    "fileNames": ["AswArPot.sys"],
+    "serviceNames": ["aswArPot"],
+    "description": "Avast Anti-Rootkit driver — insufficient access control allows kernel R/W",
+    "abusedBy": ["EDR killers (Lazarus group)", "Process termination tools"]
+  },
+  {
+    "fileNames": ["zamguard64.sys", "zamguard32.sys"],
+    "serviceNames": ["ZAM_Guard", "zamguard64"],
+    "description": "Zemana Anti-Malware driver — vulnerable IOCTL allows kernel memory manipulation",
+    "abusedBy": ["BYOVD toolkits", "kernel privilege escalation"]
+  },
+  {
+    "fileNames": ["viragt64.sys"],
+    "serviceNames": ["viragt64"],
+    "description": "ViRobot anti-virus driver — IOCTL handler allows arbitrary process termination from user mode",
+    "abusedBy": ["Anti-cheat killer utilities", "Terminator tools"]
+  },
+  {
+    "fileNames": ["atillk64.sys"],
+    "serviceNames": ["atillk64"],
+    "description": "AMD ATI driver — vulnerable IOCTL grants physical memory R/W",
+    "abusedBy": ["Kernel exploit chains", "BYOVD mappers"]
+  },
+  {
+    "fileNames": ["AsrOmg.sys"],
+    "serviceNames": ["AsrOmg"],
+    "description": "ASUS Operation Manual driver — physical memory R/W via vulnerable IOCTL",
+    "abusedBy": ["Kernel exploit kits", "manual mappers", "process hollowing tools"]
+  },
+  {
+    "fileNames": ["ene.sys"],
+    "serviceNames": ["ene"],
+    "description": "ENE RGB controller driver — vulnerable IOCTL allows MSR write / kernel memory R/W",
+    "abusedBy": ["Cheat kernel loaders", "HWID spoofers", "KDMapper forks"]
+  },
+  {
+    "fileNames": ["GLCKIO2.sys"],
+    "serviceNames": ["GLCKIO2"],
+    "description": "ASUS GPU Tweak II driver — vulnerable IOCTL grants kernel R/W",
+    "abusedBy": ["GPU overclock exploit chains", "manual mappers"]
+  },
+  {
+    "fileNames": ["MsIo64.sys"],
+    "serviceNames": ["MsIo64"],
+    "description": "MSI motherboard driver — vulnerable IOCTL allows I/O port and MSR access",
+    "abusedBy": ["HWID spoofer tools", "MSR-based cheat loaders"]
+  },
+  {
+    "fileNames": ["NalDrv.sys"],
+    "serviceNames": ["NalDrv"],
+    "description": "Nero AG driver — physical memory R/W via insufficient access control",
+    "abusedBy": ["Kernel exploit frameworks", "cheat driver loaders"]
+  },
+  {
+    "fileNames": ["RadHwMgr.sys"],
+    "serviceNames": ["RadHwMgr"],
+    "description": "AMD hardware manager driver — vulnerable IOCTL grants physical memory access",
+    "abusedBy": ["AMD system exploit chains", "HWID manipulation tools"]
+  },
+  {
+    "fileNames": ["Rzpnk.sys"],
+    "serviceNames": ["Rzpnk"],
+    "description": "Razer peripheral driver — vulnerable IOCTL allows kernel memory manipulation",
+    "abusedBy": ["Gaming peripheral exploit kits", "BYOVD toolchains"]
+  },
+  {
+    "fileNames": ["Semav6msr64.sys"],
+    "serviceNames": ["Semav6msr64"],
+    "description": "SEMA driver — vulnerable MSR write access allows kernel code execution",
+    "abusedBy": ["MSR-based loader tools", "kernel privilege escalation"]
+  },
+  {
+    "fileNames": ["EneTechIo.sys"],
+    "serviceNames": ["EneTechIo"],
+    "description": "ENE Technology I/O driver — vulnerable IOCTL grants arbitrary I/O port access",
+    "abusedBy": ["HW communication tools", "DMA card initialization"]
+  },
+  {
+    "fileNames": ["WinRing0x64.sys"],
+    "serviceNames": ["WinRing0x64"],
+    "description": "OpenLibSys WinRing0 — vulnerable I/O port and MSR access from user mode",
+    "abusedBy": ["Fan control abuse", "kernel R/W bridges", "HWID spoof chains"]
+  },
+  {
+    "fileNames": ["AsUpIO.sys"],
+    "serviceNames": ["AsUpIO"],
+    "description": "ASUS Update I/O driver — vulnerable I/O port access allows kernel communication",
+    "abusedBy": ["Firmware manipulation tools", "BYOVD bridge drivers"]
+  },
+  {
+    "fileNames": ["inpoutx64.sys", "inpout32.sys"],
+    "serviceNames": ["inpoutx64", "inpout32"],
+    "description": "HighResolutionEnt inpout driver — I/O port access from user mode",
+    "abusedBy": ["Hardware control abuse", "DMA card helpers"]
+  },
+  {
+    "fileNames": ["HwOs2Ec.sys"],
+    "serviceNames": ["HwOs2Ec"],
+    "description": "ASUS hardware monitor driver — vulnerable IOCTL allows kernel memory access",
+    "abusedBy": ["System monitoring abuse", "kernel information leaks"]
+  },
+  {
+    "fileNames": ["BS_Flash64.sys"],
+    "serviceNames": ["BS_Flash64"],
+    "description": "BIOSTAR RGB driver — vulnerable IOCTL allows arbitrary MSR read/write",
+    "abusedBy": ["MSR-based cheat loaders", "HWID spoofers"]
+  },
+  {
+    "fileNames": ["dbutil_2_3.sys"],
+    "serviceNames": ["dbutil_2_3"],
+    "description": "Dell BIOS Update Utility driver — insufficient access control, CVE-2021-21551",
+    "abusedBy": ["BYOVD exploit chains", "Dell-specific EDR killers"]
+  },
+  {
+    "fileNames": ["dbutil_5_4.sys"],
+    "serviceNames": ["dbutil_5_4"],
+    "description": "Dell BIOS Update Utility v5 — arbitrary kernel R/W, CVE-2023-21554",
+    "abusedBy": ["Kernel privilege escalation", "manual mappers"]
+  },
+  {
+    "fileNames": ["driver_xxx.sys"],
+    "serviceNames": ["driver_xxx"],
+    "description": "Generic driver loader — unsigned driver with arbitrary IOCTL dispatch",
+    "abusedBy": ["Generic BYOVD frameworks", "cheat loaders"]
+  },
+  {
+    "fileNames": ["drvrt64.sys"],
+    "serviceNames": ["drvrt64"],
+    "description": "Driver Restore Tool driver — vulnerable IOCTL allows physical memory access",
+    "abusedBy": ["Memory acquisition tools", "cheat memory readers"]
+  },
+  {
+    "fileNames": ["ElbyCDIO.sys"],
+    "serviceNames": ["ElbyCDIO"],
+    "description": "Elaborate Bytes CDIO driver (Virtual CloneDrive) — arbitrary physical memory R/W",
+    "abusedBy": ["Kernel exploit tools", "driver mapping utilities"]
+  },
+  {
+    "fileNames": ["filedisk.sys", "filedisk64.sys"],
+    "serviceNames": ["filedisk", "filedisk64"],
+    "description": "FileDisk virtual disk driver — allows mounting arbitrary files as drives",
+    "abusedBy": ["RAM disk cheat storage", "memory-only cheat loaders"]
+  },
+  {
+    "fileNames": ["FlashSYS.sys"],
+    "serviceNames": ["FlashSYS"],
+    "description": "BIOS flash driver — vulnerable IOCTL allows physical memory R/W",
+    "abusedBy": ["Firmware manipulation tools", "kernel exploit chains"]
+  },
+  {
+    "fileNames": ["GVCIDrv64.sys"],
+    "serviceNames": ["GVCIDrv64"],
+    "description": "Gigabyte GVCI driver — vulnerable IOCTL grants kernel R/W",
+    "abusedBy": ["GIGABYTE-specific exploit chains", "BYOVD mappers"]
+  },
+  {
+    "fileNames": ["HpPortIox64.sys"],
+    "serviceNames": ["HpPortIox64"],
+    "description": "HP port I/O driver — I/O port access from user mode",
+    "abusedBy": ["HW communication abuse", "DMA card helpers"]
+  },
+  {
+    "fileNames": ["LHA.sys"],
+    "serviceNames": ["LHA"],
+    "description": "LHA file archiver driver — vulnerable IOCTL allows arbitrary kernel execution",
+    "abusedBy": ["Kernel code execution chains", "BYOVD tools"]
+  },
+  {
+    "fileNames": ["MsIo.sys", "MsIo32.sys"],
+    "serviceNames": ["MsIo", "MsIo32"],
+    "description": "MSI I/O driver (32-bit) — vulnerable IOCTL allows I/O port access",
+    "abusedBy": ["HW control abuse", "MSI exploit chains"]
+  },
+  {
+    "fileNames": ["mimidrv.sys"],
+    "serviceNames": ["mimidrv"],
+    "description": "Mimikatz kernel driver — Process manipulation, token stealing, memory R/W",
+    "abusedBy": ["Credential theft tools", "process manipulation frameworks"]
+  },
+  {
+    "fileNames": ["NTIOLib_X64.sys"],
+    "serviceNames": ["NTIOLib_X64"],
+    "description": "MSI NTIO Library driver — vulnerable IOCTL allows physical memory access",
+    "abusedBy": ["MSI exploit chains", "kernel R/W tools"]
+  },
+  {
+    "fileNames": ["piddrv64.sys"],
+    "serviceNames": ["piddrv64"],
+    "description": "PID driver — vulnerable IOCTL allows process manipulation and termination",
+    "abusedBy": ["Process killer tools", "anti-cheat bypass loaders"]
+  },
+  {
+    "fileNames": ["PulseEvent.sys"],
+    "serviceNames": ["PulseEvent"],
+    "description": "PulseEvent driver — vulnerable IOCTL allows kernel memory corruption",
+    "abusedBy": ["Kernel exploitation frameworks", "BYOVD chains"]
+  },
+  {
+    "fileNames": ["rweverything.sys", "rwdrv.sys"],
+    "serviceNames": ["rweverything", "rwdrv"],
+    "description": "RWEverything driver — read/write everything (physical memory, PCI config, MSR, I/O)",
+    "abusedBy": ["Kernel exploit development", "cheat memory manipulation"]
+  },
+  {
+    "fileNames": ["ScpVBus.sys"],
+    "serviceNames": ["ScpVBus"],
+    "description": "Scarlet.Crush Productions Virtual Bus driver — vulnerable IOCTL",
+    "abusedBy": ["Controller emulation abuse", "BYOVD helper chains"]
+  },
+  {
+    "fileNames": ["secdrv.sys"],
+    "serviceNames": ["secdrv"],
+    "description": "Macrovision SafeDisc driver — legacy DRM driver with kernel R/W vulnerability",
+    "abusedBy": ["Legacy driver exploit chains", "Windows XP-10 compatibility abuse"]
+  },
+  {
+    "fileNames": ["SmSerI64.sys"],
+    "serviceNames": ["SmSerI64"],
+    "description": "SMSC serial I/O driver — vulnerable IOCTL allows I/O port access",
+    "abusedBy": ["HW communication tools", "BYOVD bridges"]
+  },
+  {
+    "fileNames": ["SpeedFan.sys"],
+    "serviceNames": ["SpeedFan"],
+    "description": "SpeedFan monitoring driver — vulnerable IOCTL allows MSR access",
+    "abusedBy": ["MSR-based cheat loaders", "HW monitoring abuse"]
+  },
+  {
+    "fileNames": ["stdcdr64.sys"],
+    "serviceNames": ["stdcdr64"],
+    "description": "Standard CD-ROM driver — vulnerable IOCTL allows arbitrary kernel execution",
+    "abusedBy": ["Kernel code execution", "driver mapping tools"]
+  },
+  {
+    "fileNames": ["WiseUnlo.sys"],
+    "serviceNames": ["WiseUnlo"],
+    "description": "Wise Care 365 driver — vulnerable IOCTL allows file deletion bypass",
+    "abusedBy": ["Anti-cheat file deletion tools", "cleaner bypass utilities"]
+  },
+  {
+    "fileNames": ["ALSysIO64.sys"],
+    "serviceNames": ["ALSysIO64"],
+    "description": "ASUS ALSysIO driver — I/O port access from user mode",
+    "abusedBy": ["ASUS-specific exploit chains", "DMA helpers"]
+  },
+  {
+    "fileNames": ["DellProf.sys"],
+    "serviceNames": ["DellProf"],
+    "description": "Dell Profile driver — vulnerable IOCTL allows kernel memory access",
+    "abusedBy": ["Dell system exploit chains", "BYOVD frameworks"]
+  },
+  {
+    "fileNames": ["HWiNFO64A.SYS", "HWiNFO32.SYS"],
+    "serviceNames": ["HWiNFO64A", "HWiNFO32"],
+    "description": "HWiNFO hardware monitoring driver — vulnerable IOCTL allows MSR read/write",
+    "abusedBy": ["MSR-based tools", "HW monitoring exploit chains"]
+  },
+  {
+    "fileNames": ["KfeCo10X64.sys"],
+    "serviceNames": ["KfeCo10X64"],
+    "description": "Killer Networking driver — vulnerable IOCTL allows kernel memory access",
+    "abusedBy": ["Network driver exploit chains", "BYOVD frameworks"]
+  },
+  {
+    "fileNames": ["PhyDMACC.sys"],
+    "serviceNames": ["PhyDMACC"],
+    "description": "Physical DMA Controller driver — direct DMA access from user mode",
+    "abusedBy": ["DMA attack tools", "PCILeech helpers"]
+  },
+  {
+    "fileNames": ["rtkio64.sys"],
+    "serviceNames": ["rtkio64"],
+    "description": "Realtek I/O driver — vulnerable IOCTL allows I/O port access",
+    "abusedBy": ["Realtek-specific exploit chains", "HW communication tools"]
+  },
+  {
+    "fileNames": ["TdkLib64.sys"],
+    "serviceNames": ["TdkLib64"],
+    "description": "TDK Lambda driver — vulnerable IOCTL allows kernel memory R/W",
+    "abusedBy": ["Industrial equipment abuse", "BYOVD chains"]
+  },
+  {
+    "fileNames": ["truecrypt.sys", "veracrypt.sys"],
+    "serviceNames": ["truecrypt", "veracrypt"],
+    "description": "TrueCrypt/VeraCrypt disk encryption driver — vulnerable IOCTL (CVE-2022-33446)",
+    "abusedBy": ["Disk encryption bypass", "kernel R/W bridges"]
+  },
+  {
+    "fileNames": ["VMNET.SYS"],
+    "serviceNames": ["VMnet"],
+    "description": "VMware network driver — vulnerable IOCTL escaping VM sandbox",
+    "abusedBy": ["VM escape tools", "BYOVD sandbox escapes"]
+  },
+  {
+    "fileNames": ["WPRO_41_2001.sys"],
+    "serviceNames": ["WPRO_41_2001"],
+    "description": "C-Media audio driver — vulnerable IOCTL allows kernel memory corruption",
+    "abusedBy": ["Audio driver exploit chains", "BYOVD frameworks"]
+  },
+  {
+    "fileNames": ["YSEm_plane.sys"],
+    "serviceNames": ["YSEm_plane"],
+    "description": "Yamaha audio driver — vulnerable IOCTL allows kernel memory manipulation",
+    "abusedBy": ["Audio driver exploit chains", "cheat driver loaders"]
+  }
+]

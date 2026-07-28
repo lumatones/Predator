@@ -54,8 +54,8 @@ import { scanStrings } from './analysis/strings'
 // signature-registry.ts — the single source of truth.
 // heuristic.ts contains only SCORING LOGIC.
 
-export { SUSPICIOUS_CATEGORIES, ALL_CHEAT_KEYWORDS, SUSPICIOUS_PATTERNS, MIN_KEYWORD_LENGTH } from './signature-registry'
-import { SUSPICIOUS_CATEGORIES, ALL_CHEAT_KEYWORDS, SUSPICIOUS_PATTERNS, MIN_KEYWORD_LENGTH } from './signature-registry'
+export { SUSPICIOUS_CATEGORIES, ALL_CHEAT_KEYWORDS, SUSPICIOUS_PATTERNS, MIN_KEYWORD_LENGTH, matchKeywords, matchPatterns } from './signature-registry'
+import { SUSPICIOUS_CATEGORIES, MIN_KEYWORD_LENGTH, matchKeywords, matchPatterns } from './signature-registry'
 
 export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
   '.dll': 'Dynamic library (possible inject)',
@@ -252,13 +252,133 @@ export function checkMasqueradingExecutable(
 // DIGITAL SIGNATURE CHECK
 // ═══════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════
+// BATCH DIGITAL SIGNATURE CHECK (P0 fix #1)
+// ═══════════════════════════════════════════════════
+//
+// BEFORE: checkDigitalSignature() spawned PowerShell per file (2s each).
+// 500 .exe/.dll files = 1000 seconds of blocking the Event Loop.
+//
+// AFTER: batchCheckSignatures() sends ALL paths in ONE PowerShell call.
+// PowerShell iterates internally (fast), returns JSON. Total: ~3-5 seconds.
+//
+// Results populate ctx.sigCache — subsequent checkDigitalSignature() calls
+// are instant cache hits. No per-file PowerShell overhead.
+
+const BINARY_SIG_EXTS = new Set(['.exe', '.dll', '.sys', '.drv'])
+
+/**
+ * Batch-check digital signatures for multiple files in ONE PowerShell invocation.
+ * Populates ctx.sigCache and returns results as Map.
+ *
+ * @param filepaths - Array of file paths to check (only .exe/.dll/.sys/.drv are checked)
+ * @param batchSize - Max files per PowerShell call (default 500, prevents command-line overflow)
+ */
+export function batchCheckSignatures(
+  filepaths: string[],
+  batchSize: number = 500,
+): Map<string, boolean> {
+  const results = new Map<string, boolean>()
+
+  // Filter to binary extensions only + skip already-cached files
+  const toCheck: string[] = []
+  for (const fp of filepaths) {
+    if (!fp || typeof fp !== 'string') continue
+    const ext = path.extname(fp).toLowerCase()
+    if (!BINARY_SIG_EXTS.has(ext)) continue
+    // Skip if already in cache
+    const cached = ctx.sigCache.get(fp)
+    if (cached !== undefined) {
+      results.set(fp, cached)
+      continue
+    }
+    toCheck.push(fp)
+  }
+
+  if (toCheck.length === 0) return results
+
+  // Process in batches to avoid PowerShell command-line length limits
+  for (let i = 0; i < toCheck.length; i += batchSize) {
+    const batch = toCheck.slice(i, i + batchSize)
+
+    // Build PowerShell array of paths (escape single quotes)
+    const psPaths = batch
+      .map(fp => `'${fp.replace(/'/g, "''")}'`)
+      .join(',')
+
+    const psScript = [
+      '$ErrorActionPreference = "SilentlyContinue"',
+      `$paths = @(${psPaths})`,
+      '$results = @{}',
+      'foreach ($p in $paths) {',
+      '  try {',
+      '    $sig = Get-AuthenticodeSignature -FilePath $p -ErrorAction Stop',
+      '    $results[$p] = ($sig.Status -eq "Valid")',
+      '  } catch {',
+      '    $results[$p] = $false',
+      '  }',
+      '}',
+      '$results | ConvertTo-Json -Compress',
+    ].join('\n')
+
+    try {
+      const out = execSync(
+        `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`,
+        { encoding: 'utf-8', timeout: Math.max(30000, batch.length * 100), windowsHide: true },
+      ).trim()
+
+      if (out && out.length > 2) {
+        try {
+          const parsed: Record<string, boolean> = JSON.parse(out)
+          for (const [fp, valid] of Object.entries(parsed)) {
+            const isValid = Boolean(valid)
+            ctx.sigCache.set(fp, isValid)
+            results.set(fp, isValid)
+          }
+          // Mark remaining batch files that weren't in JSON as unchecked
+          // (don't cache them — let checkDigitalSignature() try per-file fallback)
+          for (const fp of batch) {
+            if (!results.has(fp)) {
+              results.set(fp, false)
+            }
+          }
+        } catch {
+          // JSON parse failed — do NOT poison cache, let per-file fallback handle it
+          for (const fp of batch) {
+            results.set(fp, false)
+          }
+        }
+      } else {
+        // Empty output — do NOT poison cache
+        for (const fp of batch) {
+          results.set(fp, false)
+        }
+      }
+    } catch {
+      // PowerShell crashed — do NOT poison cache
+      for (const fp of batch) {
+        results.set(fp, false)
+      }
+    }
+  }
+
+  return results
+}
+
+/**
+ * Check digital signature for a single file.
+ * First checks ctx.sigCache (populated by batchCheckSignatures).
+ * Falls back to per-file PowerShell ONLY on cache miss (should be rare).
+ */
 export function checkDigitalSignature(filepath: string): boolean {
   const cached = ctx.sigCache.get(filepath)
   if (cached !== undefined) return cached
+
+  // Cache miss — fall back to single-file check (rare after batch pre-warming)
   try {
     const out = execSync(
-      `powershell -Command "(Get-AuthenticodeSignature '${filepath.replace(/'/g, "''")}').Status"`,
-      { encoding: 'utf-8', timeout: 2000 },
+      `powershell -NoProfile -Command "(Get-AuthenticodeSignature '${filepath.replace(/'/g, "''")}').Status"`,
+      { encoding: 'utf-8', timeout: 2000, windowsHide: true },
     )
     const valid = out.includes('Valid')
     ctx.sigCache.set(filepath, valid)
@@ -498,22 +618,16 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
     if (textExts.has(ext) && stat.size < 512 * 1024) {
       try {
         const content = fs.readFileSync(filepath, 'utf-8').toLowerCase()
-        let contentMatches = 0
-        for (const keyword of ALL_CHEAT_KEYWORDS) {
-          // Skip short, generic keywords (< 4 chars) that falsely match everywhere
-          if (keyword.length < MIN_KEYWORD_LENGTH) continue
-          if (content.includes(keyword.toLowerCase())) {
-            suspicions.push(`content:${keyword}`)
-            contentMatches++
-            riskScore += 25
-            if (contentMatches >= 5) break
-          }
+        // ── Use shared matchKeywords/matchPatterns API (no manual loop) ──
+        const keywordMatches = matchKeywords(content)
+        for (let i = 0; i < Math.min(keywordMatches.length, 5); i++) {
+          suspicions.push(`content:${keywordMatches[i]}`)
+          riskScore += 25
         }
-        for (const pattern of SUSPICIOUS_PATTERNS) {
-          if (pattern.test(content)) {
-            suspicions.push(`content-pattern:${pattern.source}`)
-            riskScore += 20
-          }
+        const patternMatches = matchPatterns(content)
+        for (const pattern of patternMatches) {
+          suspicions.push(`content-pattern:${pattern}`)
+          riskScore += 20
         }
       } catch (_e) { /* binary or unreadable */ }
     }
@@ -662,12 +776,12 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
 
       // ── Hash check against known cheat database ──
       if (KNOWN_CHEAT_HASHES.length > 0 && riskScore > 30) {
+        let fd2: number | undefined
         try {
           const h = crypto.createHash('sha256')
-          const fd2 = fs.openSync(filepath, 'r')
+          fd2 = fs.openSync(filepath, 'r')
           const hashBuf = Buffer.alloc(Math.min(stat.size, 50 * 1024 * 1024))
           fs.readSync(fd2, hashBuf, 0, hashBuf.length, 0)
-          fs.closeSync(fd2)
           h.update(hashBuf)
           const hex = h.digest('hex')
           if (KNOWN_CHEAT_HASHES.includes(hex)) {
@@ -675,6 +789,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
             riskScore += 60
           }
         } catch (_e) { /* skip */ }
+        finally { if (fd2 !== undefined) { try { fs.closeSync(fd2) } catch { /* best effort */ } } }
       }
 
       if (sigValid) {
@@ -769,17 +884,13 @@ export function scanArchiveContents(filepath: string): string[] {
           break
         }
       }
-      for (const kw of ALL_CHEAT_KEYWORDS) {
-        if (kw.length >= 4 && fName.includes(kw.toLowerCase())) {
-          matches.push(`archive-kw:${fName} → ${kw}`)
-          break
-        }
+      for (const kw of matchKeywords(fName)) {
+        matches.push(`archive-kw:${fName} → ${kw}`)
+        break
       }
-      for (const pat of SUSPICIOUS_PATTERNS) {
-        if (pat.test(fName)) {
-          matches.push(`archive-pat:${pat.source}`)
-          break
-        }
+      for (const pat of matchPatterns(fName)) {
+        matches.push(`archive-pat:${pat}`)
+        break
       }
       if (matches.length >= 5) break
     }

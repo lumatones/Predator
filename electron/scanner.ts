@@ -8,9 +8,10 @@ import { startCloudSync, stopCloudSync, fetchCheatHashes } from './cloud-sync'
 import { runPostScanPipeline } from './scan-pipeline'
 import { startTelemetryQueue, stopTelemetryQueue } from './telemetry-queue'
 import { filterNoiseFindings } from './result-grouper'
-import { EXTENDED_CHEAT_KEYWORDS, EXTENDED_SCAN_PATHS, QUICK_CHEAT_KEYWORDS } from './constants'
+import { EXTENDED_SCAN_PATHS } from './constants'
+import { QUICK_CHEAT_KEYWORDS } from './signature-registry'
 
-import { scanProcessForAmsiEtw } from './etw-amsi-patch'
+import { scanProcessForAmsiEtw } from './modes/etw-amsi'
 import { buildBehaviorProfile, profileToScanResult } from './behavior-profile'
 import { scanRwxAndThreads, rwxResultToScanResult } from './rwx-scanner'
 import { scanDiskVsMemory, dvmResultToScanResult } from './disk-vs-memory'
@@ -26,11 +27,11 @@ import {
   ctx,
 } from './types'
 
-import { heuristicFileScan } from './heuristic'
+import { heuristicFileScan, batchCheckSignatures, ALL_CHEAT_KEYWORDS } from './heuristic'
 import { fuzzyMatchFile } from './fuzzy-hash'
 
 import { walkDirAsync } from './modes/files'
-import { scanRunningProcessesV2, scanNamedPipes, scanWmiPersistence } from './modes/processes'
+import { scanRunningProcessesV2, scanNamedPipes, scanWmiPersistence, scanBehavioralMasquerading } from './modes/processes'
 import { scanGameIntegrity, scanGameModules, scanMasqueradingProcesses, scanOpenHandles } from './modes/games'
 import { scanNetstatV2 } from './modes/network'
 import { scanRegistryDeepV2, scanPrefetchV2, scanRegistryForCheats } from './modes/registry'
@@ -40,7 +41,7 @@ import { runFullUsbDeviceScan } from './modes/usb-devices'
 import { scanByovd } from './modes/byovd'
 import { scanAntiDebug } from './modes/anti-debug'
 import { safeCall, safeSpread } from './utils/safe-spread'
-import { runEtwScan } from './etw-provider'
+import { runApcScan } from './modes/apc-detector'
 import { runForensicScan } from './forensic-traces'
 import { runAntiForensicScan } from './anti-forensic'
 import { runPcCleanerScan } from './pc-cleaner-detection'
@@ -52,6 +53,13 @@ import { getEscalationBonus, getProfileSummary } from './persistent-profile'
 // ═══════════════════════════════════════════════════
 // FULL SCAN (was extended) — 9-phase deep scan
 // ═══════════════════════════════════════════════════
+
+/** Throw if the current scan has been cancelled. Use before expensive sync ops (PowerShell, SHA256). */
+function assertNotAborted(): void {
+  if (ctx.abortController?.signal.aborted) {
+    throw new Error('ABORTED')
+  }
+}
 
 async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
@@ -69,6 +77,9 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   // Each check spawns PowerShell (2s timeout). Keeping the cache saves 2s PER FILE.
   await sendProgress(win, { phase: 'scanning', currentDir: 'Advanced process scanning...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 1 })
   results.push(...safeCall('scanRunningProcessesV2', () => scanRunningProcessesV2()))
+
+  // Behavioral masquerading — detects high-memory self-spawning cheat loaders
+  results.push(...safeCall('scanBehavioralMasquerading', () => scanBehavioralMasquerading()))
 
   // Anti-debug / RE tool detection — checks for debuggers, CheatEngine, ProcessHacker, anti-debug DLLs
   results.push(...safeCall('scanAntiDebug', () => scanAntiDebug()))
@@ -98,6 +109,18 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
         filePaths.push(filePath)
       }
 
+      // ── BATCH: Pre-warm signature cache (1 PowerShell call for ALL binaries) ──
+      // BEFORE: checkDigitalSignature() spawned PowerShell per file (2s each).
+      // 500 .exe files = 1000s blocking. AFTER: 1 batch call = ~3-5s total.
+      if (filePaths.length > 0) {
+        const sigResults = batchCheckSignatures(filePaths)
+        const sigChecked = [...sigResults.values()].filter(Boolean).length
+        const sigTotal = [...sigResults.values()].filter(v => v === false).length + sigChecked
+        if (sigTotal > 0) {
+          console.log(`  🔐 Batch signature check: ${sigChecked}/${sigTotal} valid (${(sigChecked/sigTotal*100).toFixed(0)}%)`)
+        }
+      }
+
       // ── PARALLEL: Process files concurrently via worker pool ──
       if (filePaths.length > 0) {
         const scanResults = await runParallel(filePaths, async (filePath) => {
@@ -114,16 +137,17 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
             const ruleName = shadowHits[0]?.match(/\[([^\]]+)\]/)?.[1] || 'unknown'
             let shadowSha256: string | undefined
             if (ext2 === '.exe' || ext2 === '.dll' || ext2 === '.sys') {
+              let fd2: number | undefined
               try {
                 const h = crypto.createHash('sha256')
-                const fd2 = fs.openSync(filePath, 'r')
+                fd2 = fs.openSync(filePath, 'r')
                 const st = fs.statSync(filePath)
                 const buf = Buffer.alloc(Math.min(st.size, 50 * 1024 * 1024))
                 fs.readSync(fd2, buf, 0, buf.length, 0)
-                fs.closeSync(fd2)
                 h.update(buf)
                 shadowSha256 = h.digest('hex')
               } catch { /* sha256 optional */ }
+              finally { if (fd2 !== undefined) { try { fs.closeSync(fd2) } catch { /* best effort */ } } }
             }
             ctx.shadowFindings.push({
               path: filePath,
@@ -175,18 +199,26 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
               const stat2 = fs.statSync(filePath)
               fileSize = stat2.size
               const partialBuf = Buffer.alloc(Math.min(stat2.size, 64 * 1024))
-              const fd = fs.openSync(filePath, 'r')
-              fs.readSync(fd, partialBuf, 0, partialBuf.length, 0)
-              fs.closeSync(fd)
+              let fd: number | undefined
+              try {
+                fd = fs.openSync(filePath, 'r')
+                fs.readSync(fd, partialBuf, 0, partialBuf.length, 0)
+              } finally {
+                if (fd !== undefined) { try { fs.closeSync(fd) } catch { /* best effort */ } }
+              }
               partialHash = crypto.createHash('sha256').update(partialBuf).digest('hex')
 
               // Full sha256 only for high-risk binaries (expensive)
               if (risk === 'high' && (ext === '.exe' || ext === '.dll' || ext === '.sys')) {
                 const h = crypto.createHash('sha256')
                 const fullBuf = Buffer.alloc(Math.min(stat2.size, 50 * 1024 * 1024))
-                const fd2 = fs.openSync(filePath, 'r')
-                fs.readSync(fd2, fullBuf, 0, fullBuf.length, 0)
-                fs.closeSync(fd2)
+                let fd2: number | undefined
+                try {
+                  fd2 = fs.openSync(filePath, 'r')
+                  fs.readSync(fd2, fullBuf, 0, fullBuf.length, 0)
+                } finally {
+                  if (fd2 !== undefined) { try { fs.closeSync(fd2) } catch { /* best effort */ } }
+                }
                 h.update(fullBuf)
                 sha256Hash = h.digest('hex')
               }
@@ -247,10 +279,13 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   results.push(...safeCall('scanWmiPersistence', () => scanWmiPersistence()))
   // ETW/WMI kernel-level monitoring
   results.push(...safeCall('runEtwScan', () => runEtwScan()))
+  // APC Injection + Atom Bombing detection (thread analysis + atom tables)
+  results.push(...safeCall('runApcScan', () => runApcScan()))
   // BYOVD — scan for known vulnerable kernel drivers (gdrv.sys, RTCore64.sys, Capcom.sys, etc.)
   results.push(...safeCall('scanByovd', () => scanByovd()))
 
-  // AMSI/ETW patch detection
+  // AMSI/ETW patch detection — abort checked BEFORE expensive PowerShell call (10s timeout)
+  if (aborted()) return { results, filesScanned }
   try {
     const psOut = execSync(
       `powershell -Command "Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3"`,
@@ -317,7 +352,7 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   // Phase 8 — browser history
   await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 10 })
   try {
-    const bh = await scanBrowserHistory(EXTENDED_CHEAT_KEYWORDS)
+    const bh = await scanBrowserHistory(ALL_CHEAT_KEYWORDS)
     results.push(...safeSpread('scanBrowserHistory', bh))
   } catch (err) {
     console.error('[scan] scanBrowserHistory crashed:', (err as Error).message || err)

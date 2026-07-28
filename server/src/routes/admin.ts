@@ -89,6 +89,94 @@ router.post('/approve/:id', async (req: Request, res: Response) => {
   }
 })
 
+// ── POST /api/admin/approve-batch ───────────
+router.post('/approve-batch', async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) {
+      return res.status(400).json({ error: 'ids must be a non-empty array (max 100)' })
+    }
+
+    const adminId = (req as any).admin.id
+    const adminName = (req as any).admin.username
+    let approved = 0
+    const approvedUsers: string[] = []
+
+    for (const id of ids) {
+      try {
+        const rows = await query<RequestRow[]>(
+          'SELECT * FROM requests WHERE id = ? AND status = ?',
+          [id, 'pending']
+        )
+        if (rows.length === 0) continue
+        await query(
+          'UPDATE requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?',
+          ['approved', adminId, id]
+        )
+        approved++
+        approvedUsers.push(rows[0].pc_username)
+      } catch { /* skip individual failures */ }
+    }
+
+    const io = req.app.get('io')
+    io?.to('admin').emit('request-update', {
+      type: 'approved-batch',
+      count: approved,
+      admin: adminName,
+      ids,
+      timestamp: new Date().toISOString(),
+    })
+
+    return res.json({ success: true, approved, total: ids.length })
+  } catch (err: any) {
+    console.error('Approve batch error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/admin/reject-batch ─────────────
+router.post('/reject-batch', async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) {
+      return res.status(400).json({ error: 'ids must be a non-empty array (max 100)' })
+    }
+
+    const adminId = (req as any).admin.id
+    const adminName = (req as any).admin.username
+    let rejected = 0
+
+    for (const id of ids) {
+      try {
+        const rows = await query<RequestRow[]>(
+          'SELECT * FROM requests WHERE id = ? AND status = ?',
+          [id, 'pending']
+        )
+        if (rows.length === 0) continue
+        await query(
+          'UPDATE requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?',
+          ['rejected', adminId, id]
+        )
+        rejected++
+      } catch { /* skip individual failures */ }
+    }
+
+    const io = req.app.get('io')
+    io?.to('admin').emit('request-update', {
+      type: 'rejected-batch',
+      count: rejected,
+      admin: adminName,
+      ids,
+      timestamp: new Date().toISOString(),
+    })
+
+    return res.json({ success: true, rejected, total: ids.length })
+  } catch (err: any) {
+    console.error('Reject batch error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // ── POST /api/admin/reject/:id ────────────────
 router.post('/reject/:id', async (req: Request, res: Response) => {
   try {

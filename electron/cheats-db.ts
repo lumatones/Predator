@@ -77,11 +77,33 @@ export const KNOWN_PROCESSES: string[] = [
   'absolute.exe', 'nightfall.exe', 'aurora.exe',
   'hydrogen.exe', 'oxide.exe', 'havoc.exe', 'revolution.exe',
 
-  // 0xCheats / LeetCheats / Unicore / Vanish
+  // 0xCheats / LeetCheats / Unicore / Vanish / Nightfall / OwnHacks
   '0xcheats.exe', '0xcheat.exe', 'oxcheat.exe',
   'leetcheats.exe', 'leetcheat.exe', 'noleet.exe', 'noleetcheats.exe',
   'unicore.exe', 'unicoremenu.exe', 'unicorecheat.exe',
   'vanish.exe', 'vanishmenu.exe', 'vanishcheat.exe',
+  'nightfall.exe', 'nightfallmenu.exe', 'nightfallcheat.exe',
+  'ownhacks.exe', 'up-game.exe',
+  // 2025-2026 NEW: Rising cheat menus (research: community reports)
+  'phoenix.exe', 'phoenixmenu.exe', 'phoenixcheat.exe',
+  'eternal.exe', 'eternalmenu.exe', 'eternalcheat.exe',
+  'zenith.exe', 'zenithmenu.exe', 'zenithcheat.exe',
+  'dynasty.exe', 'dynastymenu.exe',
+  'vertex.exe', 'vertexmenu.exe',
+  'infinity.exe', 'infinitymenu.exe',
+  'oblivion.exe', 'oblivionmenu.exe',
+  'ares.exe', 'aresmenu.exe',
+  'phantom.exe', 'phantommenu.exe', 'phantomcheat.exe',
+  'solara.exe', 'solaraexecutor.exe', // Roblox/FiveM crossover
+  'wave.exe', 'wavemenu.exe',
+  'scriptware.exe', 'scriptwarem.exe',
+  'synapse.exe', 'synapsex.exe', 'synapselauncher.exe',
+  'krnl.exe', 'krnlss.exe', 'krnlbeta.exe',
+  'fluxus.exe', 'fluxusm.exe',
+  'codex.exe', 'codexmenu.exe',
+  'vendetta.exe', 'vendettamenu.exe',
+  'aresnal.exe', 'aresnalclient.exe',
+  'nexus.exe', 'nexusmenu.exe', 'nexuscheat.exe',
 
   // GTA 5 mod menus (asi loaders — SP only, but used in MP)
   'gta5modmenu.exe', 'menyoo.exe',

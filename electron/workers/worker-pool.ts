@@ -48,9 +48,10 @@ export async function runParallel<T, R>(
   }
 
   async function executeNext(): Promise<void> {
-    while (nextIndex < items.length && !aborted) {
+    while (nextIndex < items.length && !aborted && !signal?.aborted) {
       const idx = nextIndex++
-      if (aborted) return
+      // Double-check abort before spending CPU on the next file
+      if (aborted || signal?.aborted) return
 
       try {
         results[idx] = await fn(items[idx], idx)

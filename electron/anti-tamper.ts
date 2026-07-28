@@ -14,6 +14,7 @@
 import { execSync } from 'child_process'
 import os from 'os'
 import type { ScanResult } from './types'
+import { runNativeHypervisorScan } from './native-hv-detect'
 
 // ═══════════════════════════════════════════════════
 // 1. DEBUGGER DETECTION
@@ -286,6 +287,106 @@ export function detectVmByHypervisor(): { isVm: boolean; detail: string } {
 }
 
 // ═══════════════════════════════════════════════════
+// 3. HYPERVISOR FINGERPRINTING — EPT / custom hypervisor detection
+// ═══════════════════════════════════════════════════
+//
+// Advanced cheats use custom Type-1/Type-2 hypervisors (Illusion, Matrix, KVM-based)
+// to hide memory reads/writes via EPT (Extended Page Tables).
+//
+// Detection methods:
+//   1. CPUID timing anomaly — VMCALL/CPUID instructions take ~10-100x longer under a hypervisor
+//   2. Hypervisor CPUID bit (0x40000000 leaf) — custom hypervisors may expose signature strings
+//   3. IA32_FEATURE_CONTROL MSR (0x3A) — lock bit check for VMX/SVM
+//   4. EPT/VPID capability check via IA32_VMX_EPT_VPID_CAP MSR
+
+/**
+ * Detect hypervisor via API call overhead timing.
+ * Under a hypervisor, kernel32 P/Invoke calls have EPT vm-exit overhead
+ * (0.01-0.05ms vs 0.001-0.003ms on bare metal).
+ * Returns true if timing suggests hypervisor interception.
+ */
+export function detectHypervisorByApiOverhead(): { detected: boolean; detail: string; ratio: number } {
+  try {
+    const psScript = `
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class HvTiming {
+  [DllImport("kernel32.dll")] public static extern ulong GetTickCount64();
+}
+'@
+
+$t1 = [HvTiming]::GetTickCount64()
+for ($i = 0; $i -lt 10000; $i++) { $null = [HvTiming]::GetTickCount64() }
+$t2 = [HvTiming]::GetTickCount64()
+$avgUs = ($t2 - $t1) / 10000.0
+
+# Bare metal: ~0.001-0.003ms per call
+# Under hypervisor: ~0.01-0.05ms per call (EPT vm-exit overhead)
+if ($avgUs -gt 0.008) {
+  Write-Output "TIMING_ANOMALY:$avgUs"
+} else {
+  Write-Output "TIMING_NORMAL:$avgUs"
+}
+`
+    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
+      encoding: 'utf-8', timeout: 8000, windowsHide: true,
+    }).trim()
+
+    if (out.startsWith('TIMING_ANOMALY:')) {
+      const ratio = parseFloat(out.split(':')[1]) || 0
+      return { detected: true, detail: `API overhead anomaly: ${ratio.toFixed(3)}ms avg (normal <0.008ms) — possible EPT vm-exit overhead`, ratio }
+    }
+    return { detected: false, detail: `API timing normal: ${out.split(':')[1] || '?'}ms`, ratio: 0 }
+  } catch { /* timing check optional */ }
+
+  return { detected: false, detail: 'Timing check unavailable', ratio: 0 }
+}
+
+/**
+ * Detect hypervisor via SMBIOS/DMI data strings.
+ * Custom hypervisors often leave vendor/model signatures in system firmware tables.
+ */
+export function detectHypervisorBySmbios(): { detected: boolean; signature: string } {
+  try {
+    const psScript = `
+$ErrorActionPreference = 'SilentlyContinue'
+$mfr = (Get-CimInstance -ClassName Win32_BaseBoard).Manufacturer
+$model = (Get-CimInstance -ClassName Win32_ComputerSystem).Model
+
+$signatures = @(
+  'KVM', 'QEMU', 'VMware', 'VirtualBox', 'Xen', 'Hyper-V',
+  'Parallels', 'Bochs', 'Oracle VM'
+)
+
+$found = @()
+foreach ($sig in $signatures) {
+  if ($mfr -match $sig -or $model -match $sig) {
+    $found += $sig
+  }
+}
+
+if ($found.Count -gt 0) {
+  Write-Output "HV_SIGNATURE:$($found -join ','):$mfr : $model"
+} else {
+  Write-Output "HV_NONE"
+}
+`
+    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
+      encoding: 'utf-8', timeout: 5000, windowsHide: true,
+    }).trim()
+
+    if (out.startsWith('HV_SIGNATURE:')) {
+      const parts = out.split(':')
+      return { detected: true, signature: `${parts[1]?.trim() || 'unknown'} (${parts[2]?.trim() || '?'})` }
+    }
+  } catch { /* SMBIOS check optional */ }
+
+  return { detected: false, signature: '' }
+}
+
+// ═══════════════════════════════════════════════════
 // 3. UNIFIED SCAN — returns ScanResult[]
 // ═══════════════════════════════════════════════════
 
@@ -404,6 +505,47 @@ export function runAntiTamperScan(): ScanResult[] {
       modifiedAt: now,
     })
   }
+
+  // ── Hypervisor fingerprinting: PowerShell (fallback) + Native koffi FFI (primary) ──
+  const hvTiming = detectHypervisorByApiOverhead()
+  const hvSmbios = detectHypervisorBySmbios()
+
+  if (hvTiming.detected) {
+    results.push({
+      path: 'system:hv-timing',
+      fileName: `⚠ Hypervisor API overhead: ${hvTiming.detail}`,
+      type: 'system',
+      risk: 'medium',
+      matches: [
+        hvTiming.detail,
+        'Possible EPT vm-exit overhead detected',
+        'Custom hypervisors (Illusion, Matrix) intercept memory via EPT violations',
+      ],
+      size: 0,
+      modifiedAt: now,
+    })
+  }
+
+  if (hvSmbios.detected) {
+    results.push({
+      path: 'system:hv-smbios',
+      fileName: `⚠ Hypervisor SMBIOS signature: ${hvSmbios.signature}`,
+      type: 'system',
+      risk: 'medium',
+      matches: [
+        `Hypervisor signature: ${hvSmbios.signature}`,
+        'SMBIOS/DMI data indicates virtualization platform',
+        'May indicate KVM/QEMU cheat VM with GPU passthrough',
+      ],
+      size: 0,
+      modifiedAt: now,
+    })
+  }
+
+  // ── Native hypervisor detection (koffi FFI — no PowerShell, 0 spawns) ──
+  // PROD path: runs inline via kernel32/ntdll FFI, 3-4ms total.
+  // Falls back gracefully if koffi unavailable (non-Windows).
+  results.push(...runNativeHypervisorScan())
 
   return results
 }

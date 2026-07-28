@@ -72,6 +72,22 @@ export function rejectRequest(token: string, id: number) {
   })
 }
 
+export function approveBatch(token: string, ids: number[]) {
+  return request<{ success: boolean; approved: number; total: number }>('/admin/approve-batch', {
+    method: 'POST',
+    body: { ids },
+    token,
+  })
+}
+
+export function rejectBatch(token: string, ids: number[]) {
+  return request<{ success: boolean; rejected: number; total: number }>('/admin/reject-batch', {
+    method: 'POST',
+    body: { ids },
+    token,
+  })
+}
+
 // ── Tokens ──
 
 export interface Token {

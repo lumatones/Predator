@@ -142,6 +142,21 @@ export const ALL_CHEAT_KEYWORDS: string[] = [
   'ram disk', 'memory disk', 'imdisk',
   'tmpfs', 'ramdrive', 'virtual drive',
   'alternate data stream', ':zone.identifier',
+  // ── Merged from EXTENDED_CHEAT_KEYWORDS (constants.ts dedup) ──
+  'eulen', 'redengine', 'skript.gg', 'impulse.one',
+  'luna', 'paragon', 'ozark', 'cherax', 'stand.gg',
+  '2take1.menu', 'modest', 'kiddions', 'majesty.rp',
+  'menyoo', 'simpletrainer', 'nativeui',
+  'xenos', 'extremeinjector',
+  'fivem bypass', 'rockstar bypass', 'ac bypass',
+  'rpchanger', 'mac spoofer',
+  'process hacker', 'dnspy', 'ollydbg', 'x64dbg',
+  'obfuscator', 'vmprotect', 'themida',
+  'enigma protector', 'obsidium',
+  'eac bypass', 'battleye bypass', 'vanguard bypass',
+  'faceit bypass', 'esportal bypass',
+  'process hollowing',
+  'kill process', 'protect process', 'hide process',
 ]
 
 // ═══════════════════════════════════════════════════
@@ -212,11 +227,66 @@ export const SUSPICIOUS_PATTERNS: RegExp[] = [
 ]
 
 // ═══════════════════════════════════════════════════
-// 4. QUERY API
+// 4. MONITORED PROCESSES — which game/client processes to scan for injection
+// ═══════════════════════════════════════════════════
+//
+// Used by: apc-detector.ts (all 5 tiers), any future injection-detection module.
+// Single source of truth — update ONE list, all detectors pick it up.
+//
+// Each entry is a Get-Process -Name wildcard pattern (without .exe).
+// Example: 'GTA5*' matches GTA5.exe, GTA5_bE.exe, etc.
+
+export const MONITORED_PROCESSES: string[] = [
+  // GTA V and multiplayer clients
+  'GTA5*',
+  'FiveM*',
+  'ragemp*',
+  'altv*',
+]
+
+/**
+ * Build Get-Process -Name argument string: "GTA5*, FiveM*, ragemp*, altv*"
+ * Used in PowerShell scripts that call Get-Process -Name <this>.
+ */
+export function getMonitoredProcessArgs(): string {
+  return MONITORED_PROCESSES.join(', ')
+}
+
+/**
+ * Build WMI Win32_Process filter clause:
+ *   "Name='GTA5.exe' OR Name LIKE 'FiveM%' OR Name LIKE 'ragemp%' OR Name LIKE 'altv%'"
+ * Used in PowerShell scripts that call Get-CimInstance -Filter <this>.
+ */
+export function getMonitoredProcessWmiFilter(): string {
+  return MONITORED_PROCESSES.map(p => {
+    // If the pattern ends with *, it's a prefix match → LIKE 'Prefix%'
+    if (p.endsWith('*')) {
+      const prefix = p.slice(0, -1)
+      return `Name LIKE '${prefix}%'`
+    }
+    // Exact match with .exe appended
+    return `Name='${p}.exe'`
+  }).join(' OR ')
+}
+
+// ═══════════════════════════════════════════════════
+// 5. QUERY API
 // ═══════════════════════════════════════════════════
 
 /** Minimum keyword length — prevents FP from short substrings like "ce" in "process" */
 /** Minimum keyword length — prevents FP from short substrings like "ce" in "process" */
+// ═══════════════════════════════════════════════════
+// QUICK SCAN KEYWORDS — curated top-20 subset for browser history only
+// ═══════════════════════════════════════════════════
+// (moved from constants.ts — now single source of truth)
+
+export const QUICK_CHEAT_KEYWORDS: string[] = [
+  'nightfall', 'dma', 'cheat', 'inject', 'bypass',
+  'eulen', 'pcileech', 'aimbot', 'wallhack', 'esp',
+  'redengine', 'cherax', 'xenos', 'hook', 'mod menu',
+  'spoofer', 'fivem bypass', 'kiddions', 'stand', 'luna',
+]
+
 export const MIN_KEYWORD_LENGTH = 4
 
 /**
@@ -264,7 +334,7 @@ export function getAllCategoryNames(): string[] {
 }
 
 // ═══════════════════════════════════════════════════
-// 5. HOT-RELOAD: Runtime signature updates
+// 6. HOT-RELOAD: Runtime signature updates
 // ═══════════════════════════════════════════════════
 
 /**

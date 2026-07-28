@@ -91,6 +91,7 @@
     "@types/sql.js": "^1.4.11",
     "electron-updater": "^6.8.9",
     "framer-motion": "^12.42.2",
+    "koffi": "^3.1.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sql.js": "^1.14.1",

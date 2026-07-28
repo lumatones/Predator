@@ -52,7 +52,7 @@ export type PipelineStep = (
 function queuePost(path: string, body: unknown): void {
   try {
     enqueue(path, body)
-  } catch { /* telemetry queue optional */ }
+  } catch (err) { console.error('[pipeline:queuePost]', (err as Error).message || err) }
 }
 
 // ═══════════════════════════════════════════════════
@@ -78,7 +78,7 @@ export async function recordScanSession(
     if (profile.escalated) {
       console.log(`  📈 Persistent profile: ${profile.totalScans} scans, ${profile.consistencyPercent}% consistent, trend=${profile.trend}`)
     }
-  } catch { /* persistent scoring optional */ }
+  } catch (err) { console.error('[pipeline:recordScanSession]', (err as Error).message || err) }
 }
 
 // ═══════════════════════════════════════════════════
@@ -105,7 +105,7 @@ export async function submitShadowFindings(
         sha256: f.sha256,
       })),
     })
-  } catch { /* shadow submission optional */ }
+  } catch (err) { console.error('[pipeline:submitShadowFindings]', (err as Error).message || err) }
 }
 
 // ═══════════════════════════════════════════════════
@@ -145,8 +145,8 @@ export async function autoWhitelistLowRisk(
     saveSafeFilesDb()
 
     // 3. Upload to community whitelist (threshold now ≥1 — immediate upload)
-    try { uploadSafeFiles() } catch { /* upload optional */ }
-  } catch { /* safe-db optional */ }
+    try { uploadSafeFiles() } catch (err) { console.error('[pipeline:uploadSafeFiles]', (err as Error).message || err) }
+  } catch (err) { console.error('[pipeline:autoWhitelistLowRisk]', (err as Error).message || err) }
 }
 
 // ═══════════════════════════════════════════════════
@@ -191,7 +191,7 @@ export async function submitAllFindings(
       hashes,
     })
     console.log(`  CLOUD  Submitted ${hashes.length} findings with hashes (${hashes.filter(h => h.risk === 'high').length} high, ${hashes.filter(h => h.risk === 'medium').length} med, ${hashes.filter(h => h.risk === 'low').length} low)`)
-  } catch { /* hash submission optional */ }
+  } catch (err) { console.error('[pipeline:submitAllFindings]', (err as Error).message || err) }
 }
 
 // ═══════════════════════════════════════════════════
@@ -223,7 +223,7 @@ export async function uploadScanResults(
         sha256: r.sha256 || undefined,
       })),
     })
-  } catch { /* upload optional */ }
+  } catch (err) { console.error('[pipeline:uploadScanResults]', (err as Error).message || err) }
 }
 
 // ═══════════════════════════════════════════════════
@@ -252,6 +252,6 @@ export async function runPostScanPipeline(
   for (const step of steps) {
     try {
       await step(results, summary, pctx)
-    } catch { /* isolated failure — continue to next step */ }
+    } catch (err) { console.error(`[pipeline:${step.name || 'anonymous'}]`, (err as Error).message || err) }
   }
 }

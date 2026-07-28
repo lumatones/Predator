@@ -15,7 +15,10 @@ import { Button } from './components/ui/Button'
 import { OnboardingFlow } from './components/onboarding/OnboardingFlow'
 import { SettingsPanel } from './components/ui/SettingsPanel'
 import { useAuth } from './hooks/useAuth'
-import type { AppPhase, ThemeId, Lang, UpdateModalState, ThemeColors } from './types'
+import { useThemeEngine } from './hooks/useThemeEngine'
+import { useUpdateManager } from './hooks/useUpdateManager'
+import { useOnboarding } from './hooks/useOnboarding'
+import type { AppPhase, ThemeId, Lang } from './types'
 import { THEMES, T } from './types'
 
 // ── Eye Easter egg phrases ──
@@ -373,10 +376,9 @@ const PageWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 // ── App ──
 
 const App: React.FC = () => {
-  const [phase, setPhase] = useState<AppPhase>('loading')
-  const [version, setVersion] = useState('')
   const [lang, setLang] = useState<Lang>('ru')
-  const [theme, setTheme] = useState<ThemeId>('predator')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
   const {
     token, setToken,
     tokenId,
@@ -390,137 +392,56 @@ const App: React.FC = () => {
     cancelRequest,
   } = useAuth(lang)
 
-  const [updateAvailable, setUpdateAvailable] = useState(false)
-  const [updateModal, setUpdateModal] = useState<UpdateModalState>({ show: false, version: '', state: 'available', percent: 0, speed: '', size: '', errorMsg: '' })
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  // ── Hooks extracted from App.tsx ──
+  const {
+    theme,
+    setTheme,
+    burnState,
+    isBurning,
+    handleThemeSelect,
+    handleBurnComplete,
+  } = useThemeEngine('predator')
 
-  const t = React.useMemo(() => (key: string) => T[lang][key] || key, [lang])
+  const {
+    version,
+    updateAvailable,
+    updateModal,
+    hInstallUpdate,
+    hRestart,
+    hCloseModal,
+  } = useUpdateManager()
 
-  useEffect(() => {
-    const c = THEMES[theme]
-    const r = document.documentElement
-    r.style.setProperty('--accent-red', c.accent)
-    r.style.setProperty('--accent-orange', c.light)
-    r.style.setProperty('--accent-gradient', `linear-gradient(135deg, ${c.accent}, ${c.light}, ${c.dark})`)
-    r.style.setProperty('--bg-primary', c.bg)
-    r.style.setProperty('--bg-secondary', c.card)
-  }, [theme])
+  const {
+    phase,
+    setPhase,
+    hNextWelcome,
+    hNextLang,
+    hNextTheme,
+    hNextAuth,
+    hDemoComplete,
+    hStartChecker,
+    hStartDashboard,
+    hBackToMain,
+    hRequestAccess,
+  } = useOnboarding({
+    handleAuth,
+    handleRequestAccess,
+    cancelRequest,
+    requestStatus,
+    lang,
+  })
 
-
-
-  useEffect(() => {
-    // Сразу переходим к онбордингу — проверка апдейтов идёт в фоне
-    const api = window.electronAPI
-    if (!api) {
-      // Без Electron (браузер) — показываем загрузку недолго
-      const t = setTimeout(() => setPhase('onboarding-welcome'), 1200)
-      return () => clearTimeout(t)
-    }
-
-    // Запрос версии (быстрый)
-    try { api.getAppVersion().then(setVersion).catch(() => setVersion('unknown')) } catch { setVersion('unknown') }
-
-    // Показываем загрузку ~1.5с для плавного старта, потом приветствие
-    const enterTimer = setTimeout(() => setPhase('onboarding-welcome'), 1500)
-
-    // Фоновые слушатели апдейтов
-    try {
-      api.onUpdateAvailable(info => { setUpdateAvailable(true); setUpdateModal(p => ({ ...p, show: true, version: info.version, state: 'available' })) })
-    } catch { /* skip */ }
-    try { api.onUpdateNotAvailable(() => { /* апдейтов нет, ничего не делаем */ }) } catch { /* skip */ }
-    try { api.onDownloadProgress(data => { setUpdateModal(p => ({ ...p, show: true, state: 'downloading', percent: data.percent, speed: data.bytesPerSecond > 0 ? `${(data.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s` : '', size: `${(data.transferred / 1024 / 1024).toFixed(1)} / ${(data.total / 1024 / 1024).toFixed(1)} MB` })) }) } catch { /* skip */ }
-    try { api.onUpdateDownloaded(() => { setUpdateModal(p => ({ ...p, show: true, state: 'done' })) }) } catch { /* skip */ }
-    try { api.onUpdateError(msg => { setUpdateModal(p => ({ ...p, state: 'error', errorMsg: msg })) }) } catch { /* skip */ }
-
-    return () => clearTimeout(enterTimer)
-  }, [])
-
-  const hInstallUpdate = useCallback(() => { setUpdateModal(p => ({ ...p, state: 'downloading', percent: 0 })); window.electronAPI?.startDownload() }, [])
-  const hRestart = useCallback(() => window.electronAPI?.restartApp(), [])
-  const hCloseModal = useCallback(() => setUpdateModal(p => ({ ...p, show: false })), [])
-  const hStartChecker = useCallback(() => setPhase('checker'), [])
-  const hStartDashboard = useCallback(() => setPhase('dashboard'), [])
-  const hNextWelcome = useCallback(() => {
-    setTimeout(() => setPhase('onboarding-lang'), 150)
-  }, [])
-
-  const hNextLang = useCallback(() => {
-    setTimeout(() => setPhase('onboarding-theme'), 150)
-  }, [])
-
-  const hNextTheme = useCallback(() => {
-    setTimeout(() => setPhase('onboarding-auth'), 150)
-  }, [])
-
-  const hDemoComplete = useCallback(() => {
-    setTimeout(() => setPhase('main'), 150)
-  }, [])
-
-  const hNextAuth = useCallback(async () => {
-    const success = await handleAuth()
-    if (success) setPhase('onboarding-demo')
-  }, [handleAuth])
-
-  // ── Keyboard shortcuts ──
+  // ── Escape closes settings panel ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      const ctrl = e.ctrlKey || e.metaKey
-      if (ctrl && e.shiftKey && e.key === 'S') { e.preventDefault(); if (phase === 'main') setPhase('checker'); return }
-      if (e.key === 'Escape') { setSettingsOpen(false); return }
+      if (e.key === 'Escape') setSettingsOpen(false)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [phase])
+  }, [])
 
-  // Auto-transition to demo when access request is approved
-  useEffect(() => {
-    if (requestStatus === 'approved') {
-      const timer = setTimeout(() => setPhase('onboarding-demo'), 1500)
-      return () => clearTimeout(timer)
-    }
-  }, [requestStatus])
-
-  const hRequestAccess = useCallback(async () => {
-    const ok = await handleRequestAccess()
-    if (ok) setPhase('requesting-access')
-  }, [handleRequestAccess])
-
-  // ── Burn transition state ──
-  const [burnState, setBurnState] = useState<{ old: ThemeColors; new: ThemeColors; newId: ThemeId } | null>(null)
-  const [isBurning, setIsBurning] = useState(false)
-
-  const hSetLang = useCallback((l: Lang) => setLang(l), [])
-  const hSetThemeOnboarding = useCallback((id: ThemeId) => setTheme(id), [])
-
-  const hBackToMain = useCallback(() => setPhase('main'), [])
-
-  const handleThemeSelect = useCallback((id: ThemeId) => {
-    if (id === theme) return
-
-    // Во время онбординга — просто меняем тему без анимации сгорания,
-    // чтобы оверлей не перекрывал карточки выбора темы
-    if (phase === 'onboarding-theme') {
-      setTheme(id)
-      return
-    }
-
-    const old = THEMES[theme]
-    const next = THEMES[id]
-    setBurnState({ old, new: next, newId: id })
-    setIsBurning(true)
-  }, [theme, phase])
-
-  const handleBurnComplete = useCallback(() => {
-    if (burnState) {
-      setTheme(burnState.newId)
-    }
-    // Small delay before removing overlay to avoid flicker
-    setTimeout(() => {
-      setIsBurning(false)
-      setBurnState(null)
-    }, 50)
-  }, [burnState])
+  const t = React.useMemo(() => (key: string) => T[lang][key] || key, [lang])
 
   const c = THEMES[theme]
   const subtitle = t('title')
@@ -553,8 +474,8 @@ const App: React.FC = () => {
               light={c.light}
               dark={c.dark}
               t={t}
-              onSetLang={hSetLang}
-              onSetTheme={hSetThemeOnboarding}
+            onSetLang={setLang}
+            onSetTheme={setTheme}
               onSetToken={setToken}
               onSetTokenError={setTokenError}
               onSetAuthError={setAuthError}
@@ -604,14 +525,12 @@ const App: React.FC = () => {
             <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
-      )}
-
-      <SettingsPanel
+      )}        <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         currentTheme={theme}
         currentLang={lang}
-        onThemeChange={handleThemeSelect}
+        onThemeChange={(id: ThemeId) => handleThemeSelect(id, phase)}
         lang={lang}
       />
 

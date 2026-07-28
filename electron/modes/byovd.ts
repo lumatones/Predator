@@ -13,7 +13,13 @@
 import { execSync } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
+import { fileURLToPath } from 'url'
 import { _WR, type ScanResult, addFindingDedup } from '../types'
+import { checkDigitalSignature, batchCheckSignatures } from '../heuristic'
+
+// __dirname equivalent for ESM
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 // ═══════════════════════════════════════════════════
 // KNOWN VULNERABLE DRIVERS DATABASE
@@ -85,13 +91,213 @@ const VULNERABLE_DRIVERS: VulnerableDriver[] = [
     description: 'Interception driver — kernel-level keyboard/mouse input hook',
     abusedBy: ['KMBox automation', 'hardware aimbot scripts', 'input injection tools'],
   },
+  // ── NEW 2025-2026: Drivers weaponized by cheat devs (research: Bellator Cyber, Connect Securonix) ──
+  {
+    fileNames: ['GameDriverX64.sys', 'GameDriver.sys'],
+    serviceNames: ['GameDriverX64', 'GameDriver'],
+    description: 'CVE-2025-61155 — GameDriverX64 anti-cheat driver abused to kill EDR/anti-cheat processes via IOCTL 0x222040',
+    abusedBy: ['Interlock ransomware', 'Hotta Killer', 'cheat EDR-killers'],
+  },
+  {
+    fileNames: ['iqvw64e.sys'],
+    serviceNames: ['iqvw64e'],
+    description: 'Intel Network Adapter Diagnostic Driver — vulnerable IOCTL allows kernel R/W',
+    abusedBy: ['KDMapper variants', 'BYOVD exploit chains'],
+  },
+  {
+    fileNames: ['nvoclock.sys'],
+    serviceNames: ['nvoclock', 'NVOCLOCK'],
+    description: 'NVIDIA overclocking driver — vulnerable IOCTL allows MSR write / kernel execution',
+    abusedBy: ['Cheat kernel loaders', 'manual mappers'],
+  },
+  {
+    fileNames: ['AswArPot.sys'],
+    serviceNames: ['aswArPot'],
+    description: 'Avast Anti-Rootkit driver — insufficient access control allows kernel R/W',
+    abusedBy: ['EDR killers (Lazarus group)', 'Process termination tools'],
+  },
+  {
+    fileNames: ['zamguard64.sys', 'zamguard32.sys'],
+    serviceNames: ['ZAM_Guard', 'zamguard64'],
+    description: 'Zemana Anti-Malware driver — vulnerable IOCTL allows kernel memory manipulation',
+    abusedBy: ['BYOVD toolkits', 'kernel privilege escalation'],
+  },
+  {
+    fileNames: ['viragt64.sys'],
+    serviceNames: ['viragt64'],
+    description: 'ViRobot anti-virus driver — IOCTL handler allows arbitrary process termination from user mode',
+    abusedBy: ['Anti-cheat killer utilities', 'Terminator tools'],
+  },
+  {
+    fileNames: ['atillk64.sys'],
+    serviceNames: ['atillk64'],
+    description: 'AMD ATI driver — vulnerable IOCTL grants physical memory R/W',
+    abusedBy: ['Kernel exploit chains', 'BYOVD mappers'],
+  },
+  // ── LOLDrivers Top-13: most exploited vulnerable drivers (2025-2026) ──
+  // Source: loldrivers.io / Microsoft Vulnerable Driver Blocklist
+  {
+    fileNames: ['AsrOmg.sys'],
+    serviceNames: ['AsrOmg'],
+    description: 'ASUS Operation Manual driver — physical memory R/W via vulnerable IOCTL',
+    abusedBy: ['Kernel exploit kits', 'manual mappers', 'process hollowing tools'],
+  },
+  {
+    fileNames: ['ene.sys'],
+    serviceNames: ['ene'],
+    description: 'ENE RGB controller driver — vulnerable IOCTL allows MSR write / kernel memory R/W',
+    abusedBy: ['Cheat kernel loaders', 'HWID spoofers', 'KDMapper forks'],
+  },
+  {
+    fileNames: ['GLCKIO2.sys'],
+    serviceNames: ['GLCKIO2'],
+    description: 'ASUS GPU Tweak II driver — vulnerable IOCTL grants kernel R/W',
+    abusedBy: ['GPU overclock exploit chains', 'manual mappers'],
+  },
+  {
+    fileNames: ['MsIo64.sys'],
+    serviceNames: ['MsIo64'],
+    description: 'MSI motherboard driver — vulnerable IOCTL allows I/O port and MSR access',
+    abusedBy: ['HWID spoofer tools', 'MSR-based cheat loaders'],
+  },
+  {
+    fileNames: ['NalDrv.sys'],
+    serviceNames: ['NalDrv'],
+    description: 'Nero AG driver — physical memory R/W via insufficient access control',
+    abusedBy: ['Kernel exploit frameworks', 'cheat driver loaders'],
+  },
+  {
+    fileNames: ['RadHwMgr.sys'],
+    serviceNames: ['RadHwMgr'],
+    description: 'AMD hardware manager driver — vulnerable IOCTL grants physical memory access',
+    abusedBy: ['AMD system exploit chains', 'HWID manipulation tools'],
+  },
+  {
+    fileNames: ['Rzpnk.sys'],
+    serviceNames: ['Rzpnk'],
+    description: 'Razer peripheral driver — vulnerable IOCTL allows kernel memory manipulation',
+    abusedBy: ['Gaming peripheral exploit kits', 'BYOVD toolchains'],
+  },
+  {
+    fileNames: ['Semav6msr64.sys'],
+    serviceNames: ['Semav6msr64'],
+    description: 'SEMA driver — vulnerable MSR write access allows kernel code execution',
+    abusedBy: ['MSR-based loader tools', 'kernel privilege escalation'],
+  },
+  {
+    fileNames: ['EneTechIo.sys'],
+    serviceNames: ['EneTechIo'],
+    description: 'ENE Technology I/O driver — vulnerable IOCTL grants arbitrary I/O port access',
+    abusedBy: ['HW communication tools', 'DMA card initialization'],
+  },
+  {
+    fileNames: ['WinRing0x64.sys'],
+    serviceNames: ['WinRing0x64'],
+    description: 'OpenLibSys WinRing0 — vulnerable I/O port and MSR access from user mode',
+    abusedBy: ['Fan control abuse', 'kernel R/W bridges', 'HWID spoof chains'],
+  },
+  {
+    fileNames: ['AsUpIO.sys'],
+    serviceNames: ['AsUpIO'],
+    description: 'ASUS Update I/O driver — vulnerable I/O port access allows kernel communication',
+    abusedBy: ['Firmware manipulation tools', 'BYOVD bridge drivers'],
+  },
+  {
+    fileNames: ['inpoutx64.sys', 'inpout32.sys'],
+    serviceNames: ['inpoutx64', 'inpout32'],
+    description: 'HighResolutionEnt inpout driver — I/O port access from user mode',
+    abusedBy: ['Hardware control abuse', 'DMA card helpers'],
+  },
+  {
+    fileNames: ['HwOs2Ec.sys'],
+    serviceNames: ['HwOs2Ec'],
+    description: 'ASUS hardware monitor driver — vulnerable IOCTL allows kernel memory access',
+    abusedBy: ['System monitoring abuse', 'kernel information leaks'],
+  },
 ]
 
 // Additional drive-by detection: filenames commonly associated with BYOVD
 const BYOVD_FILENAME_PATTERNS = [
   'kprocesshacker', 'winio', 'phymem', 'dbk', 'cpuz',
   'gdrv', 'rtcore', 'capcom', 'dump64',
+  'asromg', 'ene', 'glckio', 'msio', 'naldrv',
+  'radhw', 'rzpnk', 'semav6', 'enetech',
+  'winring0', 'asupio', 'inpout', 'hwos2ec',
 ]
+
+// ═══════════════════════════════════════════════════
+// JSON-BASED DRIVER LOADING (LOLDrivers)
+// ═══════════════════════════════════════════════════
+// Loads additional drivers from loldrivers.json at runtime.
+// This allows updating signatures WITHOUT recompiling the app.
+// The hardcoded list (VULNERABLE_DRIVERS) acts as a reliable fallback.
+
+let _mergedDrivers: VulnerableDriver[] | null = null
+let _mergedPatterns: string[] | null = null
+
+function loadLolDrivers(): { drivers: VulnerableDriver[]; patterns: string[] } {
+  if (_mergedDrivers && _mergedPatterns) {
+    return { drivers: _mergedDrivers, patterns: _mergedPatterns }
+  }
+
+  const merged = [...VULNERABLE_DRIVERS]
+  const patterns = [...BYOVD_FILENAME_PATTERNS]
+
+  // Build dedup set from hardcoded service names
+  const hardcodedServiceNames = new Set(
+    VULNERABLE_DRIVERS.flatMap(d => d.serviceNames).map(s => s.toLowerCase())
+  )
+
+  try {
+    const jsonPath = path.join(__dirname, '..', 'loldrivers.json')
+    if (fs.existsSync(jsonPath)) {
+      const raw = fs.readFileSync(jsonPath, 'utf-8')
+      const jsonDrivers: VulnerableDriver[] = JSON.parse(raw)
+
+      let newCount = 0
+      for (const jd of jsonDrivers) {
+        // Skip duplicates by service name
+        const isDuplicate = jd.serviceNames.some(sn =>
+          hardcodedServiceNames.has(sn.toLowerCase())
+        )
+        if (isDuplicate) continue
+
+        merged.push(jd)
+        newCount++
+
+        // Extract filename bases for pattern-based broad scan
+        for (const fn of jd.fileNames) {
+          const base = fn.toLowerCase().replace(/\.(sys|dll|exe)$/i, '')
+          if (!patterns.includes(base) && base.length >= 3) {
+            patterns.push(base)
+          }
+        }
+      }
+
+      if (newCount > 0) {
+        console.log(
+          `[BYOVD] Loaded ${newCount} additional drivers from loldrivers.json (total: ${merged.length})`
+        )
+      }
+    }
+  } catch {
+    // JSON load failed — silently fall back to hardcoded list
+  }
+
+  _mergedDrivers = merged
+  _mergedPatterns = patterns
+  return { drivers: merged, patterns }
+}
+
+/** Get all drivers (hardcoded + JSON). Result is cached after first call. */
+function getDrivers(): VulnerableDriver[] {
+  return loadLolDrivers().drivers
+}
+
+/** Get all filename patterns (hardcoded + JSON). Result is cached after first call. */
+function getPatterns(): string[] {
+  return loadLolDrivers().patterns
+}
 
 // ═══════════════════════════════════════════════════
 // SCANNING
@@ -110,7 +316,7 @@ function scanByovdFiles(): ScanResult[] {
   try {
     const existingFiles = new Set(fs.readdirSync(driversDir).map(f => f.toLowerCase()))
 
-    for (const vd of VULNERABLE_DRIVERS) {
+    for (const vd of getDrivers()) {
       for (const fileName of vd.fileNames) {
         if (existingFiles.has(fileName.toLowerCase())) {
           if (addFindingDedup(`byovd-file:${fileName}`)) {
@@ -136,20 +342,31 @@ function scanByovdFiles(): ScanResult[] {
     }
 
     // Broad scan: check for filenames matching BYOVD patterns
+    // NOTE: skip files already matched by exact name in the first loop above
+    const alreadyMatched = new Set(
+      results.map(r => r.fileName?.toLowerCase() || '')
+    )
+    // ── BATCH: Pre-warm signature cache for all candidate files ──
+    const patterns = getPatterns()
+    const candidatePaths: string[] = []
     for (const file of fs.readdirSync(driversDir)) {
       const lower = file.toLowerCase()
-      const shouldCheck = BYOVD_FILENAME_PATTERNS.some(p => lower.includes(p))
-      if (!shouldCheck || existingFiles.has(lower)) continue // Skip already matched
+      if (alreadyMatched.has(lower)) continue
+      if (patterns.some(p => lower.includes(p))) {
+        candidatePaths.push(path.join(driversDir, file))
+      }
+    }
+    if (candidatePaths.length > 0) {
+      batchCheckSignatures(candidatePaths)
+    }
 
-      // Only flag if file is NOT digitally signed by Microsoft
-      // (legitimate drivers with these name patterns from MS are OK)
+    for (const filePath of candidatePaths) {
+      const file = path.basename(filePath)
+      const lower = file.toLowerCase()
+
+      // Only flag if file is NOT digitally signed (uses shared cache — 0 PowerShell calls)
       try {
-        const filePath = path.join(driversDir, file)
-        const psScript = `(Get-AuthenticodeSignature '${filePath.replace(/'/g, "''")}').Status`
-        const sigOut = execSync(`powershell -NoProfile -Command "${psScript}"`, {
-          encoding: 'utf-8', timeout: 3000, windowsHide: true,
-        }).trim()
-        const isSigned = sigOut.includes('Valid')
+        const isSigned = checkDigitalSignature(filePath)
 
         if (!isSigned && addFindingDedup(`byovd-pattern:${file}`)) {
           results.push({
@@ -159,7 +376,7 @@ function scanByovdFiles(): ScanResult[] {
             risk: 'medium',
             matches: [
               `Found: C:\\Windows\\System32\\drivers\\${file}`,
-              `Matches BYOVD filename pattern: "${BYOVD_FILENAME_PATTERNS.find(p => lower.includes(p)) || 'unknown'}"`,
+              `Matches BYOVD filename pattern: "${patterns.find(p => lower.includes(p)) || 'unknown'}"`,
               `Driver is NOT digitally signed`,
               `⚠ Unsigned kernel drivers are extremely suspicious`,
             ],
@@ -203,7 +420,7 @@ if ($drivers) { $drivers } else { '[]' }
     const loadedNames = new Set(driverList.map(d => (d.Name || '').toLowerCase()))
     const loadedPaths = new Set(driverList.map(d => (d.PathName || '').toLowerCase()))
 
-    for (const vd of VULNERABLE_DRIVERS) {
+    for (const vd of getDrivers()) {
       // Check by service name
       const matchedService = vd.serviceNames.find(sn => loadedNames.has(sn.toLowerCase()))
       // Check by file path
@@ -249,7 +466,7 @@ function scanByovdRegistry(): ScanResult[] {
   const results: ScanResult[] = []
 
   try {
-    for (const vd of VULNERABLE_DRIVERS) {
+    for (const vd of getDrivers()) {
       for (const svcName of vd.serviceNames) {
         const regPath = `HKLM\\SYSTEM\\CurrentControlSet\\Services\\${svcName}`
         try {

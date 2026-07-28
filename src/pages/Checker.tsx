@@ -17,6 +17,7 @@ import PredatorLogo3D from '../components/ui/PredatorLogo3D'
 import { ScanTerminal } from '../components/ui/ScanTerminal'
 import { FileDetailModal } from '../components/ui/FileDetailModal'
 import { ThreatMap } from '../components/ui/ThreatMap'
+import { ApcDashboard } from '../components/ui/ApcDashboard'
 import { CompactScanOverlay } from '../components/ui/CompactScanOverlay'
 import { ScanningDots } from '../components/ui/AnimatedIcons'
 import { useSound } from '../hooks/useSound'
@@ -760,7 +761,10 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
           )}
 
           {results.length > 0 && summary && summary.suspiciousFiles > 0 && (
-            <ThreatMap results={results} />
+            <>
+              <ThreatMap results={results} />
+              <ApcDashboard results={results} lang={lang} />
+            </>
           )}
 
           {/* ── Connected Devices Section ── */}
