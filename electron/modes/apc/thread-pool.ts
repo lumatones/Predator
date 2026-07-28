@@ -118,7 +118,7 @@ foreach ($proc in $gameProcs) {
       LpcReceivePct = $lpcPct
       Signals = $signals -join ', '
       RiskLevel = $riskLevel
-      Detail = "$total threads: $poolWait WrQueue (${poolPct}%), $userWait UserRequest, $execWait Executive, $lpcWait LpcReceive"
+      Detail = "$total threads: $poolWait WrQueue (" + $poolPct + "%), $userWait UserRequest, $execWait Executive, $lpcWait LpcReceive"
     }
   }
 }

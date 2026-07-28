@@ -277,9 +277,7 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
   await sendProgress(win, { phase: 'scanning', currentDir: 'IPC & persistence...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 6 })
   results.push(...safeCall('scanNamedPipes', () => scanNamedPipes()))
   results.push(...safeCall('scanWmiPersistence', () => scanWmiPersistence()))
-  // ETW/WMI kernel-level monitoring
-  results.push(...safeCall('runEtwScan', () => runEtwScan()))
-  // APC Injection + Atom Bombing detection (thread analysis + atom tables)
+  // APC Injection + Atom Bombing detection (thread analysis + atom tables, includes ETW monitor)
   results.push(...safeCall('runApcScan', () => runApcScan()))
   // BYOVD — scan for known vulnerable kernel drivers (gdrv.sys, RTCore64.sys, Capcom.sys, etc.)
   results.push(...safeCall('scanByovd', () => scanByovd()))
