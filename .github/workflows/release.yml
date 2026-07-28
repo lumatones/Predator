@@ -28,10 +28,11 @@ jobs:
         run: npm run build
 
       - name: Update version from tag & Build .exe
+        shell: bash
         run: |
           VER="${GITHUB_REF_NAME#v}"
           echo "Building version: $VER"
-          npm version $VER --no-git-tag-version --allow-same-version
+          npm version "$VER" --no-git-tag-version --allow-same-version
           npx electron-builder --win
 
       - name: Create Release & Upload .exe
