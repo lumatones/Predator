@@ -13,7 +13,7 @@ import {
   recordScanSession,
   submitShadowFindings,
   autoWhitelistLowRisk,
-  submitHighRiskHashes,
+  submitAllFindings,
   uploadScanResults,
   runPostScanPipeline,
   type PipelineContext,
@@ -47,6 +47,7 @@ vi.mock('../safe-files-db', () => ({
   markFilesSafe: vi.fn(),
   saveSafeFilesDb: vi.fn(),
   uploadSafeFiles: vi.fn(),
+  refreshSafeFilesDb: vi.fn(() => ({ refreshed: 0, removed: 0 })),
 }))
 
 vi.mock('../config', () => ({
@@ -207,41 +208,40 @@ describe('autoWhitelistLowRisk', () => {
 // HANDLER 4: submitHighRiskHashes
 // ═══════════════════════════════════════════════════════
 
-describe('submitHighRiskHashes', () => {
+describe('submitAllFindings', () => {
   it('returns Promise<void> without throwing with empty results', async () => {
     await expect(
-      submitHighRiskHashes([], makeSummary(), makeContext())
+      submitAllFindings([], makeSummary(), makeContext())
     ).resolves.toBeUndefined()
   })
 
-  it('does not throw when no high-risk file-type results', async () => {
+  it('does not throw when no file-type results with partialHash', async () => {
     const results = [
-      makeResult({ risk: 'low', type: 'file' }),
-      makeResult({ risk: 'medium', type: 'process' }),
+      makeResult({ risk: 'low', type: 'process' }),
       makeResult({ risk: 'medium', type: 'browser' }),
     ]
     await expect(
-      submitHighRiskHashes(results, makeSummary(), makeContext())
+      submitAllFindings(results, makeSummary(), makeContext())
     ).resolves.toBeUndefined()
   })
 
-  it('does not throw with high-risk file results that have sha256 hashes', async () => {
+  it('does not throw with file results that have partialHash', async () => {
     const results = [
-      makeResult({ risk: 'high', type: 'file', sha256: 'a'.repeat(64) }),
-      makeResult({ risk: 'high', type: 'file', sha256: 'b'.repeat(64) }),
-      makeResult({ risk: 'high', type: 'file', sha256: 'c'.repeat(64) }),
+      makeResult({ risk: 'high', type: 'file', partialHash: 'a'.repeat(64), sha256: 'b'.repeat(64) }),
+      makeResult({ risk: 'low', type: 'file', partialHash: 'c'.repeat(64) }),
+      makeResult({ risk: 'medium', type: 'file', partialHash: 'd'.repeat(64) }),
     ]
     await expect(
-      submitHighRiskHashes(results, makeSummary({ highRiskCount: 3 }), makeContext())
+      submitAllFindings(results, makeSummary({ highRiskCount: 1 }), makeContext())
     ).resolves.toBeUndefined()
   })
 
-  it('does not throw when results have sha256: undefined (skipped)', async () => {
+  it('does not throw when results have partialHash: undefined (skipped)', async () => {
     const results = [
-      makeResult({ risk: 'high', type: 'file', sha256: undefined }),
+      makeResult({ risk: 'high', type: 'file', partialHash: undefined }),
     ]
     await expect(
-      submitHighRiskHashes(results, makeSummary({ highRiskCount: 1 }), makeContext())
+      submitAllFindings(results, makeSummary({ highRiskCount: 1 }), makeContext())
     ).resolves.toBeUndefined()
   })
 })

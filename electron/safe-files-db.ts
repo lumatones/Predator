@@ -220,6 +220,72 @@ export function getSafeFilesCount(): number {
   return Object.keys(_db.entries).length
 }
 
+/**
+ * Refresh ALL existing safe DB entries — increment confirmCount for files
+ * that still exist at their recorded path with the same mtime.
+ *
+ * WHY: Without this, confirmCount stays at 1 forever because once a file is
+ * in the safe-files DB, the heuristic scan skips it (isFileSafe → true),
+ * so it never reappears in scan results and never reaches markFilesSafe().
+ *
+ * This function fixes the deadlock: each scan re-confirms existing safe files
+ * by checking if they still exist on disk.
+ */
+export function refreshSafeFilesDb(): { refreshed: number; removed: number } {
+  let refreshed = 0
+  let removed = 0
+
+  for (const [key, entry] of Object.entries(_db.entries)) {
+    // Skip server-synced entries (no local path to verify)
+    if (entry.verifiedBy === 'server' || !entry.path) continue
+
+    try {
+      if (!fs.existsSync(entry.path)) {
+        // File was deleted — remove from DB after 7 days of not being found
+        const daysSinceLastSeen = (Date.now() - new Date(entry.lastSeen).getTime()) / (1000 * 60 * 60 * 24)
+        if (daysSinceLastSeen > 7) {
+          delete _db.entries[key]
+          removed++
+          _dirty = true
+        }
+        continue
+      }
+
+      const st = fs.statSync(entry.path)
+      if (!st.isFile()) {
+        delete _db.entries[key]
+        removed++
+        _dirty = true
+        continue
+      }
+
+      // File still exists — increment confirmCount
+      entry.lastSeen = new Date().toISOString()
+      entry.confirmCount++
+      entry.size = st.size  // update size if changed
+      entry.mtime = new Date(st.mtimeMs).toISOString()
+      refreshed++
+      _dirty = true
+    } catch {
+      // Can't stat — remove from DB after grace period
+      try {
+        const daysSinceLastSeen = (Date.now() - new Date(entry.lastSeen).getTime()) / (1000 * 60 * 60 * 24)
+        if (daysSinceLastSeen > 7) {
+          delete _db.entries[key]
+          removed++
+          _dirty = true
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  if (refreshed > 0 || removed > 0) {
+    saveSafeFilesDb()
+  }
+
+  return { refreshed, removed }
+}
+
 // ── Server Sync ────────────────────────────────────
 
 /**
@@ -285,13 +351,13 @@ export function syncSafeFilesFromServer(): Promise<number> {
 
 /**
  * Upload local safe-file entries to server for community analysis.
- * Sends entries that have been confirmed by at least 3 scans.
+ * Sends entries that have been confirmed by at least 1 scan.
  * Called after each scan completes.
  */
 export function uploadSafeFiles(): void {
   try {
     const entries = Object.values(_db.entries)
-      .filter(e => e.verifiedBy === 'auto' && e.confirmCount >= 3)
+      .filter(e => e.verifiedBy === 'auto' && e.confirmCount >= 1)
       .slice(0, 100)
 
     if (entries.length === 0) return

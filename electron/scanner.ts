@@ -163,28 +163,46 @@ async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanRe
           }
           if (hr && riskScore > 20) {
             const risk = riskScore > 80 ? 'high' : riskScore > 50 ? 'medium' : 'low'
+
+            // ── Compute hashes for ALL suspicious files ──
+            // partialHash (first 64KB) is FAST — read from safe-files-db
+            // sha256 (full file) is SLOW — only for high-risk binaries
             let sha256Hash: string | undefined
-            if (risk === 'high' && (ext === '.exe' || ext === '.dll' || ext === '.sys')) {
-              try {
+            let partialHash: string | undefined
+            let fileSize = 0
+            try {
+              // Compute partial hash for EVERY result — fast first-64KB read
+              const stat2 = fs.statSync(filePath)
+              fileSize = stat2.size
+              const partialBuf = Buffer.alloc(Math.min(stat2.size, 64 * 1024))
+              const fd = fs.openSync(filePath, 'r')
+              fs.readSync(fd, partialBuf, 0, partialBuf.length, 0)
+              fs.closeSync(fd)
+              partialHash = crypto.createHash('sha256').update(partialBuf).digest('hex')
+
+              // Full sha256 only for high-risk binaries (expensive)
+              if (risk === 'high' && (ext === '.exe' || ext === '.dll' || ext === '.sys')) {
                 const h = crypto.createHash('sha256')
-                const fd = fs.openSync(filePath, 'r')
-                const stat2 = fs.statSync(filePath)
-                const hashBuf = Buffer.alloc(Math.min(stat2.size, 50 * 1024 * 1024))
-                fs.readSync(fd, hashBuf, 0, hashBuf.length, 0)
-                fs.closeSync(fd)
-                h.update(hashBuf)
+                const fullBuf = Buffer.alloc(Math.min(stat2.size, 50 * 1024 * 1024))
+                const fd2 = fs.openSync(filePath, 'r')
+                fs.readSync(fd2, fullBuf, 0, fullBuf.length, 0)
+                fs.closeSync(fd2)
+                h.update(fullBuf)
                 sha256Hash = h.digest('hex')
-              } catch { /* hash optional */ }
-            }
+              }
+            } catch { /* hash optional */ }
+
             return {
               path: filePath,
               fileName: path.basename(filePath),
               type: 'file' as const,
               risk,
               matches: hr.suspicions.slice(0, 5),
-              size: 0,
+              size: fileSize,
               modifiedAt: new Date().toISOString(),
               sha256: sha256Hash,
+              partialHash,
+              hasValidSignature: hr.hasValidSignature,
             } satisfies ScanResult
           }
           return null

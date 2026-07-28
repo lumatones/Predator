@@ -529,6 +529,8 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       } catch (_e) { /* archive scan optional */ }
     }
 
+    let fileHasValidSignature: boolean | undefined
+
     if (binaryExts.has(ext) && stat.size >= 4096 && stat.size < 50 * 1024 * 1024) {
       const fd = fs.openSync(filepath, 'r')
       const sampleSize = Math.min(65536, stat.size)
@@ -572,6 +574,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       }
 
       const sigValid = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? checkDigitalSignature(filepath) : false
+      fileHasValidSignature = sigValid
 
       // ── UNIVERSAL COMBO DETECTOR ──
       const comboResult = comboScoreUnsignedBinary(
@@ -711,7 +714,13 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
 
     if (riskScore === 0 && shadowRuleHits.length === 0) return null
 
-    return { riskScore, suspicions, shadowRuleHits: shadowRuleHits.length > 0 ? shadowRuleHits : undefined }
+    return {
+      riskScore,
+      suspicions,
+      shadowRuleHits: shadowRuleHits.length > 0 ? shadowRuleHits : undefined,
+      // Digital signature: true/false for .exe/.dll/.sys/.asi/.drv, undefined for non-binary
+      hasValidSignature: fileHasValidSignature,
+    }
   } catch (_e) {
     return null
   }

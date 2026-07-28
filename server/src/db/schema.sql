@@ -72,11 +72,15 @@ CREATE INDEX idx_scan_results_pc ON scan_results(pc_username);
 CREATE TABLE IF NOT EXISTS suspicious_hashes (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   sha256        CHAR(64) NOT NULL,
+  partial_hash  CHAR(64) DEFAULT NULL,
   tlsh          VARCHAR(256) DEFAULT NULL,
   file_name     VARCHAR(255),
+  file_path     VARCHAR(1024) DEFAULT NULL,
   pc_username   VARCHAR(100),
   file_size     INT DEFAULT 0,
   risk_score    INT DEFAULT 0,
+  risk          ENUM('high', 'medium', 'low') DEFAULT 'high',
+  matches       JSON DEFAULT NULL,
   status        ENUM('pending', 'confirmed', 'false_positive') DEFAULT 'pending',
   -- Auto-classification columns
   auto_classified  BOOLEAN DEFAULT FALSE,
@@ -86,8 +90,14 @@ CREATE TABLE IF NOT EXISTS suspicious_hashes (
   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_sha256 (sha256),
   INDEX idx_tlsh (tlsh(36)),
+  INDEX idx_partial_hash (partial_hash),
+  INDEX idx_sh_status (status),
+  INDEX idx_sh_created (created_at),
   INDEX idx_auto_classified (auto_classified)
 ) ENGINE=InnoDB;
+
+CREATE INDEX idx_sh_status ON suspicious_hashes(status);
+CREATE INDEX idx_sh_created ON suspicious_hashes(created_at);
 
 CREATE INDEX idx_sh_status ON suspicious_hashes(status);
 CREATE INDEX idx_sh_created ON suspicious_hashes(created_at);

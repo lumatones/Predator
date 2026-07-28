@@ -67,11 +67,16 @@ async function init(): Promise<void> {
     CREATE TABLE IF NOT EXISTS suspicious_hashes (
       id            INT AUTO_INCREMENT PRIMARY KEY,
       sha256        CHAR(64) NOT NULL,
+      partial_hash  CHAR(64) DEFAULT NULL,
       tlsh          VARCHAR(256) DEFAULT NULL,
       file_name     VARCHAR(255),
+      file_path     VARCHAR(1024) DEFAULT NULL,
       pc_username   VARCHAR(100),
       file_size     INT DEFAULT 0,
       risk_score    INT DEFAULT 0,
+      risk          ENUM('high', 'medium', 'low') DEFAULT 'high',
+      matches       JSON DEFAULT NULL,
+      has_valid_signature BOOLEAN DEFAULT NULL,
       status        ENUM('pending', 'confirmed', 'false_positive') DEFAULT 'pending',
       reviewed_by   INT REFERENCES admins(id),
       reviewed_at   DATETIME,
@@ -82,13 +87,49 @@ async function init(): Promise<void> {
 
   // Add tlsh column if upgrading from pre-TLSH schema
   try {
-    await query('ALTER TABLE suspicious_hashes ADD COLUMN tlsh VARCHAR(256) DEFAULT NULL AFTER sha256')
+    await query('ALTER TABLE suspicious_hashes ADD COLUMN partial_hash CHAR(64) DEFAULT NULL AFTER sha256')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
+  }
+
+  try {
+    await query('ALTER TABLE suspicious_hashes ADD COLUMN file_path VARCHAR(1024) DEFAULT NULL AFTER file_name')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
+  }
+
+  try {
+    await query('ALTER TABLE suspicious_hashes ADD COLUMN risk ENUM(\'high\', \'medium\', \'low\') DEFAULT \'high\' AFTER risk_score')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
+  }
+
+  try {
+    await query('ALTER TABLE suspicious_hashes ADD COLUMN matches JSON DEFAULT NULL AFTER risk')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
+  }
+
+  try {
+    await query('ALTER TABLE suspicious_hashes ADD COLUMN tlsh VARCHAR(256) DEFAULT NULL AFTER partial_hash')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
+  }
+
+  try {
+    await query('ALTER TABLE suspicious_hashes ADD COLUMN has_valid_signature BOOLEAN DEFAULT NULL AFTER risk_score')
   } catch (err: any) {
     if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
   }
 
   try {
     await query('CREATE INDEX idx_tlsh ON suspicious_hashes(tlsh(36))')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
+
+  try {
+    await query('CREATE INDEX idx_partial_hash ON suspicious_hashes(partial_hash)')
   } catch (err: any) {
     if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
   }

@@ -18,7 +18,7 @@ import fs from 'fs'
 import type { ScanResult } from './types'
 import { ctx } from './types'
 import { recordSession, getProfileSummary } from './persistent-profile'
-import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, uploadSafeFiles } from './safe-files-db'
+import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, uploadSafeFiles, refreshSafeFilesDb } from './safe-files-db'
 import { enqueue } from './telemetry-queue'
 
 // ═══════════════════════════════════════════════════
@@ -119,6 +119,8 @@ export async function autoWhitelistLowRisk(
 ): Promise<void> {
   try {
     loadSafeFilesDb()
+
+    // 1. Add NEW low-risk files from this scan
     const lowRiskFiles = results
       .filter(r => r.risk === 'low' && fs.existsSync(r.path))
       .map(r => {
@@ -131,36 +133,64 @@ export async function autoWhitelistLowRisk(
     if (lowRiskFiles.length > 0) {
       markFilesSafe(lowRiskFiles, 'auto')
     }
+
+    // 2. Refresh ALL existing safe DB entries — this fixes the confirmCount deadlock.
+    //    Without this, confirmCount stays at 1 forever because isFileSafe() skips
+    //    already-whitelisted files in the heuristic scan.
+    const { refreshed, removed } = refreshSafeFilesDb()
+    if (refreshed > 0 || removed > 0) {
+      console.log(`  📁 Safe-files refresh: ${refreshed} confirmed, ${removed} expired`)
+    }
+
     saveSafeFilesDb()
-    // Upload to community whitelist
+
+    // 3. Upload to community whitelist (threshold now ≥1 — immediate upload)
     try { uploadSafeFiles() } catch { /* upload optional */ }
   } catch { /* safe-db optional */ }
 }
 
 // ═══════════════════════════════════════════════════
-// HANDLER 4: HashSubmitter
+// HANDLER 4: HashSubmitter — отправляет ВСЕ файлы с хэшами на сервер
 // ═══════════════════════════════════════════════════
+// Серверный классификатор (classifier.ts) использует partialHash для:
+//   1. Сопоставления с safe_files (community whitelist) → auto-safe
+//   2. Crowdsource-анализа (сколько уникальных ПК видят этот файл как low-risk)
+//   3. Auto-добавления в safe_files при классификации 'safe'
+//
+// До фикса: partialHash вычислялся только для high-risk, сервер получал undefined
+// После фикса: partialHash вычисляется для ВСЕХ файлов (64KB — быстро)
 
-export async function submitHighRiskHashes(
+export async function submitAllFindings(
   results: ScanResult[],
   _summary: ScanSummary,
   pctx: PipelineContext,
 ): Promise<void> {
   try {
-    const highRiskWithHash = results.filter(r => r.risk === 'high' && r.sha256 && r.type === 'file')
-    if (highRiskWithHash.length === 0) return
+    // File-type results with partial hash = can be classified server-side
+    const findingsWithHash = results.filter(r => r.type === 'file' && r.partialHash)
+    if (findingsWithHash.length === 0) return
+
+    // Slice to 500 to stay within server schema limits
+    const hashes = findingsWithHash.slice(0, 500).map(r => ({
+      sha256: r.sha256,
+      partialHash: r.partialHash,
+      file_name: r.fileName,
+      file_path: r.path,
+      file_size: r.size || 0,
+      risk: r.risk,
+      matches: r.matches.slice(0, 5),
+      risk_score: r.risk === 'high' ? 80 : r.risk === 'medium' ? 50 : 20,
+      has_valid_signature: r.hasValidSignature,
+    }))
+
+    if (hashes.length === 0) return
 
     queuePost('/api/auth/submit-hashes', {
       token_id: pctx.tokenId,
       pc_username: pctx.pcUsername,
-      hashes: highRiskWithHash.map(r => ({
-        sha256: r.sha256,
-        file_name: r.fileName,
-        file_size: r.size || 0,
-        risk_score: 80,
-      })),
+      hashes,
     })
-    console.log(`  CLOUD  Submitted ${highRiskWithHash.length} HIGH-risk hashes`)
+    console.log(`  CLOUD  Submitted ${hashes.length} findings with hashes (${hashes.filter(h => h.risk === 'high').length} high, ${hashes.filter(h => h.risk === 'medium').length} med, ${hashes.filter(h => h.risk === 'low').length} low)`)
   } catch { /* hash submission optional */ }
 }
 
@@ -204,7 +234,7 @@ const DEFAULT_PIPELINE: PipelineStep[] = [
   recordScanSession,
   submitShadowFindings,
   autoWhitelistLowRisk,
-  submitHighRiskHashes,
+  submitAllFindings,
   uploadScanResults,
 ]
 

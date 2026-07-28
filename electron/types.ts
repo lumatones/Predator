@@ -17,8 +17,12 @@ export interface ScanResult {
   matches: string[]
   size: number
   modifiedAt: string
-  /** SHA256 hash of the file (only for HIGH-risk file results) */
+  /** SHA256 hash of the file (expensive — only for HIGH-risk .exe/.dll/.sys) */
   sha256?: string
+  /** Partial hash (first 64KB SHA256) — fast, computed for ALL file results */
+  partialHash?: string
+  /** Whether the file has a valid digital signature (only for .exe/.dll/.sys) */
+  hasValidSignature?: boolean
   /** Rule name for shadow-mode findings (telemetry grouping) */
   ruleName?: string
 }
@@ -47,6 +51,8 @@ export interface HeuristicResult {
   suspicions: string[]
   /** Shadow-mode rule hits — silent telemetry, never shown to user */
   shadowRuleHits?: string[]
+  /** Digital signature validity (only for .exe/.dll/.sys) */
+  hasValidSignature?: boolean
 }
 
 export interface GamePid {

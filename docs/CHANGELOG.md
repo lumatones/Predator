@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.1 — Smart Pipeline + Digital Signature + Safe-Files Fix (2026-07-28)
+
+### 🔧 Safe-Files Deadlock Fix
+- **`refreshSafeFilesDb()`** — новая функция обновляет confirmCount для ВСЕХ существующих safe-файлов при каждом сканировании
+- **Порог загрузки 3→1** — safe-файлы отправляются на сервер сразу после первого скана
+- **`autoWhitelistLowRisk()`** теперь вызывает `refreshSafeFilesDb()` — confirmCount растёт на каждом скане
+
+### 📡 Полная data pipeline (hash + signature + size + name → server)
+- **`partialHash`** (первые 64KB SHA256) вычисляется для ВСЕХ результатов хьюристики, а не только high-risk
+- **`hasValidSignature`** — цифровая подпись (сертификат) теперь отправляется на сервер для каждого .exe/.dll/.sys
+- **`submitAllFindings()`** заменяет `submitHighRiskHashes()` — отправляет ВСЕ file-type результаты
+- **ScanResult.size** исправлен с 0 на реальный размер файла
+
+### 🗄 Серверные изменения
+- `suspicious_hashes` — новые колонки: `partial_hash`, `file_path`, `risk`, `matches`, `has_valid_signature`
+- `submit-hashes` — INSERT ON DUPLICATE KEY UPDATE с fallback sha256=partialHash
+- `submit-scan` — передаёт `partialHash` в классификатор (был `undefined`)
+- `sha256` в схеме теперь optional — low/medium-risk файлы используют partialHash
+
+### ♻ Рефакторинг
+- `submitHighRiskHashes()` → `submitAllFindings()` в DEFAULT_PIPELINE
+- Тесты обновлены под новую сигнатуру
+- 500 лимит в `submitAllFindings()` для защиты серверной валидации
+
+---
+
 ## v0.3.0 — AI Scanner Intelligence + DMA/Hardware/RE Detection (2026-07-27)
 
 ### 🧠 Auto-Scan Intelligence

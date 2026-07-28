@@ -64,6 +64,7 @@ export const submitScanSchema = z.object({
     matches: z.array(z.string()),
     size: z.number().optional(),
     sha256: z.string().optional(),
+    partialHash: z.string().length(64).optional(),
   })).max(100).optional(),
 })
 
@@ -73,10 +74,15 @@ export const submitHashesSchema = z.object({
   hashes: z
     .array(
       z.object({
-        sha256: z.string().length(64).regex(/^[a-f0-9]{64}$/),
+        sha256: z.string().length(64).regex(/^[a-f0-9]{64}$/).optional(),
+        partialHash: z.string().length(64).optional(),
         file_name: z.string().max(255).optional(),
+        file_path: z.string().optional(),
         file_size: z.number().int().min(0).optional(),
+        risk: z.enum(['high', 'medium', 'low']).optional(),
         risk_score: z.number().int().min(0).optional(),
+        matches: z.array(z.string()).optional(),
+        has_valid_signature: z.boolean().optional(),
         tlsh: z.string().max(256).optional(),
       })
     )

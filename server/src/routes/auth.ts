@@ -190,8 +190,9 @@ router.post('/submit-scan', validate(submitScanSchema), async (req: Request, res
       const pUsername = pc_username || 'unknown'
       const classifierInputs = results.map(r => ({
         sha256: r.sha256,
-        // partialHash not available from client — safe-file matching uses path+size fallback
-        partialHash: undefined,
+        // partialHash (first 64KB SHA256) теперь доступен от клиента!
+        // Используется для: safe-files matching, crowdsource-анализ, авто-добавление в safe_files
+        partialHash: r.partialHash,
         filePath: r.path,
         fileName: r.fileName,
         fileType: r.type,
@@ -249,28 +250,57 @@ router.post('/submit-hashes', validate(submitHashesSchema), async (req: Request,
     }
 
     let inserted = 0
+    let updated = 0
     for (const h of hashes) {
-      if (!h.sha256 || typeof h.sha256 !== 'string' || h.sha256.length !== 64) continue
+      // Use sha256 if available, otherwise fall back to partialHash
+      // (partialHash is a valid SHA256 of first 64KB — works as lookup key)
+      const hashKey = h.sha256?.toLowerCase() || h.partialHash?.toLowerCase()
+      if (!hashKey || hashKey.length !== 64) continue
+
+      const sha256 = hashKey
+      const partialHash = h.partialHash?.toLowerCase() || null
+      const matches = h.matches ? JSON.stringify(h.matches.slice(0, 10)) : null
+
       try {
-        await query(
-          `INSERT IGNORE INTO suspicious_hashes (sha256, tlsh, file_name, pc_username, token_id, file_size, risk_score)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [h.sha256.toLowerCase(), h.tlsh || null, h.file_name || 'unknown', pc_username || 'unknown', token_id, h.file_size || 0, h.risk_score || 0]
+        // Try to INSERT — if duplicate, UPDATE with new info
+        const result = await query<any>(
+          `INSERT INTO suspicious_hashes (sha256, partial_hash, tlsh, file_name, file_path, pc_username, token_id, file_size, risk_score, risk, matches, has_valid_signature)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             file_name = COALESCE(VALUES(file_name), file_name),
+             file_size = GREATEST(VALUES(file_size), file_size),
+             risk_score = GREATEST(VALUES(risk_score), risk_score)`,
+          [
+            sha256,
+            partialHash,
+            h.tlsh || null,
+            h.file_name || 'unknown',
+            h.file_path || null,
+            pc_username || 'unknown',
+            token_id,
+            h.file_size || 0,
+            h.risk_score || 0,
+            h.risk || 'high',
+            matches,
+            h.has_valid_signature ?? null,
+          ]
         )
-        inserted++
-      } catch { /* duplicate — skip */ }
+        if (result.affectedRows === 1) inserted++
+        else updated++
+      } catch { /* skip */ }
     }
 
     try {
       const io = req.app.get('io')
       io?.to('admin').emit('new-hashes', {
         count: inserted,
+        updated,
         pc_username: pc_username || 'unknown',
         timestamp: new Date().toISOString(),
       })
     } catch { /* ws event optional */ }
 
-    return res.json({ success: true, inserted, total: hashes.length })
+    return res.json({ success: true, inserted, updated, total: hashes.length })
   } catch (err: any) {
     console.error('Submit hashes error:', err)
     return res.status(500).json({ error: 'Internal server error' })
