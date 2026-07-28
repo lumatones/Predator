@@ -36,6 +36,7 @@ jobs:
           npx electron-builder --win
 
       - name: Create Release & Upload .exe
+        shell: bash
         run: |
           FILES="release/Predator-*.exe"
           # latest.yml only generated when publish provider is configured
