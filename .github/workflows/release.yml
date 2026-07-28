@@ -21,8 +21,29 @@ jobs:
           node-version: 22
           cache: 'npm'
 
+      # ── Cache node_modules (npm ci takes 10-15 min on Windows without cache) ──
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        id: cache-nm
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            nm-${{ runner.os }}-
+
       - name: Install dependencies
+        if: steps.cache-nm.outputs.cache-hit != 'true'
         run: npm ci
+
+      # ── Cache Electron binary (downloaded once, reused across builds) ──
+      - name: Cache Electron
+        uses: actions/cache@v4
+        id: cache-electron
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Typecheck & Build
         run: npm run build
