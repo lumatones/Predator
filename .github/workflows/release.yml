@@ -35,14 +35,18 @@ jobs:
         if: steps.cache-nm.outputs.cache-hit != 'true'
         run: npm ci
 
-      # ── Cache Electron binary (downloaded once, reused across builds) ──
+      # ── Cache Electron binary + build tools (Windows-specific paths) ──
+      # On Windows: Electron cache is at %LOCALAPPDATA%\electron\Cache
+      # electron-builder cache is at %APPDATA%\electron-builder
       - name: Cache Electron
         uses: actions/cache@v4
         id: cache-electron
+        env:
+          ELECTRON_CACHE: ${{ runner.temp }}
         with:
           path: |
-            ~/.cache/electron
-            ~/.cache/electron-builder
+            ${{ env.LOCALAPPDATA }}\electron\Cache
+            ${{ env.APPDATA }}\electron-builder
           key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Typecheck & Build
