@@ -27,8 +27,12 @@ jobs:
       - name: Typecheck & Build
         run: npm run build
 
-      - name: Build .exe (with correct version)
-        run: npx electron-builder --win -c.extraMetadata.version=${GITHUB_REF_NAME#v}
+      - name: Update version from tag & Build .exe
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          echo "Building version: $VER"
+          npm version $VER --no-git-tag-version --allow-same-version
+          npx electron-builder --win
 
       - name: Create Release & Upload .exe
         run: |
