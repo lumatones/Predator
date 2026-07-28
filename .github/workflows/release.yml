@@ -27,7 +27,14 @@ jobs:
       - name: Typecheck & Build
         run: npm run build
 
-      - name: Build & publish .exe
+      - name: Build .exe (with correct version)
+        run: npx electron-builder --win -c.extraMetadata.version=${GITHUB_REF_NAME#v}
+
+      - name: Create Release & Upload .exe
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            release/Predator-*.exe \
+            release/latest*.yml \
+            --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --publish always
