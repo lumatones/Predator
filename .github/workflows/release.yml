@@ -28,7 +28,9 @@ jobs:
         run: npm run build
 
       - name: Build .exe
-        run: npx electron-builder --win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish never
 
       - name: Create Release & Upload .exe
         shell: bash
