@@ -36,9 +36,11 @@ jobs:
 
       - name: Create Release & Upload .exe
         run: |
-          gh release create "${{ github.ref_name }}" \
-            release/Predator-*.exe \
-            release/latest*.yml \
-            --generate-notes
+          FILES="release/Predator-*.exe"
+          # latest.yml only generated when publish provider is configured
+          if ls release/latest*.yml 2>/dev/null; then
+            FILES="$FILES release/latest*.yml"
+          fi
+          gh release create "${{ github.ref_name }}" $FILES --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
