@@ -808,7 +808,6 @@ function classifyDevice(info: UsbDeviceInfo): DeviceSummary {
       details: dmaDetails,
     }
   }
-  }
 
   // ── Rule 2: Check phone/tablet vendors (with USB descriptors for 100% accuracy) ──
   if (PHONE_VENDORS[vid]) {
