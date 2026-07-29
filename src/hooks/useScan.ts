@@ -75,6 +75,13 @@ export function useScan(tokenId: number | null): UseScanReturn {
     setPhase('scanning'); setError(''); setResults([]); setSummary(null); setProgress(null)
 
     if (!api?.startScan) {
+      // DEV only: simulate scan progress with mock data
+      if (!import.meta.env.DEV) {
+        setError('Scan engine not available — please restart the app')
+        setPhase('idle')
+        scanRef.current = false
+        return
+      }
       for (let i = 0; i <= 100; i += 10) {
         if (!scanRef.current) return
         await new Promise(r => setTimeout(r, 150))

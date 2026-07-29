@@ -31,7 +31,7 @@ function cleanupTemp() {
       const stat = fs.statSync(p)
       if (Date.now() - stat.mtimeMs > 3600000) fs.unlinkSync(p)
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[memory-dump] failed:', (err as Error).message) }
 }
 
 /** Дамп процесса через PowerShell + MiniDumpWriteDump */
@@ -94,7 +94,7 @@ function extractUniqueStringsFromLargeFile(filepath: string): string[] {
         cur = ''
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[memory-dump] failed:', (err as Error).message) }
   return Array.from(all)
 }
 
@@ -214,7 +214,7 @@ export function analyzeDump(dumpPath: string, keywords: string[], _unused?: unkn
       rawDumpBuf = Buffer.alloc(readSize)
       fs.readSync(fd, rawDumpBuf, 0, readSize, 0)
       fs.closeSync(fd)
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[memory-dump] failed:', (err as Error).message) }
     const hookMatches = scanInlineHooksInDump(strings, rawDumpBuf)
     for (const h of hookMatches) {
       result.cheatMatches.push(h)
@@ -222,7 +222,7 @@ export function analyzeDump(dumpPath: string, keywords: string[], _unused?: unkn
     }
 
     result.riskScore = Math.min(result.riskScore, 100)
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[memory-dump] failed:', (err as Error).message) }
 
   return result
 }
@@ -241,7 +241,7 @@ export function dumpAndAnalyze(
 
   const result = analyzeDump(dumpPath, keywords, checkAutoRulesFn)
 
-  try { fs.unlinkSync(dumpPath) } catch { /* ignore */ }
+  try { fs.unlinkSync(dumpPath) } catch (err) { console.warn('[memory-dump] failed:', (err as Error).message) }
 
   return result
 }
@@ -254,5 +254,5 @@ export function purgeAllDumps() {
         fs.unlinkSync(path.join(TEMP_DIR, f))
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[memory-dump] failed:', (err as Error).message) }
 }

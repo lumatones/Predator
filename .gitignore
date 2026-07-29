@@ -63,6 +63,12 @@ release_info.json
 nul
 *.tmp
 
+# ── Runtime artifacts ──
+.predator_tlsh_db.json
+
+# ── External projects ──
+Eye-Animation-Enhancer/
+
 # ── Git credentials ──
 .git-credentials
 .gitconfig.local

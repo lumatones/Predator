@@ -88,7 +88,7 @@ export function detectDebuggerWindows(): string[] {
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-tamper] failed:', (err as Error).message) }
   return found
 }
 
@@ -144,7 +144,7 @@ export function detectDebuggerPorts(): string[] {
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-tamper] failed:', (err as Error).message) }
   return ports
 }
 
@@ -206,7 +206,7 @@ export function detectVmByMac(): string[] {
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-tamper] failed:', (err as Error).message) }
   return found
 }
 
@@ -224,7 +224,7 @@ export function detectVmByRegistry(): string[] {
       if (out.trim() === 'True') {
         found.push(key)
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[anti-tamper] failed:', (err as Error).message) }
   }
   return found
 }
@@ -248,7 +248,7 @@ export function detectVmProcesses(): string[] {
         found.push(procName)
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-tamper] failed:', (err as Error).message) }
   return found
 }
 
@@ -264,7 +264,7 @@ export function detectVmByHypervisor(): { isVm: boolean; detail: string } {
     if (out.trim() === 'True') {
       return { isVm: true, detail: 'Hypervisor detected via WMI' }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-tamper] failed:', (err as Error).message) }
 
   try {
     const out = execSync(
@@ -281,7 +281,7 @@ export function detectVmByHypervisor(): { isVm: boolean; detail: string } {
         return { isVm: true, detail: `Motherboard manufacturer: ${mfr} (VM indicator)` }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-tamper] failed:', (err as Error).message) }
 
   return { isVm: false, detail: '' }
 }

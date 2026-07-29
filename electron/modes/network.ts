@@ -47,7 +47,7 @@ function scanDnsCache(): ScanResult[] {
         })
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[network] failed:', (err as Error).message) }
   return results
 }
 
@@ -103,7 +103,7 @@ function scanHostsFile(): ScanResult[] {
         size: content.length, modifiedAt: new Date().toISOString(),
       })
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[network] failed:', (err as Error).message) }
   return results
 }
 
@@ -144,7 +144,7 @@ function scanNetstat(): ScanResult[] {
         size: 0, modifiedAt: new Date().toISOString(),
       })
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[network] failed:', (err as Error).message) }
   return results
 }
 
@@ -187,7 +187,7 @@ export function scanNetstatV2(): ScanResult[] {
         }
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[network] failed:', (err as Error).message) }
   return results
 }
 

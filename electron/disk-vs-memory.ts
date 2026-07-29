@@ -266,9 +266,9 @@ function batchReadProcessMemory(pid: number, entries: BatchEntry[]): Map<string,
     for (const raw of rawModules) {
       try {
         result.set(raw.name, Buffer.from(raw.data, 'base64'))
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[disk-vs-memory] failed:', (err as Error).message) }
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[disk-vs-memory] failed:', (err as Error).message) }
 
   return result
 }

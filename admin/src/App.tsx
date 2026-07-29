@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect, createContext, useContext, useCallback } from 'react'
 import Layout from './components/Layout'
 import ParticleBackground from './components/ParticleBackground'
 import Login from './pages/Login'
@@ -10,6 +10,10 @@ import Tokens from './pages/Tokens'
 import History from './pages/History'
 import SuspiciousHashes from './pages/SuspiciousHashes'
 import SafeFiles from './pages/SafeFiles'
+import { useSessionTimeout } from './hooks/useSessionTimeout'
+import SessionTimeoutModal from './components/SessionTimeoutModal'
+import { useNavigationShortcuts } from './hooks/useKeyboardShortcuts'
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp'
 
 interface AuthState {
   token: string
@@ -36,16 +40,24 @@ export default function App() {
     return stored ? JSON.parse(stored) : null
   })
 
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
+
   const login = (token: string, admin: AuthState['admin']) => {
     const data = { token, admin }
     localStorage.setItem('predator_admin', JSON.stringify(data))
     setAuth(data)
   }
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('predator_admin')
     setAuth(null)
-  }
+  }, [])
+
+  // Session timeout — auto-logout after 30 min inactivity
+  const { showWarning, remaining } = useSessionTimeout(!!auth, logout)
+
+  // Keyboard shortcuts — navigation, help toggle
+  useNavigationShortcuts(() => setShortcutsHelpOpen(prev => !prev), !!auth)
 
   if (!auth) {
     return (
@@ -71,6 +83,22 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
+
+      {/* Keyboard shortcuts help modal */}
+      <KeyboardShortcutsHelp
+        open={shortcutsHelpOpen}
+        onClose={() => setShortcutsHelpOpen(false)}
+      />
+
+      {/* Session timeout warning modal */}
+      {showWarning && (
+        <SessionTimeoutModal
+          show={showWarning}
+          remaining={remaining}
+          onExtend={() => {/* handled by activity listener */}}
+          onLogout={logout}
+        />
+      )}
     </AuthContext.Provider>
   )
 }

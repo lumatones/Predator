@@ -3,6 +3,10 @@ import type { Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { query } from '../config/database'
+import { paginate, countTotal, setPaginationHeaders } from '../helpers/pagination'
+import { logAdminAction } from '../middleware/audit-log'
+import { checkLoginRateLimit, recordFailedAttempt, clearRateLimit } from '../middleware/rate-limit-login'
+import { requireRole } from '../middleware/roles'
 import { generateToken, verifyToken } from '../middleware/auth'
 import {
   adminLoginSchema,
@@ -19,22 +23,37 @@ const router = express.Router()
 router.post('/login', validate(adminLoginSchema), async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body
+    const ip = req.ip || req.socket.remoteAddress || 'unknown'
+
+    // A5: Rate limiting — block after 5 failed attempts in 15 min
+    const rateLimit = checkLoginRateLimit(ip)
+    if (rateLimit.blocked) {
+      return res.status(429).json({ error: rateLimit.message || 'Too many attempts' })
+    }
 
     const rows = await query<AdminRow[]>('SELECT * FROM admins WHERE username = ?', [username])
     if (rows.length === 0) {
+      recordFailedAttempt(ip)
+      logAdminAction(req, 'login_failed')
       return res.status(401).json({ error: 'Invalid username or password' })
     }
 
     const admin = rows[0]
     const match = await bcrypt.compare(password, admin.password_hash)
     if (!match) {
+      recordFailedAttempt(ip)
+      logAdminAction(req, 'login_failed')
       return res.status(401).json({ error: 'Invalid username or password' })
     }
 
+    clearRateLimit(ip)
+
     const token = generateToken(admin)
+    logAdminAction(req, 'login')
     return res.json({ token, admin: { id: admin.id, username: admin.username, role: admin.role } })
   } catch (err: any) {
     console.error('Login error:', err)
+    logAdminAction(req, 'login_failed')
     return res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -45,10 +64,22 @@ router.use(verifyToken)
 // ── GET /api/admin/pending ────────────────────
 router.get('/pending', async (req: Request, res: Response) => {
   try {
+    const search = (req.query.q as string)?.trim()
+    const searchFilter = search ? 'AND pc_username LIKE ?' : ''
+    const searchParam = search ? `%${search}%` : null
+
+    const whereClause = "status = 'pending' AND (expires_at IS NULL OR expires_at > NOW())" + (search ? ` ${searchFilter}` : '')
+    const params = search ? [searchParam!] : undefined
+    const total = await countTotal(query, 'requests', whereClause, params)
+    const { offset, limit, page } = paginate(req.query)
+
+    const sqlParams: any[] = search ? ['pending', searchParam!, limit, offset] : ['pending', limit, offset]
     const rows = await query<RequestRow[]>(
-      'SELECT id, pc_username, status, created_at, expires_at FROM requests WHERE status = ? AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY created_at DESC',
-      ['pending']
+      `SELECT id, pc_username, status, created_at, expires_at FROM requests WHERE status = ? AND (expires_at IS NULL OR expires_at > NOW())${searchFilter} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      sqlParams
     )
+
+    setPaginationHeaders(res, page, limit, total)
     return res.json(rows)
   } catch (err: any) {
     console.error('Pending error:', err)
@@ -57,7 +88,7 @@ router.get('/pending', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/approve/:id ───────────────
-router.post('/approve/:id', async (req: Request, res: Response) => {
+router.post('/approve/:id', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const rows = await query<RequestRow[]>(
       'SELECT * FROM requests WHERE id = ? AND status = ?',
@@ -70,7 +101,7 @@ router.post('/approve/:id', async (req: Request, res: Response) => {
     const requestId = String(req.params.id)
     await query(
       'UPDATE requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?',
-      ['approved', (req as any).admin.id, requestId]
+      ['approved', req.admin!.id, requestId]
     )
 
     const io = req.app.get('io')
@@ -78,10 +109,11 @@ router.post('/approve/:id', async (req: Request, res: Response) => {
       type: 'approved',
       requestId: parseInt(requestId),
       pcUsername: rows[0].pc_username,
-      admin: (req as any).admin.username,
+      admin: req.admin!.username,
       timestamp: new Date().toISOString(),
     })
 
+    logAdminAction(req, 'approve', { requestId: parseInt(requestId) })
     return res.json({ success: true, message: 'Request approved' })
   } catch (err: any) {
     console.error('Approve error:', err)
@@ -90,15 +122,15 @@ router.post('/approve/:id', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/approve-batch ───────────
-router.post('/approve-batch', async (req: Request, res: Response) => {
+router.post('/approve-batch', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const { ids } = req.body
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) {
       return res.status(400).json({ error: 'ids must be a non-empty array (max 100)' })
     }
 
-    const adminId = (req as any).admin.id
-    const adminName = (req as any).admin.username
+    const adminId = req.admin!.id
+    const adminName = req.admin!.username
     let approved = 0
     const approvedUsers: string[] = []
 
@@ -115,7 +147,7 @@ router.post('/approve-batch', async (req: Request, res: Response) => {
         )
         approved++
         approvedUsers.push(rows[0].pc_username)
-      } catch { /* skip individual failures */ }
+      } catch (err) { console.warn('[admin] failed: individual failures:', (err as Error).message) }
     }
 
     const io = req.app.get('io')
@@ -135,15 +167,15 @@ router.post('/approve-batch', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/reject-batch ─────────────
-router.post('/reject-batch', async (req: Request, res: Response) => {
+router.post('/reject-batch', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const { ids } = req.body
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100) {
       return res.status(400).json({ error: 'ids must be a non-empty array (max 100)' })
     }
 
-    const adminId = (req as any).admin.id
-    const adminName = (req as any).admin.username
+    const adminId = req.admin!.id
+    const adminName = req.admin!.username
     let rejected = 0
 
     for (const id of ids) {
@@ -158,7 +190,7 @@ router.post('/reject-batch', async (req: Request, res: Response) => {
           ['rejected', adminId, id]
         )
         rejected++
-      } catch { /* skip individual failures */ }
+      } catch (err) { console.warn('[admin] failed: individual failures:', (err as Error).message) }
     }
 
     const io = req.app.get('io')
@@ -178,7 +210,7 @@ router.post('/reject-batch', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/reject/:id ────────────────
-router.post('/reject/:id', async (req: Request, res: Response) => {
+router.post('/reject/:id', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const rows = await query<RequestRow[]>(
       'SELECT * FROM requests WHERE id = ? AND status = ?',
@@ -191,7 +223,7 @@ router.post('/reject/:id', async (req: Request, res: Response) => {
     const rejectId = String(req.params.id)
     await query(
       'UPDATE requests SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?',
-      ['rejected', (req as any).admin.id, rejectId]
+      ['rejected', req.admin!.id, rejectId]
     )
 
     const io = req.app.get('io')
@@ -199,10 +231,11 @@ router.post('/reject/:id', async (req: Request, res: Response) => {
       type: 'rejected',
       requestId: parseInt(rejectId),
       pcUsername: rows[0].pc_username,
-      admin: (req as any).admin.username,
+      admin: req.admin!.username,
       timestamp: new Date().toISOString(),
     })
 
+    logAdminAction(req, 'reject', { requestId: parseInt(rejectId) })
     return res.json({ success: true, message: 'Request rejected' })
   } catch (err: any) {
     console.error('Reject error:', err)
@@ -211,7 +244,7 @@ router.post('/reject/:id', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/tokens/generate ───────────
-router.post('/tokens/generate', validate(tokensGenerateSchema), async (req: Request, res: Response) => {
+router.post('/tokens/generate', requireRole('superadmin'), validate(tokensGenerateSchema), async (req: Request, res: Response) => {
   try {
     const { count } = req.body
     const tokens: string[] = []
@@ -221,7 +254,7 @@ router.post('/tokens/generate', validate(tokensGenerateSchema), async (req: Requ
 
       await query(
         'INSERT INTO tokens (code, created_by) VALUES (?, ?)',
-        [code, (req as any).admin.id]
+        [code, req.admin!.id]
       )
 
       const formatted = code.match(/.{1,8}/g)!.join('-')
@@ -231,7 +264,7 @@ router.post('/tokens/generate', validate(tokensGenerateSchema), async (req: Requ
     const io = req.app.get('io')
     io?.to('admin').emit('token-generated', {
       count: tokens.length,
-      admin: (req as any).admin.username,
+      admin: req.admin!.username,
       timestamp: new Date().toISOString(),
     })
 
@@ -245,13 +278,16 @@ router.post('/tokens/generate', validate(tokensGenerateSchema), async (req: Requ
 // ── GET /api/admin/tokens ─────────────────────
 router.get('/tokens', async (req: Request, res: Response) => {
   try {
+    const total = await countTotal(query, 'tokens')
+    const { offset, limit, page } = paginate(req.query)
+
     const rows = await query<(TokenRow & { created_by_name: string | null })[]>(`
       SELECT t.id, t.code, t.is_active, t.used_by, t.used_at, t.created_at, a.username AS created_by_name
       FROM tokens t
       LEFT JOIN admins a ON t.created_by = a.id
       ORDER BY t.created_at DESC
-      LIMIT 50
-    `)
+      LIMIT ? OFFSET ?
+    `, [limit, offset])
 
     const formatted = rows.map(r => ({
       id: r.id,
@@ -263,6 +299,7 @@ router.get('/tokens', async (req: Request, res: Response) => {
       code_display: r.code ? r.code.match(/.{1,8}/g)!.join('-') : '',
     }))
 
+    setPaginationHeaders(res, page, limit, total)
     return res.json(formatted)
   } catch (err: any) {
     console.error('Tokens list error:', err)
@@ -271,7 +308,7 @@ router.get('/tokens', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/tokens/revoke/:id ─────────
-router.post('/tokens/revoke/:id', async (req: Request, res: Response) => {
+router.post('/tokens/revoke/:id', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const tokenId = String(req.params.id)
     await query(
@@ -288,7 +325,7 @@ router.post('/tokens/revoke/:id', async (req: Request, res: Response) => {
 // ── GET /api/admin/history ────────────────────
 router.get('/history', async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(parseInt((req.query.limit as string) || '100'), 200)
+    const { offset, limit, page } = paginate(req.query)
 
     const usedTokens = await query<(TokenRow & { created_by_name: string | null; event_type: string; event_date: string })[]>(`
       SELECT
@@ -300,8 +337,8 @@ router.get('/history', async (req: Request, res: Response) => {
       LEFT JOIN admins a ON t.created_by = a.id
       WHERE t.used_by IS NOT NULL
       ORDER BY t.used_at DESC
-      LIMIT ?
-    `, [limit])
+      LIMIT ? OFFSET ?
+    `, [limit, offset])
 
     const processedRequests = await query<(RequestRow & { approved_by_name: string | null; event_type: string; event_date: string })[]>(`
       SELECT
@@ -313,8 +350,8 @@ router.get('/history', async (req: Request, res: Response) => {
       LEFT JOIN admins a ON r.approved_by = a.id
       WHERE r.status IN ('approved', 'rejected')
       ORDER BY event_date DESC
-      LIMIT ?
-    `, [limit])
+      LIMIT ? OFFSET ?
+    `, [limit, offset])
 
     const formattedTokens = usedTokens.map(t => ({
       id: t.id,
@@ -352,9 +389,9 @@ router.get('/history', async (req: Request, res: Response) => {
 
     merged.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
+    setPaginationHeaders(res, page, limit, merged.length)
     return res.json({
-      total: merged.length,
-      items: merged.slice(0, limit),
+      items: merged,
       stats: {
         totalTokensUsed: formattedTokens.length,
         totalRequestsProcessed: processedRequests.length,
@@ -413,14 +450,24 @@ router.get('/scan-stats', async (req: Request, res: Response) => {
 router.get('/suspicious-hashes', async (req: Request, res: Response) => {
   try {
     const status = (req.query.status as string) || 'pending'
+
+    // Parameterized query — safe from SQL injection
+    const params: any[] = status !== 'all' ? [status] : []
+    const whereClause = status !== 'all' ? 'status = ?' : undefined
+
+    const total = await countTotal(query, 'suspicious_hashes', whereClause, params)
+    const { offset, limit, page } = paginate(req.query)
+
     const rows = await query<(SuspiciousHashRow & { reviewed_by_name: string | null })[]>(`
       SELECT sh.*, a.username AS reviewed_by_name
       FROM suspicious_hashes sh
       LEFT JOIN admins a ON sh.reviewed_by = a.id
-      WHERE sh.status = ?
+      ${status !== 'all' ? 'WHERE sh.status = ?' : ''}
       ORDER BY sh.created_at DESC
-      LIMIT 100
-    `, [status])
+      LIMIT ? OFFSET ?
+    `, status !== 'all' ? [status, limit, offset] : [limit, offset])
+
+    setPaginationHeaders(res, page, limit, total)
     return res.json(rows)
   } catch (err: any) {
     console.error('Suspicious hashes error:', err)
@@ -429,7 +476,7 @@ router.get('/suspicious-hashes', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/hashes/approve/:id ────────
-router.post('/hashes/approve/:id', async (req: Request, res: Response) => {
+router.post('/hashes/approve/:id', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const hashId = String(req.params.id)
 
@@ -441,14 +488,14 @@ router.post('/hashes/approve/:id', async (req: Request, res: Response) => {
 
     await query(
       'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND status = ?',
-      ['confirmed', (req as any).admin.id, hashId, 'pending']
+      ['confirmed', req.admin!.id, hashId, 'pending']
     )
 
     const io = req.app.get('io')
     io?.to('admin').emit('hash-update', {
       type: 'confirmed',
       hashId: parseInt(hashId),
-      admin: (req as any).admin.username,
+      admin: req.admin!.username,
       timestamp: new Date().toISOString(),
     })
     // Real-time push to ALL connected scanner clients
@@ -469,19 +516,19 @@ router.post('/hashes/approve/:id', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/hashes/reject/:id ─────────
-router.post('/hashes/reject/:id', async (req: Request, res: Response) => {
+router.post('/hashes/reject/:id', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const hashId = String(req.params.id)
     await query(
       'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND status = ?',
-      ['false_positive', (req as any).admin.id, hashId, 'pending']
+      ['false_positive', req.admin!.id, hashId, 'pending']
     )
 
     const io = req.app.get('io')
     io?.to('admin').emit('hash-update', {
       type: 'false_positive',
       hashId: parseInt(hashId),
-      admin: (req as any).admin.username,
+      admin: req.admin!.username,
       timestamp: new Date().toISOString(),
     })
 
@@ -495,7 +542,7 @@ router.post('/hashes/reject/:id', async (req: Request, res: Response) => {
 // ── GET /api/admin/scan-result-hashes ──────────
 router.get('/scan-result-hashes', async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(parseInt((req.query.limit as string) || '100'), 500)
+    const { offset, limit, page } = paginate(req.query)
 
     const rows = await query<(ScanResultRow & { results_json: string | null })[]>(`
       SELECT sr.id, sr.pc_username, sr.mode, sr.results_json, sr.created_at
@@ -504,8 +551,8 @@ router.get('/scan-result-hashes', async (req: Request, res: Response) => {
         AND sr.results_json != '[]'
         AND sr.results_json != ''
       ORDER BY sr.created_at DESC
-      LIMIT ?
-    `, [limit])
+      LIMIT ? OFFSET ?
+    `, [limit, offset])
 
     const hashMap = new Map<string, any>()
 
@@ -558,7 +605,7 @@ router.get('/scan-result-hashes', async (req: Request, res: Response) => {
 
           hashMap.set(sha256, existing)
         }
-      } catch { /* skip malformed JSON */ }
+      } catch (err) { console.warn('[admin] failed: malformed JSON:', (err as Error).message) }
     }
 
     const allHashes = Array.from(hashMap.keys())
@@ -588,9 +635,10 @@ router.get('/scan-result-hashes', async (req: Request, res: Response) => {
 
     result.sort((a, b) => b.occurrences - a.occurrences || new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime())
 
+    setPaginationHeaders(res, page, limit, result.length)
     return res.json({
       total: result.length,
-      hashes: result.slice(0, 100),
+      hashes: result,
     })
   } catch (err: any) {
     console.error('Scan result hashes error:', err)
@@ -599,26 +647,26 @@ router.get('/scan-result-hashes', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/hashes/confirm-from-scan ───
-router.post('/hashes/confirm-from-scan', validate(hashConfirmFromScanSchema), async (req: Request, res: Response) => {
+router.post('/hashes/confirm-from-scan', requireRole('admin'), validate(hashConfirmFromScanSchema), async (req: Request, res: Response) => {
   try {
     const { sha256, file_name, file_size } = req.body
 
     await query(
       `INSERT IGNORE INTO suspicious_hashes (sha256, file_name, file_size, risk_score, status, reviewed_by, reviewed_at)
        VALUES (?, ?, ?, ?, 'confirmed', ?, NOW())`,
-      [sha256.toLowerCase(), file_name || 'unknown', file_size || 0, 80, (req as any).admin.id]
+      [sha256.toLowerCase(), file_name || 'unknown', file_size || 0, 80, req.admin!.id]
     )
 
     await query(
       'UPDATE suspicious_hashes SET status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE sha256 = ? AND status = ?',
-      ['confirmed', (req as any).admin.id, sha256.toLowerCase(), 'pending']
+      ['confirmed', req.admin!.id, sha256.toLowerCase(), 'pending']
     )
 
     const io = req.app.get('io')
     io?.to('admin').emit('hash-update', {
       type: 'confirmed',
       sha256: sha256.toLowerCase().slice(0, 16),
-      admin: (req as any).admin.username,
+      admin: req.admin!.username,
       timestamp: new Date().toISOString(),
     })
     // Real-time push to ALL connected scanner clients
@@ -675,14 +723,22 @@ router.get('/safe-files-stats', async (req: Request, res: Response) => {
 router.get('/shadow-findings', async (req: Request, res: Response) => {
   try {
     const status = (req.query.status as string) || 'shadow'
+
+    // Parameterized query — safe from SQL injection
+    const params: any[] = status !== 'all' ? [status] : []
+    const whereClause = status !== 'all' ? 'status = ?' : undefined
+
+    const total = await countTotal(query, 'shadow_findings', whereClause, params)
+    const { offset, limit, page } = paginate(req.query)
+
     const rows = await query<(ShadowFindingRow & { promoted_by_name: string | null })[]>(`
       SELECT sf.*, a.username AS promoted_by_name
       FROM shadow_findings sf
       LEFT JOIN admins a ON sf.promoted_by = a.id
-      WHERE sf.status = ?
+      ${status !== 'all' ? 'WHERE sf.status = ?' : ''}
       ORDER BY sf.occurrence_count DESC, sf.created_at DESC
-      LIMIT 100
-    `, [status])
+      LIMIT ? OFFSET ?
+    `, status !== 'all' ? [status, limit, offset] : [limit, offset])
 
     const formatted = rows.map(r => ({
       id: r.id,
@@ -711,6 +767,7 @@ router.get('/shadow-findings', async (req: Request, res: Response) => {
       FROM shadow_findings
     `)
 
+    setPaginationHeaders(res, page, limit, total)
     return res.json({
       findings: formatted,
       stats: { total: stats[0]?.total || 0, promoted: stats[0]?.promoted || 0, rejected: stats[0]?.rejected || 0 },
@@ -722,7 +779,7 @@ router.get('/shadow-findings', async (req: Request, res: Response) => {
 })
 
 // ── POST /api/admin/shadow/promote ─────────────
-router.post('/shadow/promote', validate(shadowPromoteSchema), async (req: Request, res: Response) => {
+router.post('/shadow/promote', requireRole('superadmin'), validate(shadowPromoteSchema), async (req: Request, res: Response) => {
   try {
     const { rule_name, target_status } = req.body
 
@@ -730,7 +787,7 @@ router.post('/shadow/promote', validate(shadowPromoteSchema), async (req: Reques
       // Promote: move all shadow findings with this rule_name to "promoted"
       await query(
         'UPDATE shadow_findings SET status = ?, promoted_by = ?, promoted_at = NOW() WHERE rule_name = ? AND status = ?',
-        ['promoted', (req as any).admin.id, rule_name, 'shadow']
+        ['promoted', req.admin!.id, rule_name, 'shadow']
       )
 
       // Also insert/update suspicious_hashes for all sha256 entries
@@ -747,14 +804,14 @@ router.post('/shadow/promote', validate(shadowPromoteSchema), async (req: Reques
             [s.sha256, s.tlsh || null, s.file_name || 'unknown']
           )
           hashInserted++
-        } catch { /* skip */ }
+        } catch (err) { console.warn('[admin] failed:', (err as Error).message) }
       }
       console.log(`  ✅ Shadow rule "${rule_name}" promoted — ${hashInserted} hashes added to suspicious_hashes`)
     } else {
       // Reject: mark as false_positive
       await query(
         'UPDATE shadow_findings SET status = ?, promoted_by = ?, promoted_at = NOW() WHERE rule_name = ? AND status = ?',
-        ['rejected', (req as any).admin.id, rule_name, 'shadow']
+        ['rejected', req.admin!.id, rule_name, 'shadow']
       )
     }
 
@@ -762,7 +819,7 @@ router.post('/shadow/promote', validate(shadowPromoteSchema), async (req: Reques
     io?.to('admin').emit('shadow-update', {
       type: target_status === 'confirmed' ? 'promoted' : 'rejected',
       rule_name,
-      admin: (req as any).admin.username,
+      admin: req.admin!.username,
       timestamp: new Date().toISOString(),
     })
     // Real-time push to ALL connected scanner clients when promoted

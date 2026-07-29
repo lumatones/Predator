@@ -130,7 +130,7 @@ function getTemperature(): number | null {
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[system-info] failed:', (err as Error).message) }
 
   return null
 }

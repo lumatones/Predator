@@ -61,7 +61,7 @@ function watchLocalSignatures(): void {
   // Ensure parent directory exists
   const dir = path.dirname(SIGNATURES_FILE)
   if (!fs.existsSync(dir)) {
-    try { fs.mkdirSync(dir, { recursive: true }) } catch { /* skip */ }
+    try { fs.mkdirSync(dir, { recursive: true }) } catch (err) { console.warn('[signature-watcher] failed:', (err as Error).message) }
   }
 
   try {

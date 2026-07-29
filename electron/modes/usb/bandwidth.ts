@@ -82,7 +82,7 @@ Write-Host '---SAMPLE2_END---'
           const instance = (obj.Instance || '').trim().toLowerCase()
           const value = parseFloat(obj.Value) || 0
           if (instance) map.set(instance, value)
-        } catch { /* skip */ }
+        } catch (err) { console.warn('[bandwidth] failed:', (err as Error).message) }
       }
       return map
     }
@@ -173,7 +173,7 @@ foreach ($cls in $classes) {
         if (instance && bytesPerSec > 10_000_000) {
           results.push({ instance, bytesPerSec, counterName: `WMI ${className}` })
         }
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[bandwidth] failed:', (err as Error).message) }
     }
   } catch { /* Tier 2 optional */ }
 
@@ -253,7 +253,7 @@ foreach ($t in $targets) {
             counterName: `USB Speed Class: ${speedInfo.Speed || 'SuperSpeed'} (${speedInfo.Rate} Mbps)`,
           })
         }
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[bandwidth] failed:', (err as Error).message) }
     }
   } catch { /* speed check optional */ }
 

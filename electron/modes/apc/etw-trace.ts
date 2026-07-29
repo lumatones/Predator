@@ -76,7 +76,7 @@ export function scanEtwKernelThread(): ScanResult[] {
 
   try {
     // Clean up stale trace sessions and ETL files from previous runs
-    try { execSync(`logman stop "${traceName}" -ets 2>nul`, { encoding: 'utf-8', timeout: 3000, windowsHide: true }) } catch {}
+    try { execSync(`logman stop "${traceName}" -ets 2>nul`, { encoding: 'utf-8', timeout: 3000, windowsHide: true }) } catch (err) { console.warn('[etw-trace] failed:', (err as Error).message) }
     try { fs.unlinkSync(fileA) } catch {}
     try { fs.unlinkSync(fileB) } catch {}
 
@@ -219,7 +219,7 @@ $out | ConvertTo-Json -Compress
       execSync(`logman stop "${traceName}" -ets`, {
         encoding: 'utf-8', timeout: 5000, windowsHide: true,
       })
-    } catch {}
+    } catch (err) { console.warn('[etw-trace] failed:', (err as Error).message) }
 
     // ── Clean up remaining ETL files ──
     try { fs.unlinkSync(fileA) } catch {}
@@ -246,7 +246,7 @@ $out | ConvertTo-Json -Compress
     }
   } catch {
     // logman/Get-WinEvent unavailable (no admin, or not on Windows) — graceful skip
-    try { execSync(`logman stop "${traceName}" -ets`, { encoding: 'utf-8', timeout: 3000, windowsHide: true }) } catch {}
+    try { execSync(`logman stop "${traceName}" -ets`, { encoding: 'utf-8', timeout: 3000, windowsHide: true }) } catch (err) { console.warn('[etw-trace] failed:', (err as Error).message) }
     try { fs.unlinkSync(fileA) } catch {}
     try { fs.unlinkSync(fileB) } catch {}
   }

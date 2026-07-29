@@ -59,10 +59,11 @@ export default memo(function Dashboard() {
 
   useEffect(() => { load(); loadScanStats() }, [auth])
 
-  // ── WebSocket connection ──
+  // ── WebSocket connection (JWT-authenticated) ──
 
   useEffect(() => {
     if (!auth) return
+    const token = auth.token // capture for TS narrowing
 
     let socket: Socket | null = null
 
@@ -72,6 +73,7 @@ export default memo(function Dashboard() {
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 2000,
+        auth: { token }, // JWT for WS auth
       })
 
       socket.on('connect', () => {
@@ -88,8 +90,17 @@ export default memo(function Dashboard() {
       })
 
       socket.on('connect_error', (err) => {
-        if (DEV) console.log('🔌 WebSocket error:', err.message)
+        if (DEV) console.log('🔌 WS connection error:', err.message)
         setWsConnected(false)
+        addToast('error', 'Ошибка подключения к серверу реального времени')
+      })
+
+      // Handle WS auth errors from server (expired token, etc.)
+      socket.on('error', (err: { code?: string; message?: string }) => {
+        if (DEV) console.log('🔌 WS error:', err)
+        if (err?.code === 'AUTH_REQUIRED') {
+          addToast('error', 'Сессия истекла — обновите страницу')
+        }
       })
 
       socket.on('request-update', (data) => {

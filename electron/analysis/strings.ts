@@ -39,8 +39,6 @@ export function scanStrings(filepath: string, maxSize = 512 * 1024): string[] {
       }
     }
     if (uniBuf.length >= 4) strings.push(String.fromCharCode(...uniBuf))
-  } catch (_e) {
-    /* skip */
-  }
+  } catch (err) { console.warn('[strings] failed:', (err as Error).message) }
   return strings
 }

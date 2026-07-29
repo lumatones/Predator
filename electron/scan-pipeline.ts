@@ -17,9 +17,11 @@ import fs from 'fs'
 
 import type { ScanResult } from './types'
 import { ctx } from './types'
-import { recordSession, getProfileSummary } from './persistent-profile'
+import { recordSession, getProfileSummary, updateThreatActors } from './persistent-profile'
 import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, uploadSafeFiles, refreshSafeFilesDb } from './safe-files-db'
 import { enqueue } from './telemetry-queue'
+import { rescoreResults, calculateRisk } from './risk-scorer'
+import { groupResults } from './result-grouper'
 
 // ═══════════════════════════════════════════════════
 // TYPES
@@ -65,6 +67,10 @@ export async function recordScanSession(
   pctx: PipelineContext,
 ): Promise<void> {
   try {
+    // E18: Re-score results with weighted engine
+    const weightedResults = rescoreResults(results)
+    const riskReport = calculateRisk(weightedResults)
+
     const profile = getProfileSummary()
     recordSession({
       mode: pctx.mode as any,
@@ -75,8 +81,17 @@ export async function recordScanSession(
       lowRiskCount: results.filter(r => r.risk === 'low').length,
       topFindings: results.filter(r => r.risk === 'high').slice(0, 5).map(r => r.fileName),
     })
+
+    // E19: Update threat actor profiles with detected cheat names
+    const grouped = groupResults(weightedResults)
+    const cheatNames = grouped.cheatGroups.map(g => g.cheatName)
+    updateThreatActors(cheatNames, weightedResults.filter(r => r.risk === 'high').slice(0, 5).map(r => r.fileName))
+
     if (profile.escalated) {
       console.log(`  📈 Persistent profile: ${profile.totalScans} scans, ${profile.consistencyPercent}% consistent, trend=${profile.trend}`)
+    }
+    if (riskReport.level !== 'clean') {
+      console.log(`  🎯 Weighted risk: ${riskReport.overall}/100 (${riskReport.level}) — ${riskReport.totalEvidence} signals, ${Object.keys(riskReport.categories).length} categories`)
     }
   } catch (err) { console.error('[pipeline:recordScanSession]', (err as Error).message || err) }
 }

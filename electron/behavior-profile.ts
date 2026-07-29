@@ -52,7 +52,7 @@ function getNetworkForPid(pid: number): string[] {
       const port = local.split(':').pop() || ''
       if (MEME_PORTS.has(port)) ports.push(port)
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[behavior-profile] failed:', (err as Error).message) }
   return ports
 }
 

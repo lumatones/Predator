@@ -9,6 +9,8 @@
  *   value: { path, size, mtime, firstSeen, lastSeen, count, verifiedBy }
  *
  * Синхронизация с сервером: downloadKnownSafeHashes() / uploadSafeFiles()
+ *
+ * v2: O(1) path-based lookup via _pathIndex Map (was O(n) Object.values iteration).
  */
 
 import fs from 'fs'
@@ -43,6 +45,40 @@ export interface SafeFileEntry {
 interface SafeFilesDbData {
   version: number
   entries: Record<string, SafeFileEntry>
+}
+
+// ── In-memory index for O(1) lookup ────────────────
+
+/** Maps `normalizedPath|size` → entry key for instant path-based lookup */
+const _pathIndex = new Map<string, string>()
+
+function rebuildPathIndex(): void {
+  _pathIndex.clear()
+  for (const [key, entry] of Object.entries(_db.entries)) {
+    if (!entry.path) continue
+    const normalized = entry.path.toLowerCase().replace(/\\/g, '/')
+    _pathIndex.set(`${normalized}|${entry.size}`, key)
+  }
+}
+
+function addToPathIndex(key: string, entry: SafeFileEntry): void {
+  if (!entry.path) return
+  const normalized = entry.path.toLowerCase().replace(/\\/g, '/')
+  _pathIndex.set(`${normalized}|${entry.size}`, key)
+}
+
+function removeFromPathIndex(entry: SafeFileEntry): void {
+  if (!entry.path) return
+  const normalized = entry.path.toLowerCase().replace(/\\/g, '/')
+  const idxKey = `${normalized}|${entry.size}`
+  // Only delete if this entry owns the key (same file might have been re-added)
+  const ownerKey = _pathIndex.get(idxKey)
+  if (ownerKey) {
+    const owner = _db.entries[ownerKey]
+    if (!owner || owner.path === entry.path) {
+      _pathIndex.delete(idxKey)
+    }
+  }
 }
 
 // ── Paths ──────────────────────────────────────────
@@ -85,6 +121,8 @@ export function loadSafeFilesDb(): void {
   } catch {
     _db = { version: 1, entries: {} }
   }
+  // Build path index AFTER loading (always, even on fresh DB)
+  rebuildPathIndex()
 }
 
 export function saveSafeFilesDb(): void {
@@ -95,7 +133,7 @@ export function saveSafeFilesDb(): void {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(dbPath, JSON.stringify(_db, null, 2), 'utf-8')
     _dirty = false
-  } catch { /* silent */ }
+  } catch (err) { console.warn('[safe-files-db] silently failed:', (err as Error).message) }
 }
 
 // ── Core API ───────────────────────────────────────
@@ -120,25 +158,17 @@ export function computePartialHash(filepath: string): string {
 
 /**
  * Check if a file is known-safe by path+size (local entries) or hash+size (server entries).
- * - Local entries: matched by file path + size (fast, no hash needed)
- * - Server entries: matched by partial hash + size (slower, requires reading 64KB)
- * This ensures community-verified safe files work on ALL devices.
+ *
+ * v2: O(1) path lookup via _pathIndex Map (was O(n) Object.values iteration).
  */
-export function isFileSafe(filepath: string, size: number, mtimeMs: number): boolean {
+export function isFileSafe(filepath: string, size: number, _mtimeMs: number): boolean {
   if (!filepath || size === 0) return false
 
-  // Fast check by path + size (for local entries with known paths)
+  // O(1): Check by path+size via index (local entries with known paths)
   const normalizedPath = filepath.toLowerCase().replace(/\\/g, '/')
-  for (const entry of Object.values(_db.entries)) {
-    if (!entry.path) continue // skip server entries (no local path)
-    const entryPath = entry.path.toLowerCase().replace(/\\/g, '/')
-    if (entryPath === normalizedPath && entry.size === size) {
-      return true
-    }
-  }
+  if (_pathIndex.has(`${normalizedPath}|${size}`)) return true
 
-  // Second pass: check by partial hash + size (for server entries with empty path)
-  // This catches community-verified safe files downloaded from the server
+  // O(1): Check by partial hash + size (for server entries with empty path)
   const partialHash = computePartialHash(filepath)
   if (partialHash) {
     const key = `${partialHash}_${size}`
@@ -166,9 +196,17 @@ export function markFileSafe(
   const now = new Date().toISOString()
 
   if (existing) {
+    // Update existing entry — path may have changed
+    const oldPath = existing.path
     existing.lastSeen = now
     existing.confirmCount++
-    existing.path = filepath // update path if moved
+    existing.path = filepath
+    if (oldPath !== filepath) {
+      // Path changed — re-index
+      const oldNormalized = oldPath.toLowerCase().replace(/\\/g, '/')
+      _pathIndex.delete(`${oldNormalized}|${size}`)
+      addToPathIndex(key, existing)
+    }
   } else {
     _db.entries[key] = {
       partialHash,
@@ -180,17 +218,18 @@ export function markFileSafe(
       confirmCount: 1,
       verifiedBy,
     }
+    addToPathIndex(key, _db.entries[key])
   }
 
-  // Dedup by path too (same file might have different partial hashes if content changed)
+  // Dedup by path (same file might have different partial hashes if content changed)
   const pathKey = `path:${filepath.toLowerCase()}`
   const existingByPath = Object.entries(_db.entries).find(
     ([, e]) => `path:${e.path.toLowerCase()}` === pathKey && e.size === size,
   )
   if (existingByPath && existingByPath[0] !== key) {
-    // Merge: keep the entry with higher confirmCount
     const [dupKey, dupEntry] = existingByPath
     if (_db.entries[key].confirmCount >= dupEntry.confirmCount) {
+      removeFromPathIndex(dupEntry)
       delete _db.entries[dupKey]
     } else {
       delete _db.entries[key]
@@ -223,27 +262,19 @@ export function getSafeFilesCount(): number {
 /**
  * Refresh ALL existing safe DB entries — increment confirmCount for files
  * that still exist at their recorded path with the same mtime.
- *
- * WHY: Without this, confirmCount stays at 1 forever because once a file is
- * in the safe-files DB, the heuristic scan skips it (isFileSafe → true),
- * so it never reappears in scan results and never reaches markFilesSafe().
- *
- * This function fixes the deadlock: each scan re-confirms existing safe files
- * by checking if they still exist on disk.
  */
 export function refreshSafeFilesDb(): { refreshed: number; removed: number } {
   let refreshed = 0
   let removed = 0
 
   for (const [key, entry] of Object.entries(_db.entries)) {
-    // Skip server-synced entries (no local path to verify)
     if (entry.verifiedBy === 'server' || !entry.path) continue
 
     try {
       if (!fs.existsSync(entry.path)) {
-        // File was deleted — remove from DB after 7 days of not being found
         const daysSinceLastSeen = (Date.now() - new Date(entry.lastSeen).getTime()) / (1000 * 60 * 60 * 24)
         if (daysSinceLastSeen > 7) {
+          removeFromPathIndex(entry)
           delete _db.entries[key]
           removed++
           _dirty = true
@@ -253,46 +284,40 @@ export function refreshSafeFilesDb(): { refreshed: number; removed: number } {
 
       const st = fs.statSync(entry.path)
       if (!st.isFile()) {
+        removeFromPathIndex(entry)
         delete _db.entries[key]
         removed++
         _dirty = true
         continue
       }
 
-      // File still exists — increment confirmCount
       entry.lastSeen = new Date().toISOString()
       entry.confirmCount++
-      entry.size = st.size  // update size if changed
+      entry.size = st.size
       entry.mtime = new Date(st.mtimeMs).toISOString()
       refreshed++
       _dirty = true
     } catch {
-      // Can't stat — remove from DB after grace period
       try {
         const daysSinceLastSeen = (Date.now() - new Date(entry.lastSeen).getTime()) / (1000 * 60 * 60 * 24)
         if (daysSinceLastSeen > 7) {
+          removeFromPathIndex(entry)
           delete _db.entries[key]
           removed++
           _dirty = true
         }
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[safe-files-db] failed:', (err as Error).message) }
     }
   }
 
-  if (refreshed > 0 || removed > 0) {
-    saveSafeFilesDb()
-  }
+  if (removed > 0) rebuildPathIndex()
+  if (refreshed > 0 || removed > 0) saveSafeFilesDb()
 
   return { refreshed, removed }
 }
 
 // ── Server Sync ────────────────────────────────────
 
-/**
- * Sync safe files FROM the server (community whitelist).
- * Every startup, download the crowd-verified safe files and add them to the local DB.
- * This ensures ALL devices share the same whitelist immediately.
- */
 export function syncSafeFilesFromServer(): Promise<number> {
   return new Promise((resolve) => {
     try {
@@ -314,7 +339,7 @@ export function syncSafeFilesFromServer(): Promise<number> {
                     if (!_db.entries[key]) {
                       _db.entries[key] = {
                         partialHash: entry.partialHash,
-                        path: '',  // server entry — no local path, check by hash+size only
+                        path: '',
                         size: entry.size,
                         mtime: '',
                         firstSeen: entry.lastSeen || new Date().toISOString(),
@@ -349,11 +374,6 @@ export function syncSafeFilesFromServer(): Promise<number> {
   })
 }
 
-/**
- * Upload local safe-file entries to server for community analysis.
- * Sends entries that have been confirmed by at least 1 scan.
- * Called after each scan completes.
- */
 export function uploadSafeFiles(): void {
   try {
     const entries = Object.values(_db.entries)
@@ -385,7 +405,7 @@ export function uploadSafeFiles(): void {
     })
     req.write(payload)
     req.end()
-  } catch { /* silent */ }
+  } catch (err) { console.warn('[safe-files-db] silently failed:', (err as Error).message) }
 }
 
 // ── Auto-cleanup timer ─────────────────────────────

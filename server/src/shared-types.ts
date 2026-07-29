@@ -155,12 +155,14 @@ export const hashConfirmFromScanSchema = z.object({
 })
 
 export const paginationQuerySchema = z.object({
-  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
-  page: z.string().regex(/^\d+$/).transform(Number).optional(),
-  status: z.enum(['pending', 'confirmed', 'false_positive']).optional(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(500).optional().default(50),
+  status: z.enum(['pending', 'confirmed', 'false_positive', 'shadow', 'promoted', 'rejected', 'all']).optional(),
   after: z.string().optional(),
   since: z.string().optional(),
 })
+
+
 
 // ═══════════════════════════════════════════════════
 // TYPESCRIPT TYPES (inferred from Zod)

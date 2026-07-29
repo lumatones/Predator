@@ -15,13 +15,67 @@ import https from 'https'
 import { getApiBase } from './config'
 import { mergeCheatHashes } from './cheats-db'
 import { setKnownTlshHashes, mergeTlshHashes } from './fuzzy-hash'
+import { addKeywords, addPatterns, getSignatureStats } from './signature-registry'
 
 let _syncTimer: ReturnType<typeof setInterval> | null = null
 let _wsConnection: ReturnType<typeof import('socket.io-client').io> | null = null
 let _wsConnected = false
+let _sigVersion = 0
 
 export function isCloudSyncActive(): boolean {
   return _wsConnected || _syncTimer !== null
+}
+
+// ── Hot-reload signatures (E13) ──
+
+export async function fetchSignatures(): Promise<void> {
+  try {
+    const base = getApiBase()
+    const url = new URL('/api/v1/signatures', base)
+    url.searchParams.set('since_version', String(_sigVersion))
+
+    const data = await new Promise<string>((resolve, reject) => {
+      const transport = url.protocol === 'https:' ? https : http
+      const req = transport.get(url, (res) => {
+        // 304 = not modified — client already has latest
+        if (res.statusCode === 304) {
+          res.resume()
+          return resolve('')
+        }
+        let body = ''
+        res.on('data', (chunk: string) => body += chunk)
+        res.on('end', () => resolve(body))
+        res.on('error', reject)
+      })
+      req.on('error', reject)
+      req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')) })
+    })
+
+    if (!data) return // 304 — no update needed
+
+    const parsed = JSON.parse(data)
+    const payload = parsed?.data
+    if (!payload) return
+
+    let added = 0
+    if (payload.keywords && Array.isArray(payload.keywords)) {
+      added += addKeywords(payload.keywords)
+    }
+    if (payload.patterns && Array.isArray(payload.patterns)) {
+      const regexes = payload.patterns
+        .map((p: string) => { try { return new RegExp(p) } catch { return null } })
+        .filter(Boolean)
+      added += addPatterns(regexes)
+    }
+
+    if (added > 0) {
+      _sigVersion = payload.version || _sigVersion + 1
+      const stats = getSignatureStats()
+      console.log(`  🔄 Hot-reload: +${added} signatures (now ${stats.keywords} keywords, ${stats.patterns} patterns) v${_sigVersion}`)
+    } else if (payload.version) {
+      _sigVersion = payload.version
+    }
+  } catch (err) { console.warn('[cloud-sync] fetchSignatures failed:', (err as Error).message) }
 }
 
 // ── WebSocket connection (real-time) ──
@@ -124,7 +178,11 @@ export function startCloudSync(): void {
   }
   // HTTP polling as fallback (runs in parallel with WS or standalone)
   fetchCheatHashes()
-  _syncTimer = setInterval(fetchCheatHashes, 5 * 60 * 1000)
+  fetchSignatures()
+  _syncTimer = setInterval(() => {
+    fetchCheatHashes()
+    fetchSignatures()
+  }, 5 * 60 * 1000)
 }
 
 export function stopCloudSync(): void {
@@ -135,7 +193,7 @@ export function stopCloudSync(): void {
   if (_wsConnection) {
     try {
       ( _wsConnection as { disconnect?: () => void } ).disconnect?.()
-    } catch { /* ignore */ }
+    } catch (err) { console.warn('[cloud-sync] failed:', (err as Error).message) }
     _wsConnection = null
     _wsConnected = false
   }

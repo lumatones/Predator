@@ -209,7 +209,7 @@ export function analyzeApiHashingStatic(filepath: string): ApiHashingResult {
       patterns.push(`${h.name} (${h.count}x) — ${h.description}`)
       score += h.risk
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[api-hashing] failed:', (err as Error).message) }
 
   return { detected: score >= 40, confidence: Math.min(score, 100), patterns }
 }
@@ -255,7 +255,7 @@ export function analyzeApiHashingInDump(filepath: string): ApiHashingResult {
         score += 15
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[api-hashing] failed:', (err as Error).message) }
 
   return { detected: score >= 40, confidence: Math.min(score, 100), patterns }
 }

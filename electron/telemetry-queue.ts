@@ -99,7 +99,7 @@ function saveQueue(): void {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(p, JSON.stringify(_queue, null, 2), 'utf-8')
     _dirty = false
-  } catch { /* silent */ }
+  } catch (err) { console.warn('[telemetry-queue] silently failed:', (err as Error).message) }
 }
 
 // ═══════════════════════════════════════════════════

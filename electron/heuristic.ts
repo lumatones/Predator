@@ -2,30 +2,28 @@
  * Predator — Heuristic Analysis Engine
  *
  * The core scoring logic that decides whether a file or process is suspicious.
- * Extracted from the monolithic scanner.ts for testability and clarity.
+ *
+ * v2: Decomposed into heuristic/* modules. This file now acts as the public
+ * barrel — keeping constants, helpers, and heuristicFileScan while re-exporting
+ * the extracted pure functions.
+ *
+ * Modules:
+ *   heuristic/combo-detector.ts     — comboScoreUnsignedBinary
+ *   heuristic/signature-batch.ts    — batchCheckSignatures, checkDigitalSignature
+ *   heuristic/masquerading.ts       — checkMasqueradingExecutable
+ *   heuristic/archive-scan.ts       — scanArchiveContents, ARCHIVE_EXTS
+ *   heuristic/cheat-names.ts        — pre-computed name arrays for matching
  */
 
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import { execSync, spawnSync } from 'child_process'
 
-import {
-  KNOWN_PROCESSES,
-  KNOWN_CHEAT_FILES,
-  KNOWN_LUA_SCRIPTS,
-  KNOWN_CHEAT_FOLDERS,
-  KNOWN_CHEAT_HASHES,
-  KNOWN_BINARY_SIGNATURES,
-  TARGET_EXTENSIONS,
-  MASQUERADING_FILENAMES,
-  isPlatformWhitelisted,
-} from './cheats-db'
+import { KNOWN_CHEAT_HASHES } from './cheats-db'
 
 import {
   evaluateYara,
   isTrustedPath,
-  isTrustedCompany,
   analyzePeHeaders,
   analyzeSectionEntropy,
 } from './cheat-rules'
@@ -37,7 +35,6 @@ import {
 
 import {
   analyzeApiHashingStatic,
-  analyzeApiHashingInDump,
 } from './api-hashing'
 
 import type { HeuristicResult } from './types'
@@ -47,15 +44,29 @@ import { isFileSafe } from './safe-files-db'
 import { calculateEntropy } from './analysis/entropy'
 import { scanStrings } from './analysis/strings'
 
-// ═══════════════════════════════════════════════════
-// SIGNATURE DATA — imported from central registry
-// ═══════════════════════════════════════════════════
-// All detection data (categories, keywords, patterns) lives in
-// signature-registry.ts — the single source of truth.
-// heuristic.ts contains only SCORING LOGIC.
-
+// ── Re-export signature registry (pure data) ──
 export { SUSPICIOUS_CATEGORIES, ALL_CHEAT_KEYWORDS, SUSPICIOUS_PATTERNS, MIN_KEYWORD_LENGTH, matchKeywords, matchPatterns } from './signature-registry'
 import { SUSPICIOUS_CATEGORIES, MIN_KEYWORD_LENGTH, matchKeywords, matchPatterns } from './signature-registry'
+
+// ── Re-export extracted modules ──
+export { comboScoreUnsignedBinary } from './heuristic/combo-detector'
+export { batchCheckSignatures, checkDigitalSignature } from './heuristic/signature-batch'
+export { checkMasqueradingExecutable } from './heuristic/masquerading'
+export { scanArchiveContents, ARCHIVE_EXTS } from './heuristic/archive-scan'
+
+// ── Local imports of re-exported modules (for heuristicFileScan) ──
+import { comboScoreUnsignedBinary } from './heuristic/combo-detector'
+import { checkDigitalSignature } from './heuristic/signature-batch'
+import { checkMasqueradingExecutable } from './heuristic/masquerading'
+import { scanArchiveContents, ARCHIVE_EXTS } from './heuristic/archive-scan'
+
+// ── Re-export shared cheat name arrays (for matchKnownCheat) ──
+export { PROC_BASES, FILE_NAMES, LUA_NAMES, FOLDER_NAMES } from './heuristic/cheat-names'
+import { PROC_BASES, FILE_NAMES, LUA_NAMES, FOLDER_NAMES } from './heuristic/cheat-names'
+
+// ═══════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════
 
 export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
   '.dll': 'Dynamic library (possible inject)',
@@ -64,7 +75,6 @@ export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
   '.luac': 'Compiled Lua script',
   '.exe': 'Executable file',
   '.sys': 'System driver',
-  // '.bin' and '.dat' removed — handled by skippable extensions
   '.cfg': 'Configuration file',
   '.ini': 'Configuration file',
   '.js': 'JavaScript (may contain cheat loader)',
@@ -75,11 +85,7 @@ export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
   '.msi': 'Installer (may contain cheat)',
 }
 
-// MIN_KEYWORD_LENGTH is now imported from ./signature-registry.
-// (removed from here — single source of truth)
-
-/** Known Electron/Chromium DLLs that are bundled unsigned with Electron apps.
- *  These should NEVER be flagged by the combo-detector. */
+/** Known Electron/Chromium DLLs bundled unsigned with Electron apps. Never flag these. */
 export const KNOWN_ELECTRON_DLLS = new Set([
   'd3dcompiler_47.dll', 'ffmpeg.dll', 'libegl.dll', 'libglesv2.dll',
   'vk_swiftshader.dll', 'vulkan-1.dll', 'vulkaninfo.exe',
@@ -96,29 +102,15 @@ export const SKIPPABLE_EXTENSIONS = new Set([
   '.pak', '.bin', '.dat',
 ])
 
-/** Check if filename is a known Electron bundled DLL (never flag these) */
-export function isKnownElectronDll(fileName: string): boolean {
-  return KNOWN_ELECTRON_DLLS.has(fileName.toLowerCase())
-}
-
-/** Check if extension is skippable (noise/asset files) */
-export function isSkippableExtension(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase()
-  return SKIPPABLE_EXTENSIONS.has(ext)
-}
-
 export const SCAN_CONFIG = {
   SCAN_DEPTH: 3,
   MAX_FILE_SIZE: 100 * 1024 * 1024,
-  MIN_FILE_SIZE: 0, // Scan ALL files — small configs/loaders can be < 1KB
+  MIN_FILE_SIZE: 0,
   SUSPICIOUS_AGE_DAYS: 90,
   ENTROPY_THRESHOLD: 7.5,
 }
 
-// ALL_CHEAT_KEYWORDS and SUSPICIOUS_PATTERNS are now imported from ./signature-registry.
-// (removed from here — single source of truth)
-
-// Protected paths — game mod directories where files should not be
+/** Protected paths — game mod directories where files should not be */
 export const PROTECTED_PATHS = [
   path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'mods'),
   path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'plugins'),
@@ -149,244 +141,21 @@ export const SYSTEM_PROC_NAMES = new Set([
 ])
 
 // ═══════════════════════════════════════════════════
-// CACHES — managed by ctx (ScanContext in types.ts)
-
-// Pre-normalized arrays for fast substring matching
-const _PROC_BASES = KNOWN_PROCESSES.map(n =>
-  n.toLowerCase()
-    .replace(/\.exe$/i, '')
-    .replace(/_\*\.exe$/i, '')
-    .replace(/\*\.exe$/i, '')
-)
-const _FILE_NAMES = KNOWN_CHEAT_FILES.map(n => n.toLowerCase())
-const _LUA_NAMES = KNOWN_LUA_SCRIPTS.map(n => n.toLowerCase())
-const _FOLDER_NAMES = KNOWN_CHEAT_FOLDERS.map(n => n.toLowerCase())
-
-// ═══════════════════════════════════════════════════
-// PURE FUNCTIONS (re-exported from analysis/)
+// HELPERS
 // ═══════════════════════════════════════════════════
 
 export { calculateEntropy } from './analysis/entropy'
 export { scanStrings } from './analysis/strings'
 
-// ═══════════════════════════════════════════════════
-// MASQUERADING EXECUTABLE HEURISTIC
-// ═══════════════════════════════════════════════════
-
-export function checkMasqueradingExecutable(
-  fileName: string,
-  filepath: string,
-  stat: fs.Stats,
-  peInfo: PeAnalysisResult | null,
-  secEntropy: SectionEntropy[],
-  entropy: number,
-  sigValid: boolean,
-): { isMasquerading: boolean; signals: string[] } {
-  const signals: string[] = []
-  const lowerName = fileName.toLowerCase()
-
-  if (!MASQUERADING_FILENAMES.has(lowerName)) {
-    return { isMasquerading: false, signals }
-  }
-
-  signals.push(`Filename matches masquerading target: ${fileName}`)
-
-  const systemPaths = [
-    path.join(_WR, 'System32').toLowerCase(),
-    path.join(_WR, 'SysWOW64').toLowerCase(),
-    path.join(_WR).toLowerCase(),
-  ]
-  const fpLower = filepath.toLowerCase()
-  const inSystemDir = systemPaths.some(p => fpLower.startsWith(p))
-
-  if (inSystemDir) {
-    const winSysFiles = new Set(['conhost.exe', 'rundll32.exe', 'svchost.exe', 'lsass.exe', 'services.exe', 'winlogon.exe', 'explorer.exe', 'notepad.exe'])
-    if (winSysFiles.has(lowerName)) {
-      signals.push(`Located in System32 — legitimate Windows component, not flagged`)
-      return { isMasquerading: false, signals }
-    }
-  }
-
-  if (sigValid) {
-    signals.push(`Has valid digital signature — likely legitimate version`)
-    if (entropy > 7.0 || (peInfo && peInfo.sectionCount >= 7)) {
-      signals.push('But file is packed/obfuscated despite valid signature — suspicious')
-    } else {
-      return { isMasquerading: false, signals }
-    }
-  } else {
-    signals.push('No digital signature — legitimate versions of this software ALWAYS have one')
-  }
-
-  if (peInfo) {
-    if (peInfo.sectionCount >= 7) {
-      signals.push(`Suspicious: ${peInfo.sectionCount} PE sections (expected 3-5 for legitimate tool)`)
-    }
-    if (peInfo.relocsStripped) {
-      signals.push('PE relocations stripped — suggests packing/obfuscation')
-    }
-    if (peInfo.entryPointInSuspiciousSection) {
-      signals.push('Entry point in unusual section — packed executable')
-    }
-  }
-
-  if (secEntropy.length > 0) {
-    const highEntropySections = secEntropy.filter(s => s.entropy > 7.5)
-    for (const sec of highEntropySections) {
-      signals.push(`Section [${sec.name}] entropy ${sec.entropy.toFixed(2)} > 7.5 — packed`)
-    }
-  }
-
-  if (entropy > 7.2) {
-    signals.push(`Overall entropy ${entropy.toFixed(2)} > 7.2 — packed/encrypted`)
-  }
-
-  if (stat.size >= 15 * 1024 * 1024 && stat.size <= 35 * 1024 * 1024) {
-    signals.push(`File size ${(stat.size / 1024 / 1024).toFixed(1)} MB — matches masquerading loader range`)
-  }
-
-  return { isMasquerading: signals.length >= 2, signals }
+/** Check if filename is a known Electron bundled DLL (never flag these) */
+export function isKnownElectronDll(fileName: string): boolean {
+  return KNOWN_ELECTRON_DLLS.has(fileName.toLowerCase())
 }
 
-// ═══════════════════════════════════════════════════
-// DIGITAL SIGNATURE CHECK
-// ═══════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════
-// BATCH DIGITAL SIGNATURE CHECK (P0 fix #1)
-// ═══════════════════════════════════════════════════
-//
-// BEFORE: checkDigitalSignature() spawned PowerShell per file (2s each).
-// 500 .exe/.dll files = 1000 seconds of blocking the Event Loop.
-//
-// AFTER: batchCheckSignatures() sends ALL paths in ONE PowerShell call.
-// PowerShell iterates internally (fast), returns JSON. Total: ~3-5 seconds.
-//
-// Results populate ctx.sigCache — subsequent checkDigitalSignature() calls
-// are instant cache hits. No per-file PowerShell overhead.
-
-const BINARY_SIG_EXTS = new Set(['.exe', '.dll', '.sys', '.drv'])
-
-/**
- * Batch-check digital signatures for multiple files in ONE PowerShell invocation.
- * Populates ctx.sigCache and returns results as Map.
- *
- * @param filepaths - Array of file paths to check (only .exe/.dll/.sys/.drv are checked)
- * @param batchSize - Max files per PowerShell call (default 500, prevents command-line overflow)
- */
-export function batchCheckSignatures(
-  filepaths: string[],
-  batchSize: number = 500,
-): Map<string, boolean> {
-  const results = new Map<string, boolean>()
-
-  // Filter to binary extensions only + skip already-cached files
-  const toCheck: string[] = []
-  for (const fp of filepaths) {
-    if (!fp || typeof fp !== 'string') continue
-    const ext = path.extname(fp).toLowerCase()
-    if (!BINARY_SIG_EXTS.has(ext)) continue
-    // Skip if already in cache
-    const cached = ctx.sigCache.get(fp)
-    if (cached !== undefined) {
-      results.set(fp, cached)
-      continue
-    }
-    toCheck.push(fp)
-  }
-
-  if (toCheck.length === 0) return results
-
-  // Process in batches to avoid PowerShell command-line length limits
-  for (let i = 0; i < toCheck.length; i += batchSize) {
-    const batch = toCheck.slice(i, i + batchSize)
-
-    // Build PowerShell array of paths (escape single quotes)
-    const psPaths = batch
-      .map(fp => `'${fp.replace(/'/g, "''")}'`)
-      .join(',')
-
-    const psScript = [
-      '$ErrorActionPreference = "SilentlyContinue"',
-      `$paths = @(${psPaths})`,
-      '$results = @{}',
-      'foreach ($p in $paths) {',
-      '  try {',
-      '    $sig = Get-AuthenticodeSignature -FilePath $p -ErrorAction Stop',
-      '    $results[$p] = ($sig.Status -eq "Valid")',
-      '  } catch {',
-      '    $results[$p] = $false',
-      '  }',
-      '}',
-      '$results | ConvertTo-Json -Compress',
-    ].join('\n')
-
-    try {
-      const out = execSync(
-        `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`,
-        { encoding: 'utf-8', timeout: Math.max(30000, batch.length * 100), windowsHide: true },
-      ).trim()
-
-      if (out && out.length > 2) {
-        try {
-          const parsed: Record<string, boolean> = JSON.parse(out)
-          for (const [fp, valid] of Object.entries(parsed)) {
-            const isValid = Boolean(valid)
-            ctx.sigCache.set(fp, isValid)
-            results.set(fp, isValid)
-          }
-          // Mark remaining batch files that weren't in JSON as unchecked
-          // (don't cache them — let checkDigitalSignature() try per-file fallback)
-          for (const fp of batch) {
-            if (!results.has(fp)) {
-              results.set(fp, false)
-            }
-          }
-        } catch {
-          // JSON parse failed — do NOT poison cache, let per-file fallback handle it
-          for (const fp of batch) {
-            results.set(fp, false)
-          }
-        }
-      } else {
-        // Empty output — do NOT poison cache
-        for (const fp of batch) {
-          results.set(fp, false)
-        }
-      }
-    } catch {
-      // PowerShell crashed — do NOT poison cache
-      for (const fp of batch) {
-        results.set(fp, false)
-      }
-    }
-  }
-
-  return results
-}
-
-/**
- * Check digital signature for a single file.
- * First checks ctx.sigCache (populated by batchCheckSignatures).
- * Falls back to per-file PowerShell ONLY on cache miss (should be rare).
- */
-export function checkDigitalSignature(filepath: string): boolean {
-  const cached = ctx.sigCache.get(filepath)
-  if (cached !== undefined) return cached
-
-  // Cache miss — fall back to single-file check (rare after batch pre-warming)
-  try {
-    const out = execSync(
-      `powershell -NoProfile -Command "(Get-AuthenticodeSignature '${filepath.replace(/'/g, "''")}').Status"`,
-      { encoding: 'utf-8', timeout: 2000, windowsHide: true },
-    )
-    const valid = out.includes('Valid')
-    ctx.sigCache.set(filepath, valid)
-    return valid
-  } catch (_e) {
-    ctx.sigCache.set(filepath, false)
-    return false
-  }
+/** Check if extension is skippable (noise/asset files) */
+export function isSkippableExtension(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase()
+  return SKIPPABLE_EXTENSIONS.has(ext)
 }
 
 // ═══════════════════════════════════════════════════
@@ -399,16 +168,16 @@ export function matchKnownCheat(name: string): string[] {
   if (cached !== undefined) return cached
 
   const matches: string[] = []
-  for (const base of _PROC_BASES) {
+  for (const base of PROC_BASES) {
     if (lower.includes(base)) matches.push(`process:${base}`)
   }
-  for (const file of _FILE_NAMES) {
+  for (const file of FILE_NAMES) {
     if (lower.includes(file)) matches.push(`file:${file}`)
   }
-  for (const lua of _LUA_NAMES) {
+  for (const lua of LUA_NAMES) {
     if (lower.includes(lua)) matches.push(`lua:${lua}`)
   }
-  for (const folder of _FOLDER_NAMES) {
+  for (const folder of FOLDER_NAMES) {
     if (lower.includes(folder)) matches.push(`folder:${folder}`)
   }
   ctx.cheatNameCache.set(lower, matches)
@@ -428,82 +197,12 @@ export function getFileRiskLevel(fileName: string, matches: string[]): 'high' | 
 
   const hasHighKeyword = matches.some(k =>
     ['dll inject', 'memory hack', 'injector', 'aimbot', 'wallhack',
-     'triggerbot', 'dma', 'fpga', 'pcileech', 'fuser'].includes(k)
+     'triggerbot', 'dma', 'fpga', 'pcileech', 'fuser'].includes(k),
   )
 
   if ((highRiskExts.includes(ext) && hasHighKeyword) || matches.length >= 3) return 'high'
   if (highRiskExts.includes(ext) || mediumRiskExts.includes(ext) || matches.length >= 2) return 'medium'
   return 'low'
-}
-
-// ═══════════════════════════════════════════════════
-// COMBO DETECTOR — Universal unsigned binary heuristic
-// ═══════════════════════════════════════════════════
-
-export function comboScoreUnsignedBinary(
-  ext: string,
-  sizeBytes: number,
-  entropy: number,
-  stringCount: number,
-  filepath: string,
-  sectionCount: number,
-  sigValid: boolean,
-): { signals: string[]; riskBonus: number } {
-  if (ext !== '.exe' && ext !== '.dll') {
-    return { signals: [], riskBonus: 0 }
-  }
-
-  if (sigValid) {
-    return { signals: [], riskBonus: 0 }
-  }
-
-  let signalCount = 0
-  const reasons: string[] = []
-
-  const fpLow = filepath.toLowerCase()
-  const inSuspiciousDir = fpLow.includes('downloads') || fpLow.includes('download') ||
-    fpLow.includes('desktop') || fpLow.includes('temp') || fpLow.includes('загрузки')
-
-  if (sizeBytes >= 5 * 1024 * 1024 && sizeBytes <= 100 * 1024 * 1024) {
-    signalCount++
-    reasons.push(`Strange size: ${(sizeBytes / 1024 / 1024).toFixed(1)} MB (unsigned binary of this size is unusual)`)
-  }
-
-  if (entropy > 7.0) {
-    signalCount++
-    reasons.push(`Entropy ${entropy.toFixed(2)} > 7.0 — packed/encrypted (VMProtect/Themida/obsufcation)`)
-  }
-
-  if (stringCount < 10) {
-    signalCount++
-    reasons.push(`Only ${stringCount} readable strings — fully obfuscated binary`)
-  }
-
-  if (inSuspiciousDir) {
-    signalCount++
-    reasons.push('Located in user directory (Downloads/Desktop/Temp)')
-  }
-
-  if (sectionCount >= 7) {
-    signalCount++
-    reasons.push(`${sectionCount} PE sections — typical for packed/VMProtected binaries (normal: 3–5)`)
-  }
-
-  const strongSignals = [entropy > 7.0, stringCount < 10, sectionCount >= 7].filter(Boolean).length
-
-  if (signalCount >= 2 && strongSignals >= 1) {
-    return { signals: reasons, riskBonus: 70 }
-  }
-
-  if (signalCount === 1 && inSuspiciousDir) {
-    return { signals: reasons, riskBonus: 40 }
-  }
-
-  if (signalCount === 1) {
-    return { signals: reasons, riskBonus: 15 }
-  }
-
-  return { signals: [], riskBonus: 0 }
 }
 
 // ═══════════════════════════════════════════════════
@@ -541,7 +240,6 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
     let riskScore = 0
 
     // ── Skip files that produce zero signal (noise) ──
-    // Asset files, map files, etc. have no cheat value.
     if (isSkippableExtension(filepath)) {
       return null
     }
@@ -564,7 +262,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       return null
     }
 
-    // 2. Name check against categories (min length 4 chars to avoid false positives)
+    // 2. Name check against categories (min length 4 chars)
     const shadowRuleHits: string[] = []
     for (const [catName, cat] of Object.entries(SUSPICIOUS_CATEGORIES)) {
       const isShadow = cat.shadow === true
@@ -605,7 +303,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       return null
     }
 
-    // Whitelist check — reduce score for remaining trusted-path files with signals
+    // Whitelist check — reduce score for remaining trusted-path files
     if (isTrustedPath(filepath)) {
       riskScore = Math.max(riskScore - 30, 0)
     }
@@ -614,11 +312,10 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
     const binaryExts = new Set(['.exe', '.dll', '.asi', '.sys', '.drv'])
     const textExts = new Set(['.js', '.lua', '.cs', '.bat', '.ps1', '.vbs', '.ahk', '.cfg', '.ini', '.json', '.xml'])
 
-    // Content scan for text-based files (JS loaders, Lua, scripts, configs)
+    // Content scan for text-based files
     if (textExts.has(ext) && stat.size < 512 * 1024) {
       try {
         const content = fs.readFileSync(filepath, 'utf-8').toLowerCase()
-        // ── Use shared matchKeywords/matchPatterns API (no manual loop) ──
         const keywordMatches = matchKeywords(content)
         for (let i = 0; i < Math.min(keywordMatches.length, 5); i++) {
           suspicions.push(`content:${keywordMatches[i]}`)
@@ -629,7 +326,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
           suspicions.push(`content-pattern:${pattern}`)
           riskScore += 20
         }
-      } catch (_e) { /* binary or unreadable */ }
+      } catch (err) { console.warn('[heuristic] binary/unreadable:', (err as Error).message) }
     }
 
     // Archive content scan (.zip/.rar/.7z)
@@ -679,7 +376,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
         peInfo = (ext === '.exe' || ext === '.dll' || ext === '.sys') ? analyzePeHeaders(filepath) : null
         try {
           secEntropy = analyzeSectionEntropy(filepath)
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[heuristic] section entropy failed:', (err as Error).message) }
         ctx.peHeaderCache.set(peCacheKey, { peInfo, secEntropy, mtime: stat.mtimeMs, filepath })
         if (ctx.peHeaderCache.size > ctx.PE_CACHE_MAX) {
           const firstKey = ctx.peHeaderCache.keys().next().value
@@ -751,7 +448,6 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
             riskScore += 25
           }
         }
-
       }
 
       // ── Signature analysis (applies to all binary files) ──
@@ -788,7 +484,7 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
             suspicions.push(`Hash match: known cheat file (SHA256: ${hex.slice(0, 16)}...)`)
             riskScore += 60
           }
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[heuristic] hash compute failed:', (err as Error).message) }
         finally { if (fd2 !== undefined) { try { fs.closeSync(fd2) } catch { /* best effort */ } } }
       }
 
@@ -817,14 +513,14 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
           suspicions.push(`AutoYara [${auto.rules.length} правил]: score ${auto.score.toFixed(0)}`)
           riskScore += auto.score * 0.6
         }
-      } catch (_e) { /* skip */ }
+      } catch (err) { console.warn('[heuristic] auto-yara check failed:', (err as Error).message) }
     }
 
     // Auto-YARA: learn from high-risk files
     if (riskScore > 70 && binaryExts.has(ext)) {
       try {
         learnFromFile(filepath, riskScore)
-      } catch (_e) { /* skip */ }
+      } catch (err) { console.warn('[heuristic] learn-from-file failed:', (err as Error).message) }
     }
 
     if (riskScore === 0 && shadowRuleHits.length === 0) return null
@@ -833,67 +529,9 @@ export function heuristicFileScan(filepath: string): HeuristicResult | null {
       riskScore,
       suspicions,
       shadowRuleHits: shadowRuleHits.length > 0 ? shadowRuleHits : undefined,
-      // Digital signature: true/false for .exe/.dll/.sys/.asi/.drv, undefined for non-binary
       hasValidSignature: fileHasValidSignature,
     }
   } catch (_e) {
     return null
   }
-}
-
-// ═══════════════════════════════════════════════════
-// ARCHIVE CONTENT SCANNING
-// ═══════════════════════════════════════════════════
-
-const ARCHIVE_EXTS = new Set(['.zip', '.rar', '.7z'])
-
-export function scanArchiveContents(filepath: string): string[] {
-  const matches: string[] = []
-  const ext = path.extname(filepath).toLowerCase()
-  if (!ARCHIVE_EXTS.has(ext)) return matches
-
-  try {
-    let output = ''
-    if (ext === '.zip') {
-      const shell = spawnSync('powershell', [
-        '-NoProfile', '-Command',
-        `[System.IO.Compression.ZipFile]::OpenRead('${filepath.replace(/'/g, "''")}').Entries | Select-Object -ExpandProperty FullName`,
-      ], { encoding: 'utf-8', timeout: 10000 })
-      output = shell.stdout || ''
-    } else {
-      const sevenZip = spawnSync('7z', ['l', '-slt', filepath], { encoding: 'utf-8', timeout: 10000 })
-      output = sevenZip.stdout || ''
-    }
-
-    if (!output) return matches
-
-    const lower = output.toLowerCase()
-    const lines = lower.split(/[\r\n]+/)
-    for (const line of lines) {
-      const fName = path.basename(line.trim())
-      if (!fName || fName.length < 3) continue
-      for (const base of _PROC_BASES) {
-        if (fName.includes(base)) {
-          matches.push(`archive:${fName} → ${base}`)
-          break
-        }
-      }
-      for (const file of _FILE_NAMES) {
-        if (fName.includes(file)) {
-          matches.push(`archive:${fName} → ${file}`)
-          break
-        }
-      }
-      for (const kw of matchKeywords(fName)) {
-        matches.push(`archive-kw:${fName} → ${kw}`)
-        break
-      }
-      for (const pat of matchPatterns(fName)) {
-        matches.push(`archive-pat:${pat}`)
-        break
-      }
-      if (matches.length >= 5) break
-    }
-  } catch (_e) { /* archive scanning optional */ }
-  return matches
 }

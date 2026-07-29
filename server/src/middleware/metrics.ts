@@ -270,13 +270,23 @@ metricsRouter.get('/metrics', (_req: Request, res: Response) => {
 // PERIODIC GAUGE UPDATES
 // ═══════════════════════════════════════════════════
 
+let _metricsInterval: ReturnType<typeof setInterval> | null = null
+
 export function startMetricsUpdater(queryFn: (sql: string, params?: any[]) => Promise<any>): void {
-  setInterval(async () => {
+  if (_metricsInterval) clearInterval(_metricsInterval)
+  _metricsInterval = setInterval(async () => {
     try {
       const rows = await queryFn(
         "SELECT COUNT(DISTINCT used_by) AS cnt FROM tokens WHERE used_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)"
       )
       setActiveUsers(rows[0]?.cnt || 0)
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[metrics] failed:', (err as Error).message) }
   }, 60 * 1000) // every minute
+}
+
+export function stopMetricsUpdater(): void {
+  if (_metricsInterval) {
+    clearInterval(_metricsInterval)
+    _metricsInterval = null
+  }
 }

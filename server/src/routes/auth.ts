@@ -1,6 +1,7 @@
 import express from 'express'
 import type { Request, Response } from 'express'
 import { query } from '../config/database'
+import { paginate, countTotal, setPaginationHeaders } from '../helpers/pagination'
 import {
   checkTokenSchema,
   useTokenSchema,
@@ -287,7 +288,7 @@ router.post('/submit-hashes', validate(submitHashesSchema), async (req: Request,
         )
         if (result.affectedRows === 1) inserted++
         else updated++
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[auth] failed:', (err as Error).message) }
     }
 
     try {
@@ -311,10 +312,14 @@ router.post('/submit-hashes', validate(submitHashesSchema), async (req: Request,
 router.get('/fetch-hashes', async (req: Request, res: Response) => {
   try {
     const after = (req.query.after as string) || '2000-01-01'
+    const { offset, limit, page } = paginate(req.query)
+
     const rows = await query<(SuspiciousHashRow & { file_size: number; created_at: string; tlsh: string | null })[]>(
-      'SELECT sha256, tlsh, file_name, file_size, created_at FROM suspicious_hashes WHERE status = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500',
-      ['confirmed', after]
+      'SELECT sha256, tlsh, file_name, file_size, created_at FROM suspicious_hashes WHERE status = ? AND created_at > ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      ['confirmed', after, limit, offset]
     )
+
+    setPaginationHeaders(res, page, limit)
     return res.json({
       count: rows.length,
       hashes: rows.map(r => ({
@@ -324,7 +329,6 @@ router.get('/fetch-hashes', async (req: Request, res: Response) => {
         added_at: r.created_at,
         tlsh: r.tlsh || undefined,
       })),
-      // Also return flat TLSH array for quick fuzzy-hash DB population
       tlsh: rows.filter(r => r.tlsh).map(r => r.tlsh! as string),
     })
   } catch (err: any) {
@@ -337,10 +341,14 @@ router.get('/fetch-hashes', async (req: Request, res: Response) => {
 router.get('/safe-hashes', async (req: Request, res: Response) => {
   try {
     const after = (req.query.after as string) || '2000-01-01'
+    const { offset, limit, page } = paginate(req.query)
+
     const rows = await query<(SuspiciousHashRow & { sha256: string })[]>(
-      'SELECT sha256, file_name AS fileName, file_size AS fileSize, created_at AS addedAt FROM suspicious_hashes WHERE status = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500',
-      ['confirmed', after]
+      'SELECT sha256, file_name AS fileName, file_size AS fileSize, created_at AS addedAt FROM suspicious_hashes WHERE status = ? AND created_at > ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      ['confirmed', after, limit, offset]
     )
+
+    setPaginationHeaders(res, page, limit)
     return res.json(rows.map(r => r.sha256))
   } catch (err: any) {
     console.error('Safe hashes error:', err)
@@ -379,7 +387,7 @@ router.post('/submit-safe-files', validate(submitSafeFilesSchema), async (req: R
           )
           inserted++
         }
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[auth] failed:', (err as Error).message) }
     }
 
     return res.json({ success: true, inserted, updated })
@@ -431,7 +439,7 @@ router.post('/submit-shadow', validate(submitShadowSchema), async (req: Request,
           ]
         )
         inserted++
-      } catch { /* skip duplicate */ }
+      } catch (err) { console.warn('[auth] failed: duplicate:', (err as Error).message) }
     }
 
     return res.json({ success: true, inserted, deduped, total: findings.length })
@@ -445,10 +453,14 @@ router.post('/submit-shadow', validate(submitShadowSchema), async (req: Request,
 router.get('/safe-files', async (req: Request, res: Response) => {
   try {
     const since = (req.query.since as string) || '2000-01-01'
+    const { offset, limit, page } = paginate(req.query)
+
     const rows = await query<any[]>(
-      'SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS size, confirm_count AS confirmCount, last_seen AS lastSeen FROM safe_files WHERE last_seen > ? AND confirm_count >= 2 ORDER BY confirm_count DESC LIMIT 2000',
-      [since]
+      'SELECT partial_hash AS partialHash, file_name AS fileName, file_size AS size, confirm_count AS confirmCount, last_seen AS lastSeen FROM safe_files WHERE last_seen > ? AND confirm_count >= 2 ORDER BY confirm_count DESC LIMIT ? OFFSET ?',
+      [since, limit, offset]
     )
+
+    setPaginationHeaders(res, page, limit)
     return res.json(rows)
   } catch (err: any) {
     console.error('Safe files error:', err)

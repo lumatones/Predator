@@ -300,6 +300,7 @@ export function matchKeywords(text: string): string[] {
     if (kw.length < MIN_KEYWORD_LENGTH) continue
     if (lower.includes(kw.toLowerCase())) {
       matches.push(kw)
+      recordKeywordHit(kw)
     }
   }
   return matches
@@ -314,6 +315,7 @@ export function matchPatterns(text: string): string[] {
   for (const pat of SUSPICIOUS_PATTERNS) {
     if (pat.test(text)) {
       matches.push(pat.source)
+      recordPatternHit(pat.source)
     }
   }
   return matches
@@ -382,5 +384,151 @@ export function getSignatureStats(): { keywords: number; patterns: number; categ
     keywords: ALL_CHEAT_KEYWORDS.length,
     patterns: SUSPICIOUS_PATTERNS.length,
     categories: Object.keys(SUSPICIOUS_CATEGORIES).length,
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// 7. SIGNATURE EFFECTIVENESS TRACKING (E26)
+// ═══════════════════════════════════════════════════
+//
+// Track which keywords/patterns actually fire during scans.
+// This enables:
+//   - Pruning never-hit signatures (reduce noise)
+//   - Identifying high-signal signatures (promote to higher priority)
+//   - Admin dashboard stats (which sigs are most effective)
+
+interface HitCounter {
+  hits: number
+  lastHit: number // timestamp
+  firstHit: number // timestamp
+}
+
+const _keywordHits = new Map<string, HitCounter>()
+const _patternHits = new Map<string, HitCounter>()
+let _hitCountersEnabled = true
+
+/** Record that a keyword matched */
+export function recordKeywordHit(keyword: string): void {
+  if (!_hitCountersEnabled) return
+  const lower = keyword.toLowerCase()
+  const existing = _keywordHits.get(lower)
+  const now = Date.now()
+  if (existing) {
+    existing.hits++
+    existing.lastHit = now
+  } else {
+    _keywordHits.set(lower, { hits: 1, lastHit: now, firstHit: now })
+  }
+}
+
+/** Record that a pattern matched */
+export function recordPatternHit(patternSource: string): void {
+  if (!_hitCountersEnabled) return
+  const existing = _patternHits.get(patternSource)
+  const now = Date.now()
+  if (existing) {
+    existing.hits++
+    existing.lastHit = now
+  } else {
+    _patternHits.set(patternSource, { hits: 1, lastHit: now, firstHit: now })
+  }
+}
+
+/** Get top N most effective keywords */
+export function getTopKeywords(n = 20): { keyword: string; hits: number; lastHit: number }[] {
+  return Array.from(_keywordHits.entries())
+    .map(([keyword, c]) => ({ keyword, hits: c.hits, lastHit: c.lastHit }))
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, n)
+}
+
+/** Get top N most effective patterns */
+export function getTopPatterns(n = 20): { pattern: string; hits: number; lastHit: number }[] {
+  return Array.from(_patternHits.entries())
+    .map(([pattern, c]) => ({ pattern, hits: c.hits, lastHit: c.lastHit }))
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, n)
+}
+
+/** Get keywords that never fired (potential pruning candidates) */
+export function getZeroHitKeywords(): string[] {
+  const hitSet = new Set(_keywordHits.keys())
+  return ALL_CHEAT_KEYWORDS.filter(kw => !hitSet.has(kw.toLowerCase()))
+}
+
+/** Get patterns that never fired */
+export function getZeroHitPatterns(): string[] {
+  const hitSet = new Set(_patternHits.keys())
+  return SUSPICIOUS_PATTERNS
+    .map(p => p.source)
+    .filter(s => !hitSet.has(s))
+}
+
+/** Prune signatures that have never fired in N days (user-triggered, not automatic) */
+export function pruneColdSignatures(minAgeDays: number = 30): { keywordsPruned: number; patternsPruned: number } {
+  const cutoff = Date.now() - minAgeDays * 86400000
+  const hitKeywords = new Set(
+    Array.from(_keywordHits.entries())
+      .filter(([, c]) => c.lastHit > cutoff)
+      .map(([k]) => k)
+  )
+  const hitPatterns = new Set(
+    Array.from(_patternHits.entries())
+      .filter(([, c]) => c.lastHit > cutoff)
+      .map(([p]) => p)
+  )
+
+  // Prune keywords
+  const beforeKw = ALL_CHEAT_KEYWORDS.length
+  for (let i = ALL_CHEAT_KEYWORDS.length - 1; i >= 0; i--) {
+    if (!hitKeywords.has(ALL_CHEAT_KEYWORDS[i].toLowerCase())) {
+      ALL_CHEAT_KEYWORDS.splice(i, 1)
+    }
+  }
+  const keywordsPruned = beforeKw - ALL_CHEAT_KEYWORDS.length
+
+  // Prune patterns
+  const beforePat = SUSPICIOUS_PATTERNS.length
+  for (let i = SUSPICIOUS_PATTERNS.length - 1; i >= 0; i--) {
+    if (!hitPatterns.has(SUSPICIOUS_PATTERNS[i].source)) {
+      SUSPICIOUS_PATTERNS.splice(i, 1)
+    }
+  }
+  const patternsPruned = beforePat - SUSPICIOUS_PATTERNS.length
+
+  return { keywordsPruned, patternsPruned }
+}
+
+/** Reset all hit counters */
+export function resetHitCounters(): void {
+  _keywordHits.clear()
+  _patternHits.clear()
+}
+
+/** Enable/disable hit counting (disable for performance during bulk scans) */
+export function setHitCountersEnabled(enabled: boolean): void {
+  _hitCountersEnabled = enabled
+}
+
+/** Get full effectiveness report */
+export function getEffectivenessReport(): {
+  totalKeywords: number
+  totalPatterns: number
+  activeKeywords: number
+  activePatterns: number
+  zeroHitKeywords: number
+  zeroHitPatterns: number
+  topKeywords: { keyword: string; hits: number }[]
+  topPatterns: { pattern: string; hits: number }[]
+} {
+  return {
+    totalKeywords: ALL_CHEAT_KEYWORDS.length,
+    totalPatterns: SUSPICIOUS_PATTERNS.length,
+    activeKeywords: _keywordHits.size,
+    activePatterns: _patternHits.size,
+    zeroHitKeywords: getZeroHitKeywords().length,
+    zeroHitPatterns: getZeroHitPatterns().length,
+    topKeywords: getTopKeywords(10).map(k => ({ keyword: k.keyword, hits: k.hits })),
+    topPatterns: getTopPatterns(10).map(p => ({ pattern: p.pattern, hits: p.hits })),
   }
 }

@@ -40,7 +40,7 @@ export function scanBehavioralMasquerading(): ScanResult[] {
         const memStr = parts[3].replace(/[^\d]/g, '')
         const memKB = parseInt(memStr, 10) || 0
         masqueradingProcs.push({ name, pid, memKB })
-      } catch (_e) { /* skip */ }
+      } catch (err) { console.warn('[behavioral] failed:', (err as Error).message) }
     }
 
     if (masqueradingProcs.length === 0) return results

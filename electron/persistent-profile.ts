@@ -5,12 +5,19 @@
  * Detects "smart" cheaters who trigger minor alerts consistently over time
  * by escalating their profile when consistency exceeds threshold.
  *
+ * E19 enhancements:
+ *   - Device fingerprinting (HWID-based) for cross-account tracking
+ *   - Threat actor profiling (pattern-based grouping across scans)
+ *   - Cross-scan pattern correlation
+ *
  * Storage: JSON file at %APPDATA%/Predator/scan-history.json
  */
 
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { execSync } from 'child_process'
+import crypto from 'crypto'
 
 // ── Types ──
 
@@ -34,6 +41,28 @@ export interface PersistentProfile {
   trend: 'escalating' | 'stable' | 'declining'
   lastEscalation: string | null
   totalScans: number
+  /** E19: Device fingerprint for cross-account tracking */
+  deviceFingerprint: string | null
+  /** E19: Threat actor profiles grouped by attack pattern */
+  threatActors: ThreatActorProfile[]
+}
+
+// ── E19: Threat actor profile ──
+
+export interface ThreatActorProfile {
+  /** Pattern signature (hashed behavior fingerprint) */
+  patternHash: string
+  /** Human-readable pattern description */
+  description: string
+  /** Number of scans where this pattern appeared */
+  occurrences: number
+  /** First and last seen timestamps */
+  firstSeen: string
+  lastSeen: string
+  /** Cheat tools associated with this pattern */
+  associatedCheats: string[]
+  /** Pattern confidence (0-100) — how consistently this pattern appears) */
+  confidence: number
 }
 
 // ── Config ──
@@ -60,6 +89,8 @@ function loadProfile(): PersistentProfile {
       trend: data.trend || 'stable',
       lastEscalation: data.lastEscalation || null,
       totalScans: data.totalScans || 0,
+      deviceFingerprint: data.deviceFingerprint || null,
+      threatActors: data.threatActors || [],
     }
   } catch {
     return {
@@ -69,6 +100,8 @@ function loadProfile(): PersistentProfile {
       trend: 'stable',
       lastEscalation: null,
       totalScans: 0,
+      deviceFingerprint: null,
+      threatActors: [],
     }
   }
 }
@@ -203,4 +236,192 @@ export function getProfileSummary(): {
     escalated: profile.consistencyRatio >= ESCALATION_CONSISTENCY_THRESHOLD && profile.cumulativeScore > 100,
     recentFindings,
   }
+}
+
+// ═══════════════════════════════════════════════════
+// E19: DEVICE FINGERPRINTING
+// ═══════════════════════════════════════════════════
+
+/**
+ * Generate a device fingerprint (HWID) based on system identifiers.
+ * Used for cross-account tracking — cheaters who use multiple
+ * Windows accounts are still linked by hardware fingerprint.
+ *
+ * Components:
+ *   - Motherboard serial (wmic baseboard)
+ *   - System UUID (wmic csproduct)
+ *   - OS install date
+ *   - Primary disk serial
+ *
+ * All components are hashed with SHA256 — no raw hardware IDs stored.
+ */
+export function generateDeviceFingerprint(): string {
+  const components: string[] = []
+
+  try {
+    const out = execSync(
+      'wmic baseboard get serialnumber /format:csv 2>nul',
+      { encoding: 'utf-8', timeout: 5000 },
+    )
+    const lines = out.trim().split('\n')
+    if (lines.length >= 2) {
+      const serial = lines[1].split(',').pop()?.trim()
+      if (serial) components.push('mb:' + serial)
+    }
+  } catch { /* optional */ }
+
+  try {
+    const out = execSync(
+      'wmic csproduct get uuid /format:csv 2>nul',
+      { encoding: 'utf-8', timeout: 5000 },
+    )
+    const lines = out.trim().split('\n')
+    if (lines.length >= 2) {
+      const uuid = lines[1].split(',').pop()?.trim()
+      if (uuid) components.push('uuid:' + uuid)
+    }
+  } catch { /* optional */ }
+
+  try {
+    const out = execSync(
+      'wmic os get installdate /format:csv 2>nul',
+      { encoding: 'utf-8', timeout: 5000 },
+    )
+    const lines = out.trim().split('\n')
+    if (lines.length >= 2) {
+      const date = lines[1].split(',').pop()?.trim()
+      if (date) components.push('os:' + date)
+    }
+  } catch { /* optional */ }
+
+  try {
+    const out = execSync(
+      'wmic diskdrive where "Index=0" get serialnumber /format:csv 2>nul',
+      { encoding: 'utf-8', timeout: 5000 },
+    )
+    const lines = out.trim().split('\n')
+    if (lines.length >= 2) {
+      const serial = lines[1].split(',').pop()?.trim()
+      if (serial) components.push('disk:' + serial)
+    }
+  } catch { /* optional */ }
+
+  // Fallback: use hostname + username if no HWID available
+  if (components.length === 0) {
+    components.push('host:' + os.hostname())
+    components.push('user:' + os.userInfo().username)
+  }
+
+  const raw = components.sort().join('|')
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16)
+}
+
+/**
+ * Get or create the device fingerprint for the current profile.
+ */
+export function getDeviceFingerprint(): string {
+  const profile = loadProfile()
+  if (profile.deviceFingerprint) return profile.deviceFingerprint
+
+  const fp = generateDeviceFingerprint()
+  profile.deviceFingerprint = fp
+  saveProfile(profile)
+  return fp
+}
+
+// ═══════════════════════════════════════════════════
+// E19: THREAT ACTOR PROFILING
+// ═══════════════════════════════════════════════════
+
+/**
+ * Hash a set of cheat findings into a behavioral pattern signature.
+ * Same cheat tool used across multiple scans will generate the same hash.
+ */
+function hashPattern(findings: string[]): string {
+  const normalized = [...new Set(findings)]
+    .map(f => f.toLowerCase().replace(/[^a-z0-9]/g, ''))
+    .sort()
+    .join(',')
+  return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 12)
+}
+
+/**
+ * Record detected cheat tools and update threat actor profiles.
+ * Call this after each scan with the list of detected cheat names/groups.
+ *
+ * @param detectedCheats Array of cheat names found in this scan
+ * @param topFindings Top finding descriptions from the scan
+ */
+export function updateThreatActors(
+  detectedCheats: string[],
+  topFindings: string[],
+): ThreatActorProfile[] {
+  if (detectedCheats.length === 0) return []
+
+  const profile = loadProfile()
+  const now = new Date().toISOString()
+  const patternHash = hashPattern(detectedCheats)
+
+  // Find existing profile or create new one
+  let existing = profile.threatActors.find(t => t.patternHash === patternHash)
+
+  if (existing) {
+    existing.occurrences++
+    existing.lastSeen = now
+    // Merge cheat names
+    for (const cheat of detectedCheats) {
+      if (!existing.associatedCheats.includes(cheat)) {
+        existing.associatedCheats.push(cheat)
+      }
+    }
+    existing.confidence = Math.min(
+      Math.round((existing.occurrences / profile.totalScans) * 100),
+      100,
+    )
+  } else {
+    profile.threatActors.push({
+      patternHash,
+      description: topFindings.slice(0, 3).join('; ') || 'Unknown pattern',
+      occurrences: 1,
+      firstSeen: now,
+      lastSeen: now,
+      associatedCheats: detectedCheats,
+      confidence: Math.round((1 / Math.max(profile.totalScans, 1)) * 100),
+    })
+  }
+
+  // Cap threat actors at 10 (keep highest confidence)
+  if (profile.threatActors.length > 10) {
+    profile.threatActors.sort((a, b) => b.confidence - a.confidence)
+    profile.threatActors = profile.threatActors.slice(0, 10)
+  }
+
+  saveProfile(profile)
+  return profile.threatActors
+}
+
+/**
+ * Get the most confident threat actor pattern (if any).
+ * This is the "signature move" of the cheater — the tool they use most consistently.
+ */
+export function getTopThreatActor(): ThreatActorProfile | null {
+  const profile = loadProfile()
+  if (profile.threatActors.length === 0) return null
+
+  const top = profile.threatActors.reduce((best, t) =>
+    t.confidence > best.confidence ? t : best,
+  )
+  return top.confidence >= 30 ? top : null // At least 30% confidence
+}
+
+/**
+ * Check if the current scan's findings correlate with known threat actors.
+ * Returns the matching threat actor if a pattern match is found.
+ */
+export function correlateWithThreatActors(detectedCheats: string[]): ThreatActorProfile | null {
+  if (detectedCheats.length === 0) return null
+
+  const profile = loadProfile()
+  const patternHash = hashPattern(detectedCheats)
+  return profile.threatActors.find(t => t.patternHash === patternHash) || null
 }

@@ -24,7 +24,7 @@ import { ScanResult, addFindingDedup, _WR, _HOME } from './types'
 function ps(command: string, timeout = 8000): string {
   try {
     return execSync(`powershell -NoProfile -Command "${command.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout,
       windowsHide: true,
     }).trim()
@@ -37,7 +37,7 @@ function ps(command: string, timeout = 8000): string {
 function regQuery(keyPath: string, timeout = 5000): string {
   try {
     return execSync(`reg query "${keyPath}" /s 2>nul`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout,
     }).trim()
   } catch {
@@ -102,7 +102,7 @@ $evts | ConvertTo-Json -Compress
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
 
   return results
 }
@@ -138,7 +138,7 @@ export function detectCleaningTools(): ScanResult[] {
           if (upper.includes(tool) && upper.endsWith('.PF')) {
             const filePath = path.join(prefetchDir, file)
             let mtime = new Date().toISOString()
-            try { mtime = fs.statSync(filePath).mtime.toISOString() } catch { /* skip */ }
+            try { mtime = fs.statSync(filePath).mtime.toISOString() } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
 
             const dedupKey = `anti-forensic:cleaner-pf:${tool}`
             if (addFindingDedup(dedupKey)) {
@@ -159,7 +159,7 @@ export function detectCleaningTools(): ScanResult[] {
           }
         }
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
   }
 
   // 2. Registry — check for cleaner tool configuration keys
@@ -183,7 +183,7 @@ export function detectCleaningTools(): ScanResult[] {
           })
         }
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
   }
 
   // 3. Scheduled tasks for cleaners
@@ -211,7 +211,7 @@ export function detectCleaningTools(): ScanResult[] {
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
 
   return results
 }
@@ -285,7 +285,7 @@ export function detectPrefetchCleaning(): ScanResult[] {
         })
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
 
   return results
 }
@@ -335,7 +335,7 @@ export function detectBrowserHistoryClearing(): ScanResult[] {
           })
         }
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
   }
 
   return results
@@ -365,7 +365,7 @@ export function detectRecycleBinClearing(): ScanResult[] {
             if (file.startsWith('$R')) rFiles++
           }
         }
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
     }
 
     // If there are $I files without matching $R files, bin was emptied
@@ -387,7 +387,7 @@ export function detectRecycleBinClearing(): ScanResult[] {
         })
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
 
   return results
 }
@@ -431,7 +431,7 @@ export function detectTempCleaning(): ScanResult[] {
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[anti-forensic] failed:', (err as Error).message) }
 
   return results
 }

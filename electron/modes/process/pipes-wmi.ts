@@ -36,7 +36,7 @@ export function scanNamedPipes(): ScanResult[] {
         }
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[pipes-wmi] failed:', (err as Error).message) }
   return results
 }
 
@@ -67,6 +67,6 @@ export function scanWmiPersistence(): ScanResult[] {
         }
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[pipes-wmi] failed:', (err as Error).message) }
   return results
 }

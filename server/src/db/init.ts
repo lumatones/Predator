@@ -209,7 +209,11 @@ async function init(): Promise<void> {
   console.log('  Tables created\n')
 
   const username = process.env.ADMIN_USERNAME || 'admin'
-  const password = process.env.ADMIN_PASSWORD || 'admin123'
+  const password = process.env.ADMIN_PASSWORD
+  if (!password) {
+    console.error('\n  FATAL: ADMIN_PASSWORD is not set in environment (.env)\n  Set ADMIN_PASSWORD in your .env file before running init.\n')
+    process.exit(1)
+  }
 
   const existing = await query<{ id: number }[]>('SELECT id FROM admins WHERE username = ?', [username])
 

@@ -58,7 +58,7 @@ function scanPciFingerprints(): ScanResult[] {
     ].join('')
 
     const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout: 8000,
     }).trim()
 
@@ -154,7 +154,7 @@ export function scanDmaDevices(): ScanResult[] {
   try {
     const usbOut = execSync(
       'powershell -NoProfile -Command "Get-PnpDevice -PresentOnly -Class USB | Where-Object { $_.InstanceId -match \'0403\' } | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress"',
-      { encoding: 'utf-8' as BufferEncoding, timeout: 8000, windowsHide: true },
+      { encoding: 'utf-8', timeout: 8000, windowsHide: true },
     ).trim()
     if (usbOut && usbOut.length > 5) {
       for (const ftid of FTDI_USB_IDS) {
@@ -193,10 +193,10 @@ export function scanDmaDevices(): ScanResult[] {
           try {
             const stat = fs.statSync(path.join(dir, entry))
             results.push({ path: path.join(dir, entry), fileName: entry, type: 'software', risk: 'high', matches, size: stat.size, modifiedAt: stat.mtime.toISOString() })
-          } catch (_e) { /* skip */ }
+          } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
         }
       }
-    } catch (_e) { /* skip */ }
+    } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
   }
 
   // 3. Drivers: DMA-related files in System32\drivers + PCILeech ecosystem
@@ -214,7 +214,7 @@ export function scanDmaDevices(): ScanResult[] {
         }
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
 
   // 3b. PCILeech ecosystem files in System32
   const system32Dir = path.join(_WR, 'System32')
@@ -234,14 +234,14 @@ export function scanDmaDevices(): ScanResult[] {
           })
         }
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
   }
 
   // 3c. FPGA chip detection in PCI device descriptions
   try {
     const pciOut = execSync(
       'powershell -NoProfile -Command "Get-PnpDevice -PresentOnly -Class System | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress"',
-      { encoding: 'utf-8' as BufferEncoding, timeout: 8000, windowsHide: true },
+      { encoding: 'utf-8', timeout: 8000, windowsHide: true },
     ).trim()
     if (pciOut && pciOut.length > 5) {
       for (const chip of DMA_FPGA_CHIPS) {
@@ -280,7 +280,7 @@ export function scanDmaRegistry(): ScanResult[] {
       if (out.trim().length > 0) {
         results.push({ path: svcPath, fileName: `Registry: ${term.toUpperCase()}-related services`, type: 'registry', risk: 'high', matches: [`registry:${term} service(s) found`], size: 0, modifiedAt: new Date().toISOString() })
       }
-    } catch (_e) { /* skip */ }
+    } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
   }
 
   return results
@@ -309,7 +309,7 @@ $info | ConvertTo-Json -Compress
 
   try {
     const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout: 8000,
       windowsHide: true,
     }).trim()

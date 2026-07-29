@@ -35,9 +35,9 @@ export function scanRunningProcesses(): ScanResult[] {
             matches, size: memory * 1024, modifiedAt: new Date().toISOString(),
           })
         }
-      } catch (_e) { /* skip */ }
+      } catch (err) { console.warn('[enumeration] failed:', (err as Error).message) }
     }
-  } catch (_e) { /* tasklist failed */ }
+  } catch (err) { console.warn('[enumeration] tasklist failed:', (err as Error).message) }
   return results
 }
 
@@ -61,7 +61,7 @@ export function scanRunningProcessesV2(): ScanResult[] {
       { encoding: 'utf-8', timeout: 10000 },
     )
     processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
-  } catch (_e) { /* PowerShell failed */ }
+  } catch (err) { console.warn('[enumeration] powershell failed:', (err as Error).message) }
 
   if (processes.length === 0) return results
 

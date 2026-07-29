@@ -54,8 +54,9 @@ export interface PendingRequest {
   expires_at: string | null
 }
 
-export function getPending(token: string) {
-  return request<PendingRequest[]>('/admin/pending', { token })
+export function getPending(token: string, q?: string) {
+  const query = q ? `?q=${encodeURIComponent(q)}` : ''
+  return request<PendingRequest[]>(`/admin/pending${query}`, { token })
 }
 
 export function approveRequest(token: string, id: number) {

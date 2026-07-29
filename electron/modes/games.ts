@@ -40,7 +40,7 @@ function getGamePids(): GamePid[] {
       const target = targets.find(t => t.name.toLowerCase() === name)
       if (target) results.push({ pid, platform: target.platform })
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[games] getGamePids failed:', (err as Error).message) }
   return results
 }
 
@@ -113,7 +113,7 @@ export function scanGameModules(): ScanResult[] {
           })
         }
       }
-    } catch (_e) { /* skip */ }
+    } catch (err) { console.warn('[games] scanGameModules proc failed:', (err as Error).message) }
   }
   return results
 }
@@ -149,7 +149,7 @@ export function scanGameIntegrity(): ScanResult[] {
             matches: ['Unauthorized file in FiveM directory', `Location: ${path.basename(dir)}`, 'DLL/ASI in mods/plugins = cheat loader'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
     }
   }
@@ -173,7 +173,7 @@ export function scanGameIntegrity(): ScanResult[] {
             matches: ['dinput8.dll in RAGEMP directory — ASI loader/cheat', 'ScriptHookV injection method used for MP cheating'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
       // .asi files — single-player mods loaded in MP
       if (lower.endsWith('.asi') && addFindingDedup(`rage-asi:${fullPath}`)) {
@@ -184,7 +184,7 @@ export function scanGameIntegrity(): ScanResult[] {
             matches: ['ASI file in RAGEMP directory', 'Single-player cheat loaded in multiplayer'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
     }
     // Check client_packages subdirectory for unauthorized JS/Lua resources
@@ -202,7 +202,7 @@ export function scanGameIntegrity(): ScanResult[] {
               matches: ['Suspicious resource in RAGE MP client_packages', `Name match: ${entry}`],
               size: stat.size, modifiedAt: stat.mtime.toISOString(),
             })
-          } catch (_e) { /* skip */ }
+          } catch (err) { console.warn('[games] failed:', (err as Error).message) }
         }
       }
     }
@@ -227,7 +227,7 @@ export function scanGameIntegrity(): ScanResult[] {
             matches: [`Suspicious ALT:V module name`, `Keyword match in ${path.basename(altvDir)}`],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
       // Detect obfuscated module names (random hash-like names — alt:V anti-debug technique)
       const OBFUSCATED_NAME_PATTERN = /^[a-f0-9]{20,64}\.(dll|js)$/i
@@ -239,7 +239,7 @@ export function scanGameIntegrity(): ScanResult[] {
             matches: ['Obfuscated/hash-named module (alt:V anti-debug pattern)', 'Possible renamed cheat DLL or JS payload'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
       if (lower.endsWith('.dll') && !isTrustedPath(fullPath) && addFindingDedup(`altv-unsign:${fullPath}`)) {
         const signed = checkDigitalSignature(fullPath)
@@ -251,7 +251,7 @@ export function scanGameIntegrity(): ScanResult[] {
               matches: ['Unsigned DLL in ALT:V modules directory', 'Possible cheat module'],
               size: stat.size, modifiedAt: stat.mtime.toISOString(),
             })
-          } catch (_e) { /* skip */ }
+          } catch (err) { console.warn('[games] failed:', (err as Error).message) }
         }
       }
     }
@@ -273,10 +273,10 @@ export function scanGameIntegrity(): ScanResult[] {
               matches: [`Suspicious compiled JS resource: ${entry}`, 'Possible obfuscated cheat code'],
               size: stat.size, modifiedAt: stat.mtime.toISOString(),
             })
-          } catch (_e) { /* skip */ }
+          } catch (err) { console.warn('[games] failed:', (err as Error).message) }
         }
       }
-    } catch (_e) { /* skip */ }
+    } catch (err) { console.warn('[games] failed:', (err as Error).message) }
   }
 
   for (const gtaPath of GTA5_DIRS) {
@@ -292,7 +292,7 @@ export function scanGameIntegrity(): ScanResult[] {
             matches: [`${entry} in GTA 5 root — cheat/mod loader`, 'Used by ScriptHookV/trainers for MP cheating'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
       if (lower.endsWith('.asi') && addFindingDedup(`gta5-asi:${fullPath}`)) {
         try {
@@ -302,7 +302,7 @@ export function scanGameIntegrity(): ScanResult[] {
             matches: ['ASI mod in GTA 5 directory', 'Common cheat format (Menyoo, SimpleTrainer, etc.)'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
-        } catch (_e) { /* skip */ }
+        } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
     }
   }
@@ -347,7 +347,7 @@ export function scanMasqueradingProcesses(): ScanResult[] {
         })
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[games] failed:', (err as Error).message) }
   return results
 }
 
@@ -391,7 +391,7 @@ export function scanOpenHandles(): ScanResult[] {
         })
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[games] failed:', (err as Error).message) }
   return results
 }
 

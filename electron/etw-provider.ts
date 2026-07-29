@@ -87,7 +87,7 @@ export function scanEtwProcessEvents(): ScanResult[] {
     `.trim()
 
     const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout: 8000,
     }).trim()
 
@@ -112,12 +112,12 @@ export function scanEtwProcessEvents(): ScanResult[] {
       // Check: spawned from suspicious parent
       if (ppid > 0) {
         try {
-          const parentOut = execSync(`wmic process where ProcessId=${ppid} get Name /format:csv 2>nul`, { encoding: 'utf-8' as BufferEncoding, timeout: 3000 })
+          const parentOut = execSync(`wmic process where ProcessId=${ppid} get Name /format:csv 2>nul`, { encoding: 'utf-8', timeout: 3000 })
           const parentName = parentOut.split('\n')[1]?.split(',')[2]?.trim()?.toLowerCase() || ''
           if (suspiciousParents.has(parentName)) {
             signals.push(`ETW: suspicious parent process: ${parentName}`)
           }
-        } catch { /* skip */ }
+        } catch (err) { console.warn('[etw-provider] failed:', (err as Error).message) }
       }
 
       // Check: running from suspicious location
@@ -171,7 +171,7 @@ export function scanEtwImageLoadEvents(): ScanResult[] {
     `.trim()
 
     const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout: 8000,
     }).trim()
 
@@ -227,7 +227,7 @@ export function scanEtwThreadInjection(): ScanResult[] {
     `.trim()
 
     const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout: 6000,
     }).trim()
 
@@ -283,7 +283,7 @@ export function scanEtwProcessHollowing(): ScanResult[] {
     `.trim()
 
     const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout: 25000,
     }).trim()
 

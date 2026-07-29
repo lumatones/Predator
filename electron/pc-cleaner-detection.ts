@@ -28,7 +28,7 @@ import { ScanResult, addFindingDedup, _WR, _HOME } from './types'
 function ps(command: string, timeout = 10000): string {
   try {
     return execSync(`powershell -NoProfile -Command "${command}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout,
       windowsHide: true,
     }).trim()
@@ -40,7 +40,7 @@ function ps(command: string, timeout = 10000): string {
 function regQuery(keyPath: string, timeout = 5000): string {
   try {
     return execSync(`reg query "${keyPath}" /s 2>nul`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout,
     }).trim()
   } catch {
@@ -191,7 +191,7 @@ if ($files.Count -gt 100) { Write-Output ('MASS_MODIFY:' + $files.Count) }
         }
       } catch { /* optional */ }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
 
   return results
 }
@@ -244,7 +244,7 @@ export function detectTimestomping(): ScanResult[] {
           if (stat.mtimeMs < 86400000 * 2) {
             stompedCount++
           }
-        } catch { /* skip */ }
+        } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
       }
 
       if (stompedCount >= 5) {
@@ -264,7 +264,7 @@ export function detectTimestomping(): ScanResult[] {
           })
         }
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
   }
 
   return results
@@ -343,7 +343,7 @@ export function detectSecureDeleteTools(): ScanResult[] {
         if (upper.includes(tool) && upper.endsWith('.PF')) {
           const filePath = path.join(prefetchDir, file)
           let mtime = new Date().toISOString()
-          try { mtime = fs.statSync(filePath).mtime.toISOString() } catch { /* skip */ }
+          try { mtime = fs.statSync(filePath).mtime.toISOString() } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
 
           const dedupKey = `pc-cleaner:secure-del:${tool}`
           if (addFindingDedup(dedupKey)) {
@@ -364,7 +364,7 @@ export function detectSecureDeleteTools(): ScanResult[] {
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
 
   // Also check for cipher /w in Prefetch (overwrites free space)
   try {
@@ -483,7 +483,7 @@ export function detectCleaningScripts(): ScanResult[] {
           if (extMatch && lower.endsWith('.pf')) {
             const filePath = path.join(prefetchDir, file)
             let mtime = new Date().toISOString()
-            try { mtime = fs.statSync(filePath).mtime.toISOString() } catch { /* skip */ }
+            try { mtime = fs.statSync(filePath).mtime.toISOString() } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
 
             const dedupKey = `pc-cleaner:script-pf:${scriptName}`
             if (addFindingDedup(dedupKey)) {
@@ -504,7 +504,7 @@ export function detectCleaningScripts(): ScanResult[] {
           }
         }
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
   }
 
   // 2. Scan for cleaning scripts in Downloads/Desktop
@@ -554,7 +554,7 @@ export function detectCleaningScripts(): ScanResult[] {
           }
         }
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
   }
 
   return results
@@ -628,7 +628,7 @@ export function detectBrowserMassWipe(): ScanResult[] {
           })
         }
       }
-    } catch { /* skip */ }
+    } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
   }
 
   return results
@@ -719,7 +719,7 @@ export function detectPrefetchMassDeletion(): ScanResult[] {
         if (stat.mtimeMs < oldestMtime) {
           oldestMtime = stat.mtimeMs
         }
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
     }
 
     // If ALL entries are from last 2 hours and there are < 100 of them
@@ -741,7 +741,7 @@ export function detectPrefetchMassDeletion(): ScanResult[] {
         })
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
 
   return results
 }
@@ -945,7 +945,7 @@ export function detectMftOrphanedEntries(): ScanResult[] {
       mftExists = true
       mftSize = fs.statSync(mftPath).size
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
 
   if (!mftExists) {
     const dedupKey = 'pc-cleaner:mft-missing'

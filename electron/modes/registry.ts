@@ -48,7 +48,7 @@ export function scanRegistryDeepV2(): ScanResult[] {
           }
         }
       }
-    } catch (_e) { /* skip inaccessible keys */ }
+    } catch (err) { console.warn('[registry] skip inaccessible keys:', (err as Error).message) }
   }
 
   return results
@@ -74,7 +74,7 @@ export function scanPrefetchV2(): ScanResult[] {
             if (addFindingDedup(dedupKey)) {
               const filePath = path.join(prefetchDir, file)
               let mtime = new Date().toISOString()
-              try { mtime = fs.statSync(filePath).mtime.toISOString() } catch (_e) { /* skip */ }
+              try { mtime = fs.statSync(filePath).mtime.toISOString() } catch (err) { console.warn('[registry] failed:', (err as Error).message) }
 
               results.push({
                 path: filePath,
@@ -90,7 +90,7 @@ export function scanPrefetchV2(): ScanResult[] {
         }
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (err) { console.warn('[registry] failed:', (err as Error).message) }
 
   return results
 }
@@ -117,7 +117,7 @@ export function scanRegistryForCheats(): ScanResult[] {
           break
         }
       }
-    } catch (_e) { /* skip */ }
+    } catch (err) { console.warn('[registry] failed:', (err as Error).message) }
   }
 
   return results

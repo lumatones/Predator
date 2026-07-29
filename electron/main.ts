@@ -4,10 +4,21 @@ import fs from 'fs'
 import os from 'os'
 import { autoUpdater } from 'electron-updater'
 import { registerScanHandlers, startCloudSync, initSafeFilesDb, initTelemetry } from './scanner'
+import { initializeSelfProtection } from './self-protect'
+import { initFuzzyHashDb } from './fuzzy-hash'
 import { registerSystemInfoHandlers } from './system-info'
-import { loadConfig, saveConfig, getApiBase } from './config'
 import { startSignatureWatcher, stopSignatureWatcher } from './signature-watcher'
+import { startScanScheduler, stopScanScheduler } from './scan-scheduler'
 import { flushTelemetryQueue } from './telemetry-queue'
+import {
+  handleGetPcName,
+  handleGetConfig,
+  handleSaveConfig,
+  handleGetApiBase,
+  handleSetApiBase,
+  handleGetMinimizeToTray,
+  handleSetMinimizeToTray,
+} from './ipc-handlers'
 
 let mainWindow: BrowserWindow | null = null
 let _updateCheckInterval: ReturnType<typeof setInterval> | null = null
@@ -142,6 +153,12 @@ app.whenReady().then(async () => {
   // Initialize safe-files DB from community whitelist BEFORE scan handlers
   await initSafeFilesDb()
 
+  // E22: Initialize runtime self-protection (ACL hardening, handle stripping, debug privilege removal)
+  initializeSelfProtection()
+
+  // E23: Initialize fuzzy hash DB (TLSH persistence)
+  initFuzzyHashDb()
+
   // Initialize telemetry queue for reliable result delivery
   initTelemetry()
 
@@ -152,6 +169,7 @@ app.whenReady().then(async () => {
   startCloudSync()
   registerSystemInfoHandlers()
   startSignatureWatcher(mainWindow!)
+  startScanScheduler(mainWindow!)
 
   // ── Update check helpers ──
 
@@ -272,6 +290,7 @@ function setupTray() {
 app.on('will-quit', () => {
   writeCrashLog('INFO', 'App quitting')
   stopSignatureWatcher()
+  stopScanScheduler()
   // Flush telemetry queue before quitting (async, but app will quit after)
   flushTelemetryQueue().catch(() => {})
   if (_updateCheckInterval) {
@@ -355,35 +374,15 @@ ipcMain.handle('restart-app', async () => {
   }
 })
 
-ipcMain.handle('get-pc-name', async () => {
-  try {
-    return os.userInfo().username || process.env.USERNAME || 'unknown'
-  } catch {
-    return process.env.USERNAME || 'unknown'
-  }
-})
+ipcMain.handle('get-pc-name', async () => handleGetPcName())
 
-ipcMain.handle('get-config', async () => loadConfig())
+ipcMain.handle('get-config', async () => handleGetConfig())
 
-ipcMain.handle('save-config', async (_event, partial) => {
-  if (!partial || typeof partial !== 'object') return loadConfig()
-  return saveConfig(partial)
-})
+ipcMain.handle('save-config', async (_event, partial) => handleSaveConfig(partial))
 
-ipcMain.handle('get-api-base', async () => getApiBase())
+ipcMain.handle('get-api-base', async () => handleGetApiBase())
 
-ipcMain.handle('set-api-base', async (_event, url: string) => {
-  if (!url || typeof url !== 'string') return getApiBase()
-  try {
-    const parsed = new URL(url.trim().replace(/\/$/, ''))
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return getApiBase()
-    const clean = parsed.toString().replace(/\/$/, '')
-    saveConfig({ apiUrl: clean })
-    return clean
-  } catch {
-    return getApiBase()
-  }
-})
+ipcMain.handle('set-api-base', async (_event, url: string) => handleSetApiBase(url))
 
 // ── Tray IPC ──
 
@@ -391,9 +390,9 @@ ipcMain.handle('minimize-to-tray', async () => {
   mainWindow?.hide()
 })
 
-ipcMain.handle('get-minimize-to-tray', async () => minimizeToTray)
+ipcMain.handle('get-minimize-to-tray', async () => handleGetMinimizeToTray(minimizeToTray))
 
 ipcMain.handle('set-minimize-to-tray', async (_event, value: boolean) => {
-  minimizeToTray = !!value
+  minimizeToTray = handleSetMinimizeToTray(value)
   return minimizeToTray
 })

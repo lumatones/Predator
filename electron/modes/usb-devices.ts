@@ -38,6 +38,9 @@ import {
   detectActiveDmaByBandwidth,
 } from './usb/bandwidth'
 
+// ── Anomaly detection (E16) ──
+import { runUsbAnomalyScan } from './usb/anomaly'
+
 // ═══════════════════════════════════════════════════
 // DMA DRIVER SIGNATURE SCAN
 // ═══════════════════════════════════════════════════
@@ -285,6 +288,9 @@ export function runFullUsbDeviceScan(): ScanResult[] {
   results.push(...deviceReportToScanResults(deviceReport))
   results.push(...scanSetupApiLog())
   results.push(...scanDmaDriverSignatures())
+
+  // E16: USB anomaly detection — VID/PID spoofing + PCIe scan
+  results.push(...runUsbAnomalyScan(presentDevices))
 
   // ── USB Bandwidth Monitoring: detect ACTIVE DMA cards ──
   const hasDmaVendorDevices = presentDevices.some(d => DMA_VENDORS[d.vid])

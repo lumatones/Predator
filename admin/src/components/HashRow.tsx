@@ -15,6 +15,7 @@ interface HashRowProps {
   onApprove: (id: number) => void
   onReject: (id: number) => void
   onConfirmFromScan: (sha256: string, fileName: string, fileSize: number) => void
+  onClick?: () => void
 }
 
 const rowVariants = {
@@ -59,6 +60,7 @@ export default function HashRow({
   onApprove,
   onReject,
   onConfirmFromScan,
+  onClick,
 }: HashRowProps) {
   const sha = data.sha256
   const fileName = data.file_name
@@ -80,7 +82,9 @@ export default function HashRow({
       initial="hidden"
       animate="visible"
       variants={rowVariants}
-      className={className}
+      className={`${className} ${onClick ? 'hash-row-clickable' : ''}`}
+      onClick={onClick}
+      style={onClick ? { cursor: 'pointer' } : undefined}
     >
       <td><code className="hash-sha">{sha.slice(0, 16)}...</code></td>
       <td className="hash-filename-cell"><span className="hash-filename">{fileName}</span></td>

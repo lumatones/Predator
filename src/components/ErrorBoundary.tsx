@@ -2,6 +2,7 @@ import React, { Component, type ReactNode } from 'react'
 
 interface Props {
   children: ReactNode
+  name?: string
 }
 
 interface State {
@@ -43,6 +44,7 @@ export default class ErrorBoundary extends Component<Props, State> {
           color: '#fff',
           fontFamily: "'Inter', system-ui, sans-serif",
           textAlign: 'center',
+          zIndex: 1000,
         }}>
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
             <circle cx="24" cy="24" r="22" stroke="#ff4444" strokeWidth="2" />
@@ -52,6 +54,18 @@ export default class ErrorBoundary extends Component<Props, State> {
           <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
             Произошла ошибка
           </h1>
+          {this.props.name && (
+            <p style={{
+              fontSize: 12,
+              color: 'rgba(255,68,68,0.7)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              margin: 0,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              [{this.props.name}]
+            </p>
+          )}
           <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', maxWidth: 400, lineHeight: 1.5, margin: 0 }}>
             {this.state.error?.message || 'Неизвестная ошибка'}
           </p>

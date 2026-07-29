@@ -3,10 +3,11 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import Checker from './pages/Checker'
 import Dashboard from './pages/Dashboard'
 import { IconShield, IconDashboard } from './icons'
+import ErrorBoundary from './components/ErrorBoundary'
 import UpdateModal from './components/ui/UpdateModal'
 import ParticleBackground from './components/ui/ParticleBackground'
 import GlassEye from './components/ui/GlassEye'
-import { playPixelVoice } from './utils/pixel-voice'
+import { playPixelVoice, playCreepyChord, playGlitch, playAlarm, playRumble, playJingle } from './utils/pixel-voice'
 import ThemeBurnTransition from './components/ui/ThemeBurnTransition'
 import { ToastProvider } from './components/ui/ToastProvider'
 import { Skeleton } from './components/ui/Skeleton'
@@ -22,17 +23,25 @@ import type { AppPhase, ThemeId, Lang } from './types'
 import { THEMES, T } from './types'
 
 // ── Eye Easter egg phrases ──
+// Each phrase gets progressively more threatening.
 const EYE_PHRASES = [
-  { text: 'Не тыкай на меня!', syllables: 5, pitch: 'mid' as const },
-  { text: 'Я же сказал!!!', syllables: 5, pitch: 'high' as const },
-  { text: 'ХВАТИТ!', syllables: 3, pitch: 'high' as const },
-  { text: 'Я предупреждал...', syllables: 6, pitch: 'low' as const },
+  { text: 'Не тыкай на меня!',  syllables: 5, pitch: 'mid'  as const },
+  { text: 'Я же сказал!!!',      syllables: 5, pitch: 'high' as const },
+  { text: 'ХВАТИТ!!!',           syllables: 3, pitch: 'high' as const },
+  { text: 'Я предупреждал...',   syllables: 6, pitch: 'low'  as const },
+  // Extra phrase revealed when the user keeps clicking after phase 3
+  { text: 'ТЫ ПОЖАЛЕЕШЬ.',       syllables: 4, pitch: 'low'  as const },
 ]
+
+// How many phrases before scary mode triggers
+const SCARY_TRIGGER_INDEX = EYE_PHRASES.length - 1
 
 const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: string }> = ({ accent, light, dark, subtitle }) => {
   const hoverCount = useRef(0)
   const [phraseIdx, setPhraseIdx] = useState(0)
   const [scaryMode, setScaryMode] = useState(false)
+  const [frenzied, setFrenzied] = useState(false)
+  const [glitching, setGlitching] = useState(false)
   const [cmdVisible, setCmdVisible] = useState(false)
   const [countdown, setCountdown] = useState(100)
   const [redScreen, setRedScreen] = useState(false)
@@ -51,10 +60,35 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
     // Voice plays AFTER typewriter starts (700ms delay matches CSS animation delay)
     setTimeout(() => playPixelVoice(p.syllables, p.pitch), 700)
 
-    if (c >= EYE_PHRASES.length - 1) {
+    if (c >= SCARY_TRIGGER_INDEX) {
       scaryTriggered.current = true
-      setScaryMode(true)
-      setTimeout(() => setCmdVisible(true), 1500)
+
+      // Step 1: glitch effect (300ms before scary mode)
+      setTimeout(() => {
+        if (!scaryTriggered.current) return
+        setGlitching(true)
+        playGlitch()
+      }, 400)
+
+      // Step 2: scary mode (eye lifts, smile appears)
+      setTimeout(() => {
+        if (!scaryTriggered.current) return
+        setGlitching(false)
+        setScaryMode(true)
+        playCreepyChord()
+      }, 900)
+
+      // Step 3: frenzied pupil dilation
+      setTimeout(() => {
+        if (!scaryTriggered.current) return
+        setFrenzied(true)
+      }, 1400)
+
+      // Step 4: CMD appears
+      setTimeout(() => {
+        if (!scaryTriggered.current) return
+        setCmdVisible(true)
+      }, 2000)
     }
 
     hoverCount.current = c + 1
@@ -72,22 +106,43 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
     advancePhrase()
   }, [advancePhrase])
 
-  // Fake rapid countdown: 100 → 0 in ~6 seconds
+  // Fake rapid countdown: 100 → 0 in ~6 seconds (accelerates near 0)
   useEffect(() => {
     if (!cmdVisible) return
+    let step = 5
+
     const timer = setInterval(() => {
       setCountdown(prev => {
-        if (prev <= 5) { clearInterval(timer); return 0 }
-        return prev - 5
+        if (prev <= step) {
+          clearInterval(timer)
+          // Play alarm as countdown hits 0
+          playAlarm()
+          return 0
+        }
+        // Accelerate: step grows as countdown shrinks
+        if (prev < 30) step = 8
+        if (prev < 15) step = 12
+        return prev - step
       })
-    }, 300)
+    }, 280)
     return () => clearInterval(timer)
   }, [cmdVisible])
+
+  // Play periodic alarm tones during countdown
+  useEffect(() => {
+    if (!cmdVisible || countdown === 0) return
+    if (countdown % 25 === 0 && countdown < 75) {
+      playAlarm()
+    }
+  }, [countdown, cmdVisible])
 
   // Red screen of death when countdown hits 0
   useEffect(() => {
     if (countdown === 0 && cmdVisible) {
-      const t = setTimeout(() => setRedScreen(true), 400)
+      const t = setTimeout(() => {
+        setRedScreen(true)
+        playRumble()
+      }, 500)
       return () => clearTimeout(t)
     }
   }, [countdown, cmdVisible])
@@ -98,6 +153,7 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
     const t = setTimeout(() => {
       setRedScreen(false)
       setJokeScreen(true)
+      playJingle()
     }, 5000)
     return () => clearTimeout(t)
   }, [redScreen])
@@ -108,6 +164,8 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
     setRedScreen(false)
     setJokeScreen(false)
     setScaryMode(false)
+    setFrenzied(false)
+    setGlitching(false)
     setCountdown(100)
     setPhraseIdx(0)
     hoverCount.current = 0
@@ -131,7 +189,7 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
     const t = setTimeout(() => {
       setJokeScreen(false)
       dismissCmd()
-    }, 3000)
+    }, 3500)
     return () => clearTimeout(t)
   }, [jokeScreen, dismissCmd])
 
@@ -148,13 +206,21 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
   const phrase = EYE_PHRASES[phraseIdx]
 
   return (
-    <div className={`logo-section${scaryMode ? ' eye-scary' : ''}`}>
+    <div className={`logo-section${scaryMode ? ' eye-scary' : ''}${glitching ? ' eye-glitch' : ''}`}>
       <div className="logo-icon" onMouseEnter={handleFirstHover} onClick={handleEyeClick}>
-        <GlassEye position="center" size={140} scanLine={false} creepiness={0.4} inline />
+        <GlassEye
+          position="center"
+          size={140}
+          scanLine={false}
+          creepiness={scaryMode ? 0.95 : 0.4}
+          frenzied={frenzied}
+          inline
+        />
         {/* RPG speech bubble */}
         <div className="eye-speech">
           <div className="eye-speech-inner">
             <span className="eye-speech-text" key={phraseIdx}>{phrase.text}</span>
+            <span className="eye-speech-cursor" aria-hidden="true" />
           </div>
         </div>
         {/* Creepy smile — appears in scary mode (no background, Cheshire-style) */}
@@ -297,7 +363,7 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
       {jokeScreen && (
         <div className="red-screen red-screen--joke">
           <div className="red-screen-text red-screen-text--joke">ЭТО БЫЛА ШУТКА</div>
-          <div className="red-screen-sub red-screen-sub--joke">JUST KIDDING... RELAX</div>
+          <div className="red-screen-sub red-screen-sub--joke">JUST KIDDING... RELAX 😅</div>
         </div>
       )}
 
@@ -317,10 +383,14 @@ const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: st
             <div className="fake-cmd-countdown">
               {countdown > 0 ? (
                 <>
-                  Система завершит работу через: <span className="fake-cmd-timer">{countdown}</span> сек.
+                  Система завершит работу через:{' '}
+                  <span className={`fake-cmd-timer${countdown <= 20 ? ' fake-cmd-timer--critical' : ''}`}>
+                    {countdown}
+                  </span>{' '}
+                  сек.
                 </>
               ) : (
-                <span className="fake-cmd-done" />
+                <span className="fake-cmd-done">[ SHUTDOWN INITIATED ]</span>
               )}
             </div>
           </div>
@@ -459,6 +529,7 @@ const App: React.FC = () => {
         {/* ── Onboarding v2 (5-step flow) ── */}
         {phase.startsWith('onboarding-') && (
           <PageWrapper key="onboarding">
+            <ErrorBoundary name="Onboarding">
             <OnboardingFlow
               phase={phase}
               lang={lang}
@@ -486,6 +557,7 @@ const App: React.FC = () => {
               onRequestAccess={hRequestAccess}
               onDemoComplete={hDemoComplete}
             />
+            </ErrorBoundary>
           </PageWrapper>
         )}
 
@@ -500,14 +572,14 @@ const App: React.FC = () => {
           {requestStatus === 'rejected' && (<><div className="error-icon-dl"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" /><line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /><line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /></svg></div><p className="status-text" style={{ color: '#EF4444', animation: 'none' }}>{t('requestRejected')}</p><Button className="start-button" onClick={() => setPhase('onboarding-auth')}>{t('authBtn')}</Button></>)}
         </>)}</PageWrapper>}
 
-          {phase === 'main' && <PageWrapper key="main">{renderCard(<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('ready')}</p>
+          {phase === 'main' && <PageWrapper key="main"><ErrorBoundary name="MainMenu">{renderCard(<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('ready')}</p>
           <div className="main-cards">
             <Magnetic><button className="main-card" onClick={hStartChecker}><div className="main-card-icon"><IconShield size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('startCheck')}</span><span className="main-card-desc">Deep scan for files, processes, registry, network, and memory anomalies.</span></div><span className="main-card-arrow">→</span></button></Magnetic>
-            <Magnetic><button className="main-card" onClick={hStartDashboard}><div className="main-card-icon"><IconDashboard size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('dashboard')}</span><span className="main-card-desc">Live system overview with streaming snapshots and runtime telemetry.</span></div><span className="main-card-arrow">→</span></button></Magnetic>
-          </div></>)}</PageWrapper>}
+            <Magnetic><button className="main-card" onClick={hStartDashboard}><div className="main-card-icon"><IconDashboard size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('dashboard')}</span><span className="main-card-desc">Live system overview with streaming snapshots and runtime telemetry.</span></div><span className="main-card-arrow">→</span></button>            </Magnetic>
+          </div></>)}</ErrorBoundary></PageWrapper>}
 
-          {phase === 'checker' && <PageWrapper key="checker"><Checker lang={lang} tokenId={tokenId} onBack={hBackToMain} accent={c.accent} light={c.light} dark={c.dark} /></PageWrapper>}
-          {phase === 'dashboard' && <PageWrapper key="dashboard"><Dashboard lang={lang} onBack={hBackToMain} /></PageWrapper>}
+          {phase === 'checker' && <PageWrapper key="checker"><ErrorBoundary name="Checker"><Checker lang={lang} tokenId={tokenId} onBack={hBackToMain} accent={c.accent} light={c.light} dark={c.dark} /></ErrorBoundary></PageWrapper>}
+          {phase === 'dashboard' && <PageWrapper key="dashboard"><ErrorBoundary name="Dashboard"><Dashboard lang={lang} onBack={hBackToMain} /></ErrorBoundary></PageWrapper>}
         </AnimatePresence>
 
         {burnState && (

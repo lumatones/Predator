@@ -11,8 +11,13 @@ import { testConnection, query } from './config/database'
 import authRoutes from './routes/auth'
 import adminRoutes from './routes/admin'
 import v1Routes from './routes/v1'
-import { metricsMiddleware, metricsRouter, startMetricsUpdater, trackScan, trackHashSubmission, trackHashConfirmed, trackTokenUsed } from './middleware/metrics'
+import { metricsMiddleware, metricsRouter, startMetricsUpdater, stopMetricsUpdater, trackScan, trackHashSubmission, trackHashConfirmed, trackTokenUsed } from './middleware/metrics'
+import { wsAuthMiddleware, requireAdmin, getAdmin } from './middleware/ws-auth'
+import { requestIdMiddleware } from './middleware/request-id'
+import { initAuditLog } from './middleware/audit-log'
+import { stopLoginRateLimitCleanup } from './middleware/rate-limit-login'
 import { startAutoClassifier, stopAutoClassifier } from './services/classifier'
+import { ErrorCode } from './helpers/errors'
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001')
@@ -59,15 +64,20 @@ const io = new Server(server, {
   },
   pingInterval: 25000,
   pingTimeout: 20000,
+  // ── Connection limits ──
+  maxHttpBufferSize: 1e6, // 1 MB max payload per message
+  connectTimeout: 10000,   // 10s handshake timeout
+  // max connections handled via IP tracking below
 })
 
 // ── Middleware ─────────────────────────────────
 app.use(helmet({
-  contentSecurityPolicy: false, // Disable CSP for simplicity (API only)
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }))
 app.use(cors(corsOptions))
 app.use(express.json({ limit: '5mb' }))
+app.use(requestIdMiddleware)
 app.use(metricsMiddleware)
 app.use(generalLimiter)
 
@@ -110,13 +120,100 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', version: '2.0.0', timestamp: new Date().toISOString() })
 })
 
+// ── Socket.IO Auth Middleware (runs on EVERY connection) ──
+io.use(wsAuthMiddleware)
+
+// ── WebSocket Connection Rate Limiting ──
+const WS_MAX_CONNECTIONS_TOTAL = 200
+const WS_MAX_CONNECTIONS_PER_IP = 10 // max concurrent sockets per IP
+const WS_IP_WINDOW_MS = 60_000 // 1 minute rolling window per IP
+const WS_MAX_CONNECTIONS_PER_IP_WINDOW = 5 // max new connections per IP per minute
+
+const wsIpTracker = new Map<string, { connCount: number; windowCount: number; windowStart: number }>()
+
+function getClientIp(socket: import('socket.io').Socket): string {
+  const fwd = socket.handshake.headers['x-forwarded-for']
+  if (typeof fwd === 'string') return fwd.split(',')[0].trim()
+  return socket.handshake.address || 'unknown'
+}
+
+function checkWsConnectionLimit(ip: string): boolean {
+  const totalClients = io.engine?.clientsCount ?? 0
+  if (totalClients >= WS_MAX_CONNECTIONS_TOTAL) return false
+
+  const now = Date.now()
+  let entry = wsIpTracker.get(ip)
+
+  if (!entry || now - entry.windowStart > WS_IP_WINDOW_MS) {
+    entry = { connCount: 1, windowCount: 1, windowStart: now }
+    wsIpTracker.set(ip, entry)
+  } else {
+    if (entry.connCount >= WS_MAX_CONNECTIONS_PER_IP) return false
+    if (entry.windowCount >= WS_MAX_CONNECTIONS_PER_IP_WINDOW) return false
+    entry.connCount++
+    entry.windowCount++
+  }
+  return true
+}
+
+function releaseIpSlot(ip: string): void {
+  const entry = wsIpTracker.get(ip)
+  if (!entry) return
+  entry.connCount = Math.max(0, entry.connCount - 1)
+  if (entry.connCount === 0 && Date.now() - entry.windowStart > WS_IP_WINDOW_MS) {
+    wsIpTracker.delete(ip)
+  }
+}
+
+// Clean up stale IP entries every 2 minutes
+let _ttlCleanupTimer: ReturnType<typeof setInterval> | null = null
+
+const _wsCleanupTimer: ReturnType<typeof setInterval> = setInterval(() => {
+  const cutoff = Date.now() - WS_IP_WINDOW_MS * 2
+  for (const [ip, entry] of wsIpTracker) {
+    if (entry.windowStart < cutoff) wsIpTracker.delete(ip)
+  }
+}, 120_000)
+
 // ── Socket.IO Connection ──────────────────────
+const _adminSockets = new Map<string, number>() // socket.id → JWT exp (seconds)
+
 io.on('connection', (socket) => {
-  console.log(`  WS connected: ${socket.id}`)
+  const ip = getClientIp(socket)
+
+  if (!checkWsConnectionLimit(ip)) {
+    console.log(`  WS rejected: ${socket.id} (${ip}) — rate limit exceeded`)
+    socket.emit('error', { code: 'RATE_LIMITED', message: 'Too many connections' })
+    socket.disconnect(true)
+    return
+  }
+
+  const admin = getAdmin(socket)
+  const isAdmin = !!admin
+
+  // Track admin socket for server-side JWT expiry check
+  // Decode JWT payload (already verified by middleware) to extract exp
+  if (isAdmin) {
+    try {
+      const token = socket.handshake.auth?.token
+      if (typeof token === 'string' && token.split('.').length >= 2) {
+        // JWT uses base64url (RFC 7519), Node only understands base64
+        const payloadB64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+        const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'))
+        if (payload.exp && typeof payload.exp === 'number') {
+          _adminSockets.set(socket.id, payload.exp)
+        }
+      }
+    } catch { /* token decode optional */ }
+  }
+
+  const label = isAdmin ? `admin:${admin!.username}` : 'scanner:guest'
+  console.log(`  WS connected: ${socket.id} (${label}) [${ip}]`)
 
   socket.on('join-admin', () => {
+    if (!requireAdmin(socket)) return
     socket.join('admin')
-    console.log(`  ${socket.id} joined admin room`)
+    console.log(`  ${socket.id} (${admin!.username}) joined admin room`)
   })
 
   socket.on('join-scanner', () => {
@@ -125,17 +222,36 @@ io.on('connection', (socket) => {
   })
 
   socket.on('disconnect', (reason) => {
-    console.log(`  WS disconnected: ${socket.id} (${reason})`)
+    releaseIpSlot(ip)
+    _adminSockets.delete(socket.id)
+    console.log(`  WS disconnected: ${socket.id} (${label}, reason: ${reason})`)
   })
 })
 
+// ── Periodic JWT expiry check for admin WS sockets ──
+const _wsExpiryTimer = setInterval(() => {
+  const nowSec = Math.floor(Date.now() / 1000)
+  for (const [socketId, exp] of _adminSockets) {
+    if (exp <= nowSec) {
+      const sock = io.sockets.sockets.get(socketId)
+      if (sock) {
+        console.log(`  WS expired: ${socketId} (token expired at ${new Date(exp * 1000).toISOString()})`)
+        sock.emit('error', { code: 'TOKEN_EXPIRED', message: 'Session expired — please re-login' })
+        sock.disconnect(true)
+      }
+      _adminSockets.delete(socketId)
+    }
+  }
+}, 60_000) // check every 60 seconds
+
 // ── Global error handler ──────────────────────
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled error:', err)
-  res.status(500).json({
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(`[${req.requestId || '???'}] Unhandled error:`, err)
+  res.status(err.status || 500).json({
     error: {
-      code: 'INTERNAL_ERROR',
-      message: 'An unexpected error occurred',
+      code: err.code || ErrorCode.INTERNAL,
+      message: err.message || 'An unexpected error occurred',
+      requestId: req.requestId,
     },
   })
 })
@@ -155,7 +271,33 @@ async function start() {
       + '  Start WAMP and run: npm run db:init\n')
   }
 
+  // ── TTL Cleanup: delete scan_results older than 90 days (S7) ──
+  _ttlCleanupTimer = setInterval(async () => {
+    try {
+      const result = await query<{ affectedRows: number }>(
+        'DELETE FROM scan_results WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)'
+      )
+      if (result.affectedRows > 0) {
+        console.log(`  🧹 TTL cleanup: removed ${result.affectedRows} old scan results (>90 days)`)
+      }
+    } catch { /* cleanup is best-effort */ }
+  }, 6 * 60 * 60 * 1000)
+
   server.listen(PORT, '0.0.0.0', () => {
+    // ── Initialize audit log table (S4) ──
+    if (dbOk) initAuditLog().catch(() => {})
+
+    // ── Ensure performance indexes exist (S8) ──
+    if (dbOk) {
+      (async () => {
+        try {
+          await query('CREATE INDEX IF NOT EXISTS idx_sr_token ON scan_results(token_id)')
+          await query('CREATE INDEX IF NOT EXISTS idx_req_username ON requests(pc_username)')
+          console.log('  📊 Performance indexes verified')
+        } catch { /* indexes may already exist */ }
+      })().catch(() => {})
+    }
+
     console.log(`  Server: http://localhost:${PORT}\n`)
     console.log('  Endpoints:')
     console.log(`  POST /api/auth/token           Check token`)
@@ -197,3 +339,25 @@ async function start() {
 }
 
 start().catch(console.error)
+
+// ── Graceful shutdown ──
+function gracefulShutdown(signal: string) {
+  console.log(`\n  Received ${signal} — shutting down gracefully...`)
+  stopAutoClassifier()
+  stopMetricsUpdater()
+  clearInterval(_wsCleanupTimer)
+  clearInterval(_wsExpiryTimer)
+  if (_ttlCleanupTimer) clearInterval(_ttlCleanupTimer)
+  stopLoginRateLimitCleanup()
+  io.close(() => {
+    server.close(() => {
+      console.log('  Server closed\n')
+      process.exit(0)
+    })
+  })
+  // Force exit after 10s if graceful close hangs
+  setTimeout(() => process.exit(1), 10000)
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))

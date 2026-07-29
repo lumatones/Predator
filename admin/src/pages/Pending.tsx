@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react'
+import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, User, Check, X, CheckSquare, Square } from 'lucide-react'
+import { CheckCircle, User, Check, X, CheckSquare, Square, Search, XCircle } from 'lucide-react'
 import { useAuth } from '../App'
 import { getPending, approveRequest, rejectRequest, approveBatch, rejectBatch, PendingRequest } from '../api'
 import CountdownCircle from '../components/CountdownCircle'
@@ -17,7 +17,25 @@ export default memo(function Pending() {
   const [actionId, setActionId] = useState<number | null>(null)
   const [exitAction, setExitAction] = useState<{ id: number; action: 'approve' | 'reject' } | null>(null)
 
-  // ── Bulk selection ──
+  // ── Search by username ──
+  const [searchQuery, setSearchQuery] = useState('')
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDebouncedQuery(value.trim()), 300)
+  }, [])
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery('')
+    setDebouncedQuery('')
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+  }, [])
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
 
@@ -48,7 +66,7 @@ export default memo(function Pending() {
     setLoading(true)
     setError('')
     try {
-      const data = await getPending(auth.token)
+      const data = await getPending(auth.token, debouncedQuery || undefined)
       setRequests(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка загрузки')
@@ -57,7 +75,7 @@ export default memo(function Pending() {
     }
   }
 
-  useEffect(() => { load() }, [auth])
+  useEffect(() => { load() }, [auth, debouncedQuery])
 
   async function handleApprove(id: number) {
     if (!auth) return
@@ -142,6 +160,21 @@ export default memo(function Pending() {
           <p>Пользователи, ожидающие подтверждения {requests.length > 0 && `(${requests.length})`}</p>
         </div>
         <div className="page-actions">
+          <div className="search-wrap">
+            <Search size={14} className="search-icon" />
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Поиск по имени..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="search-clear" onClick={clearSearch}>
+                <XCircle size={14} />
+              </button>
+            )}
+          </div>
           {requests.length > 0 && (
             <button
               className="btn btn-outline btn-sm select-all-btn"

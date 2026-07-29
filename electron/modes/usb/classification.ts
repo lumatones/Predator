@@ -136,7 +136,7 @@ if ($svcData) { Write-Host "SERVICE:$svcData" } else { Write-Host 'NO_SERVICE' }
             if (sigResult) return sigResult
           }
         }
-      } catch { /* skip */ }
+      } catch (err) { console.warn('[classification] failed:', (err as Error).message) }
     }
 
     return null

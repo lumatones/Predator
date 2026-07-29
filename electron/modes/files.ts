@@ -76,7 +76,7 @@ export async function scanFile(filePath: string): Promise<ScanResult | null> {
         for (const keyword of ALL_CHEAT_KEYWORDS) {
           if (content.includes(keyword)) matches.push(`content:${keyword}`)
         }
-      } catch (_e) { /* binary */ }
+      } catch (err) { console.warn('[files] binary/unreadable:', (err as Error).message) }
     }
 
     const binaryExts = new Set(['.exe', '.dll', '.sys', '.drv', '.asi', '.luac'])
@@ -86,7 +86,7 @@ export async function scanFile(filePath: string): Promise<ScanResult | null> {
         for (const sig of KNOWN_BINARY_SIGNATURES) {
           if (buffer.includes(sig)) matches.push(`binary-sig:${sig.toString('utf-8').slice(0, 30)}`)
         }
-      } catch (_e) { /* skip */ }
+      } catch (err) { console.warn('[files] failed:', (err as Error).message) }
     }
 
     if (matches.length === 0) return null
@@ -118,7 +118,7 @@ function getDeepWalkEntries(dirPath: string, maxDepth = 2): string[] {
           walk(fullPath, depth + 1)
         }
       }
-    } catch (_e) { /* skip */ }
+    } catch (err) { console.warn('[files] failed:', (err as Error).message) }
   }
   walk(dirPath, 0)
 
@@ -138,7 +138,7 @@ export function scanForCheatFiles(cheatName: string, keywords: string[]): ScanRe
     if (!fs.existsSync(dir)) continue
     try {
       allEntries.push(...getDeepWalkEntries(dir, 2))
-    } catch (_e) { /* skip */ }
+    } catch (err) { console.warn('[files] failed:', (err as Error).message) }
   }
 
   for (const entryPath of allEntries) {
@@ -160,7 +160,7 @@ export function scanForCheatFiles(cheatName: string, keywords: string[]): ScanRe
           risk: matches.length >= 2 ? 'high' : 'medium',
           matches, size: stat.size, modifiedAt: stat.mtime.toISOString(),
         })
-      } catch (_e) { /* skip */ }
+      } catch (err) { console.warn('[files] failed:', (err as Error).message) }
     }
   }
 

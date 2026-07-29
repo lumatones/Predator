@@ -37,7 +37,7 @@ function rot13(str: string): string {
 function ps(command: string, timeout = 8000): string {
   try {
     return execSync(`powershell -NoProfile -Command "${command}"`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout,
       windowsHide: true,
     }).trim()
@@ -49,7 +49,7 @@ function ps(command: string, timeout = 8000): string {
 function regQuery(keyPath: string, timeout = 5000): string {
   try {
     return execSync(`reg query "${keyPath}" /s 2>nul`, {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout,
     }).trim()
   } catch {
@@ -123,7 +123,7 @@ export function scanDeepPrefetch(): ScanResult[] {
             const stat = fs.statSync(filePath)
             mtime = stat.mtime.toISOString()
             size = stat.size
-          } catch { /* skip */ }
+          } catch (err) { console.warn('[forensic-traces] failed:', (err as Error).message) }
 
           const dedupKey = `forensic-pf:${file}`
           if (addFindingDedup(dedupKey)) {
@@ -147,7 +147,7 @@ export function scanDeepPrefetch(): ScanResult[] {
         }
       }
     }
-  } catch { /* skip */ }
+  } catch (err) { console.warn('[forensic-traces] failed:', (err as Error).message) }
 
   return results
 }
@@ -164,7 +164,7 @@ export function scanAmcache(): ScanResult[] {
   // Use reg.exe load/unload (safer than PowerShell for this)
   try {
     execSync('reg load HKLM\\Amcache_Temp "' + amcachePath + '" 2>nul', {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout: 8000,
       windowsHide: true,
     })
@@ -202,7 +202,7 @@ export function scanAmcache(): ScanResult[] {
   // ALWAYS unload the hive
   try {
     execSync('reg unload HKLM\\Amcache_Temp 2>nul', {
-      encoding: 'utf-8' as BufferEncoding,
+      encoding: 'utf-8',
       timeout: 5000,
       windowsHide: true,
     })

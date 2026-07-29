@@ -127,10 +127,10 @@ export function scanProcessForAmsiEtw(pid: number, processName: string, existing
       result.details.push(`String in memory: ${s}`)
       result.riskScore += 10
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[etw-amsi] failed:', (err as Error).message) }
   finally {
     if (!existingDumpPath) {
-      try { fs.unlinkSync(dumpPath) } catch { /* ignore */ }
+      try { fs.unlinkSync(dumpPath) } catch (err) { console.warn('[etw-amsi] failed:', (err as Error).message) }
     }
   }
 
@@ -158,7 +158,7 @@ export function analyzeDumpForAmsiEtw(dumpPath: string): PatchResult {
         if (pat.name.startsWith('ETW')) { result.etwPatched = true; result.riskScore += 35 }
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('[etw-amsi] failed:', (err as Error).message) }
 
   return result
 }

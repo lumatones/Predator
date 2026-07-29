@@ -1,18 +1,27 @@
 import jwt from 'jsonwebtoken'
 import type { Request, Response, NextFunction } from 'express'
 
+// ── Extend Express Request to include admin payload ──
+declare global {
+  namespace Express {
+    interface Request {
+      admin?: AdminPayload
+    }
+  }
+}
+
 interface AdminPayload {
   id: number
   username: string
   role: 'admin' | 'superadmin'
 }
 
-/** Lazy-load JWT_SECRET — allows dotenv to set it before first use */
+/** Lazy-load JWT_SECRET — allows dotenv to set it before first use.
+ *  Throws if not set — caught by route handlers returning 500. */
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET
   if (!secret) {
-    console.error('FATAL: JWT_SECRET is not set in environment (.env)')
-    process.exit(1)
+    throw new Error('JWT_SECRET is not configured. Set it in .env file.')
   }
   return secret
 }
@@ -37,7 +46,7 @@ function verifyToken(req: Request, res: Response, next: NextFunction): void {
     const secret = getJwtSecret()
     const token = header.split(' ')[1]
     const decoded = jwt.verify(token, secret) as AdminPayload
-    ;(req as any).admin = decoded
+    req.admin = decoded
     next()
   } catch (err) {
     res.status(401).json({ error: 'Token invalid or expired' })

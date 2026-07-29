@@ -7,6 +7,7 @@ import {
   type SuspiciousHash, type ScanResultHash,
 } from '../api'
 import HashRow from '../components/HashRow'
+import HashDetailModal from '../components/HashDetailModal'
 import { Search, ShieldAlert, Clock, Check, X } from 'lucide-react'
 import { SkeletonTable } from '../components/Skeleton'
 import { smoothEase } from '../constants'
@@ -34,6 +35,7 @@ export default memo(function SuspiciousHashes() {
   const [confettiId, setConfettiId] = useState<string | number | null>(null)
   const [glowId, setGlowId] = useState<string | number | null>(null)
   const [rejectingId, setRejectingId] = useState<string | number | null>(null)
+  const [selectedHash, setSelectedHash] = useState<SuspiciousHash | ScanResultHash | null>(null)
   const confettiTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const glowTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const rejectTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -116,6 +118,10 @@ export default memo(function SuspiciousHashes() {
   const isScanTab = tab === 'scan_results'
 
   const rowId = (h: SuspiciousHash | ScanResultHash) => (isScanTab ? (h as ScanResultHash).sha256 : (h as SuspiciousHash).id)
+
+  const handleRowClick = (h: SuspiciousHash | ScanResultHash) => {
+    setSelectedHash(h)
+  }
 
   return (
     <div>
@@ -230,6 +236,7 @@ export default memo(function SuspiciousHashes() {
                       onApprove={handleApprove}
                       onReject={handleReject}
                       onConfirmFromScan={handleConfirmFromScan}
+                      onClick={() => handleRowClick(h)}
                     />
                   )
                 })}
@@ -238,6 +245,16 @@ export default memo(function SuspiciousHashes() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Hash Detail Modal */}
+      <HashDetailModal
+        data={selectedHash}
+        isScan={isScanTab}
+        onClose={() => setSelectedHash(null)}
+        onApprove={tab === 'pending' ? handleApprove : undefined}
+        onReject={tab === 'pending' ? handleReject : undefined}
+        onConfirmFromScan={isScanTab ? handleConfirmFromScan : undefined}
+      />
     </div>
   )
 })

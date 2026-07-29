@@ -394,7 +394,7 @@ export async function autoPromoteShadowRules(): Promise<string[]> {
             [s.sha256, s.tlsh || null, s.file_name || 'unknown']
           )
           inserted++
-        } catch { /* skip */ }
+        } catch (err) { console.warn('[classifier] failed:', (err as Error).message) }
       }
 
       promoted.push(row.rule_name)
