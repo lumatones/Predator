@@ -15,6 +15,9 @@ import { Magnetic } from './components/ui/Magnetic'
 import { Button } from './components/ui/Button'
 import { OnboardingFlow } from './components/onboarding/OnboardingFlow'
 import { SettingsPanel } from './components/ui/SettingsPanel'
+import { MusicPlayer } from './components/ui/MusicPlayer'
+import { MiniPlayer } from './components/ui/MiniPlayer'
+import { MusicPlayerContext, useMusicPlayer } from './hooks/useMusicPlayer'
 import { useAuth } from './hooks/useAuth'
 import { useThemeEngine } from './hooks/useThemeEngine'
 import { useUpdateManager } from './hooks/useUpdateManager'
@@ -448,6 +451,10 @@ const PageWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const App: React.FC = () => {
   const [lang, setLang] = useState<Lang>('ru')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [musicOpen, setMusicOpen] = useState(false)
+
+  // Music player — lifted to App level so MusicPlayer + MiniPlayer share state
+  const musicPlayer = useMusicPlayer()
 
   const {
     token, setToken,
@@ -592,11 +599,18 @@ const App: React.FC = () => {
         )}
         {/* Settings trigger (visible on main/checker/dashboard) */}
       {(phase === 'main' || phase === 'checker' || phase === 'dashboard') && (
-        <button className="settings-trigger" onClick={() => setSettingsOpen(true)} title="Settings">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-        </button>
+        <div className="floating-buttons">
+          <button className="settings-trigger" onClick={() => setMusicOpen(true)} title="Music">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+            </svg>
+          </button>
+          <button className="settings-trigger" onClick={() => setSettingsOpen(true)} title="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        </div>
       )}        <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -605,6 +619,20 @@ const App: React.FC = () => {
         onThemeChange={(id: ThemeId) => handleThemeSelect(id, phase)}
         lang={lang}
       />
+      <MusicPlayerContext.Provider value={musicPlayer}>
+        <MusicPlayer
+          open={musicOpen}
+          onClose={() => setMusicOpen(false)}
+          accent={c.accent}
+          light={c.light}
+          dark={c.dark}
+          lang={lang}
+        />
+        <MiniPlayer
+          onOpenFull={() => setMusicOpen(true)}
+          accent={c.accent}
+        />
+      </MusicPlayerContext.Provider>
 
       <UpdateModal state={updateModal} theme={theme} lang={lang} onClose={hCloseModal} onDownload={hInstallUpdate} onRestart={hRestart} />
         <Footer version={version} updateAvailable={updateAvailable} />

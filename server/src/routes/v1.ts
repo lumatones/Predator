@@ -149,6 +149,85 @@ router.post('/signatures/refresh', verifyToken, (_req: Request, res: Response) =
   })
 })
 
+// ═══════════════════════════════════════════════════
+// GET /api/v1/client-hash — Server-side .exe integrity
+// ═══════════════════════════════════════════════════
+//
+// Closes the baseline-trust attack vector (risk #1):
+//   Attacker patches Predator.exe → deletes .predator_integrity →
+//   first run stores tampered hash as baseline.
+//
+// With this endpoint, the client fetches the EXPECTED hash from
+// the server on first run. If the local hash doesn't match —
+// tampering is detected BEFORE the baseline is stored.
+//
+// Populate this map during release.
+
+/**
+ * Map of version → expected SHA256 of Predator.exe
+ * Populated after each release build.
+ *
+ * To add a new version hash:
+ *   1. Build the release .exe
+ *   2. Run: certutil -hashfile release/Predator-0.4.0.exe SHA256
+ *   3. Add entry below
+ */
+const CLIENT_HASHES: Record<string, string> = {
+  // '0.4.0': 'abc123def456...', // ← add after release build
+}
+
+router.get('/client-hash', async (req: Request, res: Response) => {
+  const version = req.query.version as string | undefined
+
+  if (!version) {
+    return res.status(400).json({
+      data: null,
+      error: { code: 'MISSING_VERSION', message: 'Query parameter "version" is required' },
+    })
+  }
+
+  // 1. Check static map first (fast path)
+  if (CLIENT_HASHES[version]) {
+    return res.json({
+      data: {
+        version,
+        sha256: CLIENT_HASHES[version],
+        source: 'static',
+      },
+      meta: {},
+    })
+  }
+
+  // 2. Check DB (dynamic fallback — populate via admin or release script)
+  try {
+    const rows = await query<{ sha256: string }[]>(
+      'SELECT sha256 FROM client_hashes WHERE version = ? LIMIT 1',
+      [version],
+    )
+    if (rows.length > 0) {
+      return res.json({
+        data: {
+          version,
+          sha256: rows[0].sha256,
+          source: 'database',
+        },
+        meta: {},
+      })
+    }
+  } catch {
+    // DB query failed — table may not exist yet, continue to 404
+  }
+
+  // 3. Not found — hash for this version hasn't been registered yet
+  return res.status(404).json({
+    data: null,
+    error: {
+      code: 'HASH_NOT_FOUND',
+      message: `No hash registered for version "${version}". Has the release been published?`,
+    },
+  })
+})
+
 // ── GET /api/v1/health ─────────────────────────
 router.get('/health', (_req: Request, res: Response) => {
   return res.json({

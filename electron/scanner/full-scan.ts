@@ -53,7 +53,10 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
   // Phase 0: Anti-Tamper + Self-Integrity + Runtime Self-Protection
   await sendProgress(win, { phase: 'scanning', currentDir: 'Self-integrity verification...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 0 })
   results.push(...safeCall('runAntiTamperScan', () => runAntiTamperScan()))
-  results.push(...safeCall('runSelfIntegrityScan', () => runSelfIntegrityScan()))
+  // Server-side verified integrity check (async — fetches expected hash from server)
+  try {
+    results.push(...await runSelfIntegrityScan())
+  } catch (err) { console.error('[full-scan] runSelfIntegrityScan crashed:', (err as Error).message) }
   results.push(...safeCall('runSelfProtectCheck', () => runSelfProtectCheck()))
   if (aborted()) return { results, filesScanned }
 

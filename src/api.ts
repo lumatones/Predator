@@ -83,18 +83,37 @@ async function fetchApi<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  const data = await res.json()
+
+  // Parse JSON safely — server may return empty body on network errors
+  let data: any
+  try { data = await res.json() } catch { /* empty/invalid JSON — handled below */ }
+
   if (!res.ok) {
-    if (typeof data.valid === 'boolean') return data as T
-    throw new Error(data.error || `HTTP ${res.status}`)
+    if (data === undefined) {
+      throw new Error(`Сервер недоступен (HTTP ${res.status}). Проверьте подключение.`)
+    }
+    // Legacy: token validation returns { valid: boolean } on non-OK status
+    if (typeof data?.valid === 'boolean') return data as T
+    throw new Error(data?.error || `HTTP ${res.status}`)
+  }
+  if (data === undefined) {
+    throw new Error('Сервер вернул пустой ответ. Попробуйте позже.')
   }
   return data as T
 }
 
 async function fetchGet<T>(path: string): Promise<T> {
   const res = await fetch(`${getApiBase()}${path}`)
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+
+  let data: any
+  try { data = await res.json() } catch { /* empty/invalid JSON — handled below */ }
+
+  if (!res.ok) {
+    throw new Error(`Сервер недоступен (HTTP ${res.status}). Проверьте подключение.`)
+  }
+  if (data === undefined) {
+    throw new Error('Сервер вернул пустой ответ. Попробуйте позже.')
+  }
   return data as T
 }
 

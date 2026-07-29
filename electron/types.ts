@@ -13,7 +13,7 @@ export interface ScanResult {
   path: string
   fileName: string
   type: 'file' | 'browser' | 'process' | 'registry' | 'hardware' | 'software' | 'system'
-  risk: 'high' | 'medium' | 'low'
+  risk: 'critical' | 'high' | 'medium' | 'low'
   matches: string[]
   size: number
   modifiedAt: string

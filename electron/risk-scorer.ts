@@ -97,7 +97,7 @@ export function classifySignal(match: string): string {
 interface EvidenceItem {
   category: string
   weight: number
-  risk: 'high' | 'medium' | 'low'
+  risk: 'critical' | 'high' | 'medium' | 'low'
   timestamp: number
   findingId: string
 }

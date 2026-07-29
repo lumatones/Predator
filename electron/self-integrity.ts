@@ -18,9 +18,12 @@
 
 import crypto from 'crypto'
 import fs from 'fs'
+import http from 'http'
+import https from 'https'
 import path from 'path'
 import { execSync } from 'child_process'
 import { app } from 'electron'
+import { getApiBase } from './config'
 import type { ScanResult } from './types'
 
 // ═══════════════════════════════════════════════════
@@ -63,6 +66,51 @@ const EXPECTED_IAT_DLLS = new Set([
 ])
 
 // ═══════════════════════════════════════════════════
+// 0. SERVER-SIDE HASH FETCH
+// ═══════════════════════════════════════════════════
+
+/**
+ * Fetch the expected SHA256 for a given version from the server.
+ * Returns null if the server is unreachable or hash is unknown.
+ */
+async function fetchExpectedHash(version: string): Promise<string | null> {
+  try {
+    const base = getApiBase()
+    const url = new URL('/api/v1/client-hash', base)
+    url.searchParams.set('version', version)
+
+    const data = await new Promise<string>((resolve, reject) => {
+      const transport = url.protocol === 'https:' ? https : http
+      const req = transport.get(url, { timeout: 5000 }, (res) => {
+        if (res.statusCode === 404) {
+          // Hash not registered for this version — expected for dev/pre-release
+          res.resume()
+          return resolve('')
+        }
+        let body = ''
+        res.on('data', (chunk: string) => body += chunk)
+        res.on('end', () => resolve(body))
+        res.on('error', reject)
+      })
+      req.on('error', reject)
+      req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')) })
+    })
+
+    if (!data) return null
+
+    const parsed = JSON.parse(data)
+    const sha256 = parsed?.data?.sha256
+    if (sha256 && typeof sha256 === 'string' && sha256.length === 64) {
+      return sha256
+    }
+    return null
+  } catch {
+    // Server unreachable — no network, server down, etc.
+    return null
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // 1. SELF .EXE SHA256 VERIFICATION
 // ═══════════════════════════════════════════════════
 
@@ -98,7 +146,7 @@ function writeIntegrityState(state: IntegrityState): void {
  * On first run: stores hash + version seed.
  * On subsequent runs: compares hash AND version seed.
  */
-export function verifySelfExeIntegrity(): ScanResult[] {
+export async function verifySelfExeIntegrity(): Promise<ScanResult[]> {
   const results: ScanResult[] = []
   const now = new Date().toISOString()
 
@@ -126,7 +174,61 @@ export function verifySelfExeIntegrity(): ScanResult[] {
     const stored = readIntegrityState()
 
     if (!stored) {
-      // First run — store baseline hash + version seed
+      // ═══════════════════════════════════════════════
+      // First run — verify hash against server BEFORE
+      // trusting the local .exe (closes baseline trust risk)
+      // ═══════════════════════════════════════════════
+      const serverHash = await fetchExpectedHash(currentVersion)
+
+      if (serverHash) {
+        // Server returned the expected hash — compare
+        if (serverHash.toLowerCase() !== currentHash.toLowerCase()) {
+          // ⛔ TAMPERING DETECTED: local .exe hash ≠ server's expected hash
+          // Attacker may have patched the .exe and deleted .predator_integrity
+          //
+          // CRITICAL: Store the SERVER's expected hash, NOT the tampered local hash.
+          // This ensures the mismatch is detected on EVERY subsequent run
+          // (not just once — otherwise the tampered hash becomes the new baseline).
+          writeIntegrityState({
+            exeHash: serverHash, // store SERVER hash → mismatch fires every run
+            exeSize: stat.size,
+            versionSeed: currentVersion,
+            lastVerified: now,
+            tamperCount: 1,
+          })
+          results.push({
+            path: exePath,
+            fileName: '⛔ CRITICAL: Executable hash mismatch (server-verified)',
+            type: 'system',
+            risk: 'critical',
+            matches: [
+              `Expected SHA256 (server): ${serverHash.slice(0, 16)}...`,
+              `Actual SHA256 (local):   ${currentHash.slice(0, 16)}...`,
+              '⛔ Predator.exe does NOT match the official release build',
+              'The executable may have been patched/modified by cheat software',
+              'Baseline trust verified against server — this is NOT a false positive',
+            ],
+            size: stat.size,
+            modifiedAt: now,
+          })
+          return results
+        }
+
+        // ✅ Hash matches server — store trusted baseline
+        writeIntegrityState({
+          exeHash: currentHash,
+          exeSize: stat.size,
+          versionSeed: currentVersion,
+          lastVerified: now,
+          tamperCount: 0,
+        })
+        console.log('[self-integrity] ✅ Baseline verified against server — trusted')
+        return results
+      }
+
+      // Server unreachable or hash not registered — fall back to
+      // trust-on-first-use (current behavior) but log a warning
+      console.warn('[self-integrity] ⚠ Server hash unavailable — using trust-on-first-use fallback')
       writeIntegrityState({
         exeHash: currentHash,
         exeSize: stat.size,
@@ -493,10 +595,10 @@ $result | ConvertTo-Json -Compress
  * Run ALL self-integrity checks.
  * Called at scan start (Phase 0) and periodically.
  */
-export function runSelfIntegrityScan(): ScanResult[] {
+export async function runSelfIntegrityScan(): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
-  results.push(...verifySelfExeIntegrity())
+  results.push(...await verifySelfExeIntegrity())
   results.push(...checkCodeSectionProtection())
   results.push(...scanForInt3Patches())
   results.push(...verifyImportTable())
