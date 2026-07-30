@@ -160,10 +160,14 @@ export const ScanTerminal: React.FC<ScanTerminalProps> = memo(function ScanTermi
     // Only setup once — progress read via ref
   }, [])
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom — rAF ensures DOM is painted before scroll
   useEffect(() => {
     if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight
+      requestAnimationFrame(() => {
+        if (terminalRef.current) {
+          terminalRef.current.scrollTop = terminalRef.current.scrollHeight
+        }
+      })
     }
   }, [lines])
 

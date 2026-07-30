@@ -15,6 +15,7 @@ import { Magnetic } from '../components/ui/Magnetic'
 import { Button } from '../components/ui/Button'
 import PredatorLogo3D from '../components/ui/PredatorLogo3D'
 import { ScanTerminal } from '../components/ui/ScanTerminal'
+import { Skeleton } from '../components/ui/Skeleton'
 import { FileDetailModal } from '../components/ui/FileDetailModal'
 import { ThreatMap } from '../components/ui/ThreatMap'
 import { ApcDashboard } from '../components/ui/ApcDashboard'
@@ -649,6 +650,24 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       </div>
 
       {phase !== 'scanning' && <p className="checker-desc" style={{ marginBottom: 16 }}>{t(currentTab.desc)}</p>}
+
+      {/* Skeleton during tab transitions — outside animated container for visibility */}
+      {tabTransition !== 'idle' && (
+        <div className="checker-skeleton" aria-hidden="true">
+          <div className="checker-skeleton-search">
+            <Skeleton width="100%" height="36px" radius="var(--radius-md)" />
+          </div>
+          {['70%','55%','80%','45%','65%'].map((w, i) => (
+            <div key={i} className="checker-skeleton-row">
+              <Skeleton width="3px" height="100%" radius="2px" style={{ position: 'absolute', left: 0, top: 6, bottom: 6 }} />
+              <div style={{ paddingLeft: 16, width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Skeleton width={w} height="14px" />
+                <Skeleton width={`${parseInt(w) - 15}%`} height="11px" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Tab content with transitions */}
       <div className={`tab-content${tabTransition === 'exit' ? ' exit' : ''}${tabTransition === 'enter' ? ' enter' : ''}`}>

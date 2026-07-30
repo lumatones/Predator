@@ -1173,3 +1173,32 @@
 
 /* .checker-action-btn → используй .start-button / .start-button.secondary из components.css */
 
+/* ── Skeleton (tab transitions) ── */
+.checker-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  animation: skeletonFadeIn 0.3s var(--ease-out) both;
+}
+
+@keyframes skeletonFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.checker-skeleton-search {
+  margin-bottom: var(--space-2);
+}
+
+.checker-skeleton-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
