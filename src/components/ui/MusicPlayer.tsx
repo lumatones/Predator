@@ -12,7 +12,7 @@
  * Architecture: Pluggable — swap MusicSource implementations without touching UI.
  */
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useMusicPlayerContext } from '../../hooks/useMusicPlayer'
 
@@ -84,11 +84,76 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchInput, setSearchInput] = useState('')
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // ── Drag state ──
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 })
+  const dragRef = useRef({ startX: 0, startY: 0, startPosX: 0, startPosY: 0, isDragging: false })
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only start drag on the header area
+    const target = e.target as HTMLElement
+    if (target.closest('.music-close-btn') || target.closest('button')) return
+    const d = dragRef.current
+    d.startX = e.clientX
+    d.startY = e.clientY
+    d.startPosX = dragPos.x
+    d.startPosY = dragPos.y
+    d.isDragging = true
+    document.body.style.cursor = 'grabbing'
+    document.body.style.userSelect = 'none'
+  }, [dragPos])
+
+  useEffect(() => {
+    if (!open) {
+      setDragPos({ x: 0, y: 0 })
+      return
+    }
+    const handleMouseMove = (e: MouseEvent) => {
+      const d = dragRef.current
+      if (!d.isDragging) return
+      const dx = e.clientX - d.startX
+      const dy = e.clientY - d.startY
+      setDragPos({
+        x: d.startPosX + dx,
+        y: Math.max(-window.innerHeight * 0.1, d.startPosY + dy),
+      })
+    }
+    const handleMouseUp = () => {
+      const d = dragRef.current
+      if (!d.isDragging) return
+      d.isDragging = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('keydown', handleKeyDown)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [open, onClose])
 
   const handleSearchSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
-    handleSearch(searchInput)
+    handleSearch(searchInput || 'predator')
   }, [searchInput, handleSearch])
+
+  // Auto-load demo tracks when player opens
+  useEffect(() => {
+    if (open && !searchResults && !searching) {
+      handleSearch('predator')
+    }
+    // handleSearch is stable (useCallback with []), safe to omit from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, searchResults, searching])
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60)
@@ -114,19 +179,29 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
           {/* Panel */}
           <motion.div
+            ref={panelRef}
             className="music-panel"
             style={{
               '--music-accent': accent,
               '--music-light': light,
               '--music-dark': dark,
+              '--drag-x': `${dragPos.x}px`,
+              '--drag-y': `${dragPos.y}px`,
             } as React.CSSProperties}
             initial={{ opacity: 0, x: 40, scale: 0.97 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: 40, scale: 0.97 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           >
-            {/* Header */}
-            <div className="music-header">
+            {/* Header — drag handle */}
+            <div className="music-header music-header-drag" onMouseDown={handleMouseDown}>
+              <div className="music-drag-handle">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.35">
+                  <circle cx="9" cy="5" r="1.5" /><circle cx="15" cy="5" r="1.5" />
+                  <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+                  <circle cx="9" cy="19" r="1.5" /><circle cx="15" cy="19" r="1.5" />
+                </svg>
+              </div>
               <h3 className="music-title">{t.title}</h3>
               <button className="music-close-btn" onClick={onClose} aria-label={t.close}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

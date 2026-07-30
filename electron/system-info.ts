@@ -6,7 +6,7 @@
 
 import { ipcMain, BrowserWindow } from 'electron'
 import os from 'os'
-import { execSync } from 'child_process'
+import { execWithTimeout } from './utils/exec'
 
 // ── Types ──────────────────────────────────────
 
@@ -90,10 +90,7 @@ function getTemperature(): number | null {
   }
 
   try {
-    const out = execSync(
-      'wmic /namespace:\\\\root\\wmi PATH MSAcpi_ThermalZoneTemperature get CurrentTemperature /format:csv 2>nul',
-      { encoding: 'utf-8', timeout: 3000 }
-    )
+    const out = execWithTimeout('wmic /namespace:\\\\root\\wmi PATH MSAcpi_ThermalZoneTemperature get CurrentTemperature /format:csv 2>nul', { timeout: 3000 }) || ''
     const lines = out.trim().split('\n').filter(l => l.trim().length > 0)
     for (const line of lines) {
       const parts = line.split(',')
@@ -114,10 +111,7 @@ function getTemperature(): number | null {
 
   // Fallback: try Open Hardware Monitor / Libre Hardware Monitor
   try {
-    const out = execSync(
-      'wmic path Win32_PerfFormattedData_Counters_ThermalZoneInformation get Temperature /format:csv 2>nul',
-      { encoding: 'utf-8', timeout: 3000 }
-    )
+    const out = execWithTimeout('wmic path Win32_PerfFormattedData_Counters_ThermalZoneInformation get Temperature /format:csv 2>nul', { timeout: 3000 }) || ''
     const lines = out.trim().split('\n').filter(l => l.trim().length > 0)
     for (const line of lines) {
       const parts = line.split(',')
@@ -141,7 +135,7 @@ function getRunningProcesses(): SystemProcess[] {
   const processes: SystemProcess[] = []
 
   try {
-    const out = execSync('tasklist /FO CSV /NH', { encoding: 'utf-8', timeout: 5000 })
+    const out = execWithTimeout('tasklist /FO CSV /NH', { timeout: 5000 }) || ''
     for (const line of out.trim().split('\n')) {
       try {
         const parts = line.match(/"([^"]+)",(\d+),(\d+),"([^"]+)"/)

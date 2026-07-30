@@ -8,7 +8,7 @@
  *   - Cloned/spoofed USB serial numbers
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../../utils/exec'
 import { type ScanResult, addFindingDedup } from '../../types'
 import { DMA_VENDORS, type UsbDeviceInfo } from './descriptors'
 
@@ -222,9 +222,7 @@ Get-WmiObject Win32_PnPEntity |
   Where-Object { $_.Name -match 'xilinx|altera|fpga|leech|dma|pcie' -or $_.PNPDeviceID -match 'VEN_10EE|VEN_1172|VEN_1204|VEN_DADA|VEN_1FC0' } |
   ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 10000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psCmd, { timeout: 10000 }) || '').trim()
 
     if (!out || out.length < 5) return results
 
@@ -262,7 +260,7 @@ Get-WmiObject Win32_PnPEntity |
 
   // Also check for PCIe devices via devcon if available
   try {
-    const devconOut = execSync('devcon find PCI\\* 2>nul', { encoding: 'utf-8', timeout: 5000 })
+    const devconOut = execWithTimeout('devcon find PCI\\* 2>nul', { timeout: 5000 }) || ''
     const lower = devconOut.toLowerCase()
     for (const [venId, name] of Object.entries(PCIE_FPGA_VENDORS)) {
       if (lower.includes(`ven_${venId.toLowerCase()}`) && addFindingDedup(`pcie-devcon:${venId}`)) {

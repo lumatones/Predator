@@ -51,6 +51,7 @@ export const requestAccessSchema = z.object({
 export const submitScanSchema = z.object({
   token_id: z.number().int().positive('token_id must be a positive integer'),
   pc_username: z.string().max(100).optional(),
+  client_version: z.string().max(20).optional(),
   mode: z.string().max(20).optional(),
   total_scanned: z.number().int().min(0).optional(),
   suspicious_files: z.number().int().min(0).optional(),
@@ -62,10 +63,13 @@ export const submitScanSchema = z.object({
     type: z.string(),
     risk: z.enum(['high', 'medium', 'low']),
     matches: z.array(z.string()),
-    size: z.number().optional(),
     sha256: z.string().optional(),
-    partialHash: z.string().length(64).optional(),
-  })).max(100).optional(),
+    partialHash: z.string().max(64).optional(),
+    size: z.number().optional(),
+    modifiedAt: z.string().optional(),
+    findingKind: z.string().optional(),
+    tlsh: z.string().max(256).optional(),
+  })).max(200).optional(),
 })
 
 export const submitHashesSchema = z.object({

@@ -8,7 +8,7 @@
  *   - Suspicious firewall rules (cheat-related exceptions)
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import { type ScanResult, addFindingDedup } from '../types'
 
 // ═══════════════════════════════════════════════════
@@ -105,9 +105,7 @@ $proxyOverride = (Get-ItemProperty -Path $key -Name ProxyOverride -ErrorAction S
   Override = if ($proxyOverride) { $proxyOverride } else { '' }
 } | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 5000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psCmd, { timeout: 5000 }) || '').trim()
 
     if (out && out.length > 5) {
       const proxy = JSON.parse(out)
@@ -169,9 +167,7 @@ export function scanVpnAdapters(): ScanResult[] {
     const psCmd = `
 Get-NetAdapter -ErrorAction SilentlyContinue | Select-Object Name, InterfaceDescription, Status | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psCmd}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psCmd, { timeout: 8000 }) || '').trim()
 
     if (!out || out.length < 5) return results
 
@@ -224,7 +220,7 @@ export function scanC2Connections(): ScanResult[] {
 
   try {
     // Get netstat with process info
-    const out = execSync(`netstat -ano`, { encoding: 'utf-8', timeout: 5000 })
+    const out = execWithTimeout('netstat -ano', { timeout: 5000 }) || ''
     if (!out.trim()) return results
 
     const lines = out.split('\n')
@@ -263,7 +259,7 @@ export function scanC2Connections(): ScanResult[] {
 
     // Check DNS cache for C2 domains
     try {
-      const dnsOut = execSync('ipconfig /displaydns', { encoding: 'utf-8', timeout: 5000 })
+      const dnsOut = execWithTimeout('ipconfig /displaydns', { timeout: 5000 }) || ''
       const dnsLower = dnsOut.toLowerCase()
       for (const domain of C2_DOMAINS) {
         if (dnsLower.includes(domain) && addFindingDedup(`c2-dns:${domain}`)) {
@@ -310,9 +306,7 @@ Get-NetFirewallRule -Direction Outbound -Enabled True -Action Allow -ErrorAction
   Select-Object -First 15 DisplayName, Direction, Action, Enabled |
   ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psCmd, { timeout: 8000 }) || '').trim()
 
     if (!out || out.length < 5) return results
 

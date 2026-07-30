@@ -10,7 +10,7 @@
  *   - Registry entries in HKLM\SYSTEM\CurrentControlSet\Services
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import * as fs from 'fs'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
@@ -405,9 +405,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 $drivers = Get-CimInstance -ClassName Win32_SystemDriver -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Running' } | Select-Object Name, DisplayName, PathName, State | ConvertTo-Json -Compress
 if ($drivers) { $drivers } else { '[]' }
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 8000 }) || ''
 
     if (!out || out === '[]' || out.length < 5) return results
 
@@ -470,8 +468,8 @@ function scanByovdRegistry(): ScanResult[] {
       for (const svcName of vd.serviceNames) {
         const regPath = `HKLM\\SYSTEM\\CurrentControlSet\\Services\\${svcName}`
         try {
-          execSync(`reg query "${regPath}" /v ImagePath 2>nul`, {
-            encoding: 'utf-8', timeout: 2000, windowsHide: true,
+          execWithTimeout(`reg query "${regPath}" /v ImagePath 2>nul`, {
+            timeout: 2000,
           })
 
           if (addFindingDedup(`byovd-reg:${svcName}`)) {

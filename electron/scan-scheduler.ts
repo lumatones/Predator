@@ -10,7 +10,7 @@
  * Uses quick-scan mode for minimal system impact.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import type { BrowserWindow } from 'electron'
 import { runQuickScan } from './scanner/quick-scan'
 import { runPostScanPipeline } from './scan-pipeline'
@@ -42,7 +42,7 @@ let _scanInProgress = false
 function isGameRunning(): boolean {
   try {
     const psCmd = `Get-Process -Name ${GAME_PROCESS_NAMES.join(',')} -ErrorAction SilentlyContinue | Select -First 1`
-    const out = execSync(`powershell -Command "${psCmd}"`, { encoding: 'utf-8', timeout: 5000 })
+    const out = execPowerShell(psCmd, { timeout: 5000 }) || ''
     return out.trim().length > 0
   } catch {
     return false

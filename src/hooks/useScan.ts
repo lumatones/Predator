@@ -136,10 +136,20 @@ async function submitToServer(mode: string, summary: ScanResponse['summary'], re
     let pcName = 'unknown'
     try { if (window.electronAPI?.getPCName) pcName = await window.electronAPI.getPCName() } catch { /* ignore */ }
     await submitScan({
-      token_id: tokenId ?? undefined, pc_username: pcName, mode,
+      token_id: tokenId ?? undefined, pc_username: pcName,
+      client_version: '0.4.3',
+      mode,
       total_scanned: summary.totalScanned, suspicious_files: summary.suspiciousFiles,
       high_risk_count: summary.highRiskCount, scan_time_ms: summary.scanTimeMs,
-      results: results.slice(0, 50).map(r => ({ path: r.path, fileName: r.fileName, type: r.type, risk: r.risk, matches: r.matches.slice(0, 5) })),
+      results: results.slice(0, 200).map(r => ({
+        path: r.path, fileName: r.fileName, type: r.type, risk: r.risk,
+        matches: r.matches,
+        sha256: r.sha256,
+        size: r.size,
+        modifiedAt: r.modifiedAt,
+      })),
     })
-  } catch { /* ignore */ }
+  } catch {
+    // Error already handled by fetchApiWithRetry + offline queue
+  }
 }

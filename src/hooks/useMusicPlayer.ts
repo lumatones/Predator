@@ -270,14 +270,10 @@ export function useMusicPlayer(): MusicPlayerAPI {
 
   const handleSearch = useCallback(async (query: string) => {
     setSearchQuery(query)
-    if (!query.trim()) {
-      setSearchResults(null)
-      return
-    }
     setSearching(true)
     setError(null)
     try {
-      const results = await searchAllSources(query, 20)
+      const results = await searchAllSources(query || 'predator', 20)
       setSearchResults(results)
     } catch {
       setError('Поиск временно недоступен')

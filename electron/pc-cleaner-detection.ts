@@ -19,33 +19,19 @@
  * 8. Browser artifact wiping (cache, cookies, history simultaneously cleared)
  */
 
-import { execSync, spawnSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
+import { spawnSync } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { ScanResult, addFindingDedup, _WR, _HOME } from './types'
 
 // ── Shell helpers ──
 function ps(command: string, timeout = 10000): string {
-  try {
-    return execSync(`powershell -NoProfile -Command "${command}"`, {
-      encoding: 'utf-8',
-      timeout,
-      windowsHide: true,
-    }).trim()
-  } catch {
-    return ''
-  }
+  return (execPowerShell(command, { timeout }) || '').trim()
 }
 
 function regQuery(keyPath: string, timeout = 5000): string {
-  try {
-    return execSync(`reg query "${keyPath}" /s 2>nul`, {
-      encoding: 'utf-8',
-      timeout,
-    }).trim()
-  } catch {
-    return ''
-  }
+  return (execWithTimeout(`reg query "${keyPath}" /s 2>nul`, { timeout }) || '').trim()
 }
 
 // ══════════════════════════════════════════════════════════
@@ -88,10 +74,7 @@ export function detectUsnJournalTampering(): ScanResult[] {
 
     // Query USN Journal via fsutil
     try {
-      const fsutilOut = execSync(`fsutil usn queryjournal ${volumeRoot}`, {
-        encoding: 'utf-8',
-        timeout: 5000,
-      }).trim()
+      const fsutilOut = (execWithTimeout(`fsutil usn queryjournal ${volumeRoot}`, { timeout: 5000 }) || '').trim()
 
       if (fsutilOut) {
         // Extract Maximum Size and Allocation Delta

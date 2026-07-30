@@ -7,7 +7,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import { checkAutoRulesOnStrings } from './auto-yara'
 
 export interface DumpResult {
@@ -62,11 +62,7 @@ if (-not $ok) { throw "MiniDumpWriteDump failed" }
   `.trim()
 
   try {
-    execSync(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
-      encoding: 'utf-8',
-      timeout: 15000,
-      windowsHide: true,
-    })
+    execPowerShell(psScript, { timeout: 15000, collapseLines: 'semicolons' })
     return fs.existsSync(outPath) && fs.statSync(outPath).size > 4096 ? outPath : null
   } catch {
     return null

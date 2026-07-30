@@ -21,7 +21,7 @@ import fs from 'fs'
 import http from 'http'
 import https from 'https'
 import path from 'path'
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import { app } from 'electron'
 import { getApiBase } from './config'
 import type { ScanResult } from './types'
@@ -363,9 +363,7 @@ foreach ($mod in $ourModules) {
 }
 $results | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 10000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psScript, { timeout: 10000, collapseLines: 'semicolons' }) || '').trim()
 
     if (!out || out === '[]' || out.length < 5) return results
 
@@ -541,9 +539,7 @@ $result = [PSCustomObject]@{
 }
 $result | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 10000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psScript, { timeout: 10000, collapseLines: 'semicolons' }) || '').trim()
 
     if (!out || out.length < 5) return results
 

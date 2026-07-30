@@ -1219,8 +1219,8 @@
 
 .music-panel {
   position: fixed;
-  top: 24px;
-  right: 24px;
+  top: calc(24px + var(--drag-y, 0px));
+  right: calc(24px - var(--drag-x, 0px));
   width: min(440px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   background: var(--bg-card);
@@ -1236,6 +1236,7 @@
     0 0 40px rgba(255, 60, 60, 0.06);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  transition: box-shadow 0.3s ease;
 }
 
 .music-header {
@@ -1245,6 +1246,32 @@
   padding: 20px 24px 16px;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+}
+
+.music-header-drag {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.music-header-drag:active {
+  cursor: grabbing;
+}
+
+.music-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.music-header-drag:hover .music-drag-handle {
+  color: var(--text-secondary);
 }
 
 .music-title {

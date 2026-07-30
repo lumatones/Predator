@@ -4,7 +4,7 @@
  * Ловит инжекторы по поведению, а не по имени.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import fs from 'fs'
 
 export interface BehaviorProfile {
@@ -33,18 +33,19 @@ const LEGIT_PARENTS = new Set(['explorer.exe', 'services.exe', 'svchost.exe', 'w
 
 function getParentProcess(pid: number): string {
   try {
-    const out = execSync(`wmic process where "ProcessId=${pid}" get ParentProcessId /format:csv`, { encoding: 'utf-8', timeout: 3000 })
+    const out = execWithTimeout(`wmic process where "ProcessId=${pid}" get ParentProcessId /format:csv`, { timeout: 3000 })
+    if (!out) return ''
     const ppid = parseInt(out.split('\n').pop()?.trim() || '0', 10)
     if (!ppid) return ''
-    const nameOut = execSync(`wmic process where "ProcessId=${ppid}" get Name /format:csv`, { encoding: 'utf-8', timeout: 3000 })
-    return nameOut.split('\n').pop()?.trim() || ''
+    const nameOut = execWithTimeout(`wmic process where "ProcessId=${ppid}" get Name /format:csv`, { timeout: 3000 })
+    return (nameOut || '').split('\n').pop()?.trim() || ''
   } catch { return '' }
 }
 
 function getNetworkForPid(pid: number): string[] {
   const ports: string[] = []
   try {
-    const out = execSync(`netstat -ano | findstr "${pid}"`, { encoding: 'utf-8', timeout: 5000 })
+    const out = execWithTimeout(`netstat -ano | findstr "${pid}"`, { timeout: 5000 }) || ''
     for (const line of out.split('\n')) {
       const parts = line.trim().split(/\s+/)
       if (parts.length < 5) continue
@@ -75,8 +76,8 @@ export function buildBehaviorProfile(pid: number, name: string, modules: string[
 
   // 1. Проверяем хендлы к игре (через handle64, если доступен)
   try {
-    const out = execSync(`handle64 -p ${name} -a 2>nul`, { encoding: 'utf-8', timeout: 5000 })
-    const lower = out.toLowerCase()
+    const out = execWithTimeout(`handle64 -p ${name} -a 2>nul`, { timeout: 5000 })
+    const lower = (out || '').toLowerCase()
     for (const game of GAME_NAMES) {
       if (lower.includes(game)) {
         profile.hasGameHandle = true

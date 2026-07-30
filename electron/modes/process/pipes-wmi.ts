@@ -5,7 +5,7 @@
  * WMI event subscriptions used for persistence.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../../utils/exec'
 
 import { addFindingDedup, execCmd, parsePsJson, type ScanResult } from '../../types'
 import { matchKnownCheat } from '../../heuristic'
@@ -47,10 +47,7 @@ export function scanNamedPipes(): ScanResult[] {
 export function scanWmiPersistence(): ScanResult[] {
   const results: ScanResult[] = []
   try {
-    const psOut = execSync(
-      `powershell -Command "Get-WmiObject -Class StdRegProv -Namespace root\\\\default -ErrorAction SilentlyContinue | Out-Null; Get-CimInstance -ClassName __ClassCreationEvent -Namespace 'root\\\\subscription' -ErrorAction SilentlyContinue | Select-Object * | ConvertTo-Json -Compress"`,
-      { encoding: 'utf-8', timeout: 8000 },
-    ).toString()
+    const psOut = execPowerShell(`Get-WmiObject -Class StdRegProv -Namespace root\\\\default -ErrorAction SilentlyContinue | Out-Null; Get-CimInstance -ClassName __ClassCreationEvent -Namespace 'root\\\\subscription' -ErrorAction SilentlyContinue | Select-Object * | ConvertTo-Json -Compress`, { timeout: 8000 }) || ''
     if (psOut && psOut.trim().length > 10) {
       const items = parsePsJson<{ Name?: string }>(psOut)
       if (items.length > 0) {

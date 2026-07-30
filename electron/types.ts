@@ -1,6 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import type { PeAnalysisResult, SectionEntropy } from './cheat-rules'
-import { execSync } from 'child_process'
+import { execWithTimeout } from './utils/exec'
 import os from 'os'
 
 // ═══════════════════════════════════════════════════
@@ -169,12 +169,12 @@ export async function processBatch<T, R>(
   return results
 }
 
-export function execCmd(cmd: string, psCmd: string, opts = {}): string {
+export function execCmd(cmd: string, psCmd: string, opts: { timeout?: number; windowsHide?: boolean } = {}): string {
   try {
-    return execSync(cmd, { encoding: 'utf-8', timeout: 8000, ...opts })
+    return execWithTimeout(cmd, { timeout: opts.timeout ?? 8000, windowsHide: opts.windowsHide }) || ''
   } catch (_e) {
     try {
-      return execSync(psCmd, { encoding: 'utf-8', timeout: 8000, ...opts })
+      return execWithTimeout(psCmd, { timeout: opts.timeout ?? 8000, windowsHide: opts.windowsHide }) || ''
     } catch (_e) {
       return ''
     }

@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import * as path from 'path'
 import * as fs from 'fs'
 import { BrowserWindow } from 'electron'
@@ -57,10 +57,9 @@ function scanPciFingerprints(): ScanResult[] {
       'Get-PnpDevice -PresentOnly -Class System | Select-Object InstanceId, FriendlyName, Class, Status | ConvertTo-Json -Compress'
     ].join('')
 
-    const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8',
+    const out = execPowerShell(psCmd.replace(/"/g, '\\"'), {
       timeout: 8000,
-    }).trim()
+    }) || ''
 
     if (!out || out.length < 5) return results
 
@@ -152,10 +151,10 @@ export function scanDmaDevices(): ScanResult[] {
 
   // 1c. FTDI FT601 USB detection (all DMA cards use this USB bridge)
   try {
-    const usbOut = execSync(
-      'powershell -NoProfile -Command "Get-PnpDevice -PresentOnly -Class USB | Where-Object { $_.InstanceId -match \'0403\' } | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress"',
-      { encoding: 'utf-8', timeout: 8000, windowsHide: true },
-    ).trim()
+    const usbOut = execPowerShell(
+      'Get-PnpDevice -PresentOnly -Class USB | Where-Object { $_.InstanceId -match \'0403\' } | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress',
+      { timeout: 8000 },
+    ) || ''
     if (usbOut && usbOut.length > 5) {
       for (const ftid of FTDI_USB_IDS) {
         if (usbOut.toLowerCase().includes(ftid.toLowerCase())) {
@@ -239,10 +238,10 @@ export function scanDmaDevices(): ScanResult[] {
 
   // 3c. FPGA chip detection in PCI device descriptions
   try {
-    const pciOut = execSync(
-      'powershell -NoProfile -Command "Get-PnpDevice -PresentOnly -Class System | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress"',
-      { encoding: 'utf-8', timeout: 8000, windowsHide: true },
-    ).trim()
+    const pciOut = execPowerShell(
+      'Get-PnpDevice -PresentOnly -Class System | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress',
+      { timeout: 8000 },
+    ) || ''
     if (pciOut && pciOut.length > 5) {
       for (const chip of DMA_FPGA_CHIPS) {
         if (pciOut.toLowerCase().includes(chip)) {
@@ -276,7 +275,7 @@ export function scanDmaRegistry(): ScanResult[] {
 
   for (const term of ['dma', 'fpga', 'pcileech', 'fuser', 'leech']) {
     try {
-      const out = execSync(`reg query "${svcPath}" /s /f "${term}" 2>nul`, { encoding: 'utf-8' as const, timeout: 5000 })
+      const out = execWithTimeout(`reg query "${svcPath}" /s /f "${term}" 2>nul`, { timeout: 5000 }) || ''
       if (out.trim().length > 0) {
         results.push({ path: svcPath, fileName: `Registry: ${term.toUpperCase()}-related services`, type: 'registry', risk: 'high', matches: [`registry:${term} service(s) found`], size: 0, modifiedAt: new Date().toISOString() })
       }
@@ -308,11 +307,9 @@ $info | ConvertTo-Json -Compress
 `
 
   try {
-    const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8',
+    const out = execPowerShell(psCmd.replace(/"/g, '\\"'), {
       timeout: 8000,
-      windowsHide: true,
-    }).trim()
+    }) || ''
 
     if (out && out.length > 2) {
       try {
@@ -407,11 +404,9 @@ export function scanScheduledTasks(): ScanResult[] {
       '} | Select-Object TaskName, TaskPath, Author, State, @{N=\'Actions\';E={($_.Actions | ForEach-Object { $_.Execute }) -join \'; \'}} | ConvertTo-Json -Compress'
     ].join('\n').trim()
 
-    const out = execSync(`powershell -Command "${ps}"`, {
-      encoding: 'utf-8' as const,
+    const out = execPowerShell(ps, {
       timeout: 10000,
-      windowsHide: true,
-    }).trim()
+    }) || ''
 
     if (!out || out.length < 5) return results
 

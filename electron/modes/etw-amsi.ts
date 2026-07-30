@@ -11,7 +11,7 @@
  *   3. Search for "AmsiScanBuffer", "EtwEventWrite" strings near RET instructions
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -63,7 +63,7 @@ function findPattern(buf: Buffer, pat: number[]): number[] {
 function isAmsiLoaded(pid: number): boolean {
   try {
     const ps = `Get-Process -Id ${pid} | Select-Object -ExpandProperty Modules | Where-Object { $_.ModuleName -eq 'amsi.dll' } | Select-Object -First 1`
-    const out = execSync(`powershell -Command "${ps}"`, { encoding: 'utf-8', timeout: 5000, windowsHide: true })
+    const out = execPowerShell(ps, { timeout: 5000 }) || ''
     return out.toLowerCase().includes('amsi.dll')
   } catch {
     return false

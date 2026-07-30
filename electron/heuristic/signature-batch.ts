@@ -16,7 +16,7 @@
  */
 
 import path from 'path'
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import { ctx } from '../types'
 
 export const BINARY_SIG_EXTS = new Set(['.exe', '.dll', '.sys', '.drv'])
@@ -76,10 +76,7 @@ export function batchCheckSignatures(
     ].join('\n')
 
     try {
-      const out = execSync(
-        `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`,
-        { encoding: 'utf-8', timeout: Math.max(30000, batch.length * 100), windowsHide: true },
-      ).trim()
+      const out = execPowerShell(psScript, { timeout: Math.max(30000, batch.length * 100) }) || ''.trim()
 
       if (out && out.length > 2) {
         try {
@@ -130,10 +127,10 @@ export function checkDigitalSignature(filepath: string): boolean {
 
   // Cache miss — fall back to single-file check (rare after batch pre-warming)
   try {
-    const out = execSync(
-      `powershell -NoProfile -Command "(Get-AuthenticodeSignature '${filepath.replace(/'/g, "''")}').Status"`,
-      { encoding: 'utf-8', timeout: 2000, windowsHide: true },
-    )
+    const out = execPowerShell(
+      `(Get-AuthenticodeSignature '${filepath.replace(/'/g, "''")}').Status`,
+      { timeout: 2000 },
+    ) || ''
     const valid = out.includes('Valid')
     ctx.sigCache.set(filepath, valid)
     return valid

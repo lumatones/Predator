@@ -5,7 +5,7 @@
  * unauthorized files, masquerading processes, and open handles.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import fs from 'fs'
 import path from 'path'
 import type { BrowserWindow } from 'electron'
@@ -30,9 +30,9 @@ function getGamePids(): GamePid[] {
   const results: GamePid[] = []
   try {
     const names = targets.map(t => `name='${t.name}'`).join(' or ')
-    const out = execSync(`wmic process where "${names}" get ProcessId,Name /format:csv 2>nul`, { encoding: 'utf-8', timeout: 5000 })
-    if (!out.trim()) return results
-    for (const line of out.trim().split('\n').slice(1)) {
+    const out = execWithTimeout(`wmic process where "${names}" get ProcessId,Name /format:csv 2>nul`, { timeout: 5000 }) || ''
+    if (!(out || '').trim()) return results
+    for (const line of (out || '').trim().split('\n').slice(1)) {
       const parts = line.split(',').map(s => s.trim())
       const name = parts[parts.length - 2]?.toLowerCase()
       const pid = parseInt(parts[parts.length - 1], 10)
@@ -56,7 +56,7 @@ export function scanGameModules(): ScanResult[] {
   for (const { pid, platform } of gameProcs) {
     try {
       const ps = `Get-Process -Id ${pid} | Select-Object -ExpandProperty Modules | Select-Object ModuleName,FileName | ConvertTo-Json -Compress`
-      const out = execSync(`powershell -Command "${ps}"`, { encoding: 'utf-8', timeout: 8000 })
+      const out = execPowerShell(ps, { timeout: 8000 }) || ''
       if (!out.trim()) continue
       const modules = parsePsJson<{ ModuleName?: string; FileName?: string }>(out)
 
@@ -317,7 +317,7 @@ export function scanMasqueradingProcesses(): ScanResult[] {
   const results: ScanResult[] = []
   try {
     const psCmd = `powershell -Command "Get-Process | Where-Object { $_.MainModule.FileName -match '\\\\[^\\\\]+\\.exe$' } | Select-Object Name, Id, @{N='Path';E={$_.MainModule.FileName}} | ConvertTo-Json -Compress"`
-    const out = execSync(psCmd, { encoding: 'utf-8', timeout: 10000 })
+    const out = execPowerShell(psCmd, { timeout: 10000 }) || ''
     if (!out || out.trim().length < 5) return results
 
     const processes = parsePsJson<{ Name?: string; Id?: number; Path?: string }>(out)
@@ -371,7 +371,7 @@ export function scanOpenHandles(): ScanResult[] {
   ])
 
   try {
-    const out = execSync('handle64.exe -a GTA5.exe -nobanner 2>nul', { encoding: 'utf-8', timeout: 10000 })
+    const out = execWithTimeout('handle64.exe -a GTA5.exe -nobanner 2>nul', { timeout: 10000 }) || ''
     if (!out.trim()) return results
     const lines = out.split('\n')
     for (const line of lines) {

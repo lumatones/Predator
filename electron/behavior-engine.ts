@@ -10,7 +10,7 @@
  * Builds on behavior-profile.ts but adds cross-process context.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import type { ScanResult } from './types'
 
 // ═══════════════════════════════════════════════════
@@ -91,9 +91,7 @@ $all | ForEach-Object {
   @{ pid = $_.ProcessId; name = $_.Name; ppid = $_.ParentProcessId; parentName = if ($map[$_.ParentProcessId]) { $map[$_.ParentProcessId] } else { '' } } | ConvertTo-Json -Compress
 } | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 10000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psCmd, { timeout: 10000 }) || ''
     if (!out || out.length < 5) return []
 
     const parsed = JSON.parse(out)
@@ -109,7 +107,7 @@ $all | ForEach-Object {
  */
 function getProcPorts(pid: number): number[] {
   try {
-    const out = execSync(`netstat -ano | findstr /R "\\s${pid}$"`, { encoding: 'utf-8', timeout: 3000 })
+    const out = execWithTimeout(`netstat -ano | findstr /R "\\s${pid}$"`, { timeout: 3000 }) || ''
     const ports: number[] = []
     for (const line of out.split('\n')) {
       const parts = line.trim().split(/\s+/)
@@ -129,9 +127,7 @@ function getProcPorts(pid: number): number[] {
 function getProcListenPorts(pid: number): number[] {
   try {
     const psCmd = `Get-NetTCPConnection -State Listen -OwningProcess ${pid} -ErrorAction SilentlyContinue | Select -ExpandProperty LocalPort`
-    const out = execSync(`powershell -Command "${psCmd}"`, {
-      encoding: 'utf-8', timeout: 5000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psCmd, { timeout: 5000 }) || ''
     if (!out) return []
     return out.split('\n').map(Number).filter(p => p > 0)
   } catch {
@@ -190,9 +186,7 @@ export function analyzeBehavior(): BehaviorReport {
     // Check modules for unsigned DLLs (via behavior-profile's approach)
     try {
       const psCmd = `Get-Process -Id ${node.pid} -ErrorAction SilentlyContinue | Select -ExpandProperty Modules -ErrorAction SilentlyContinue | Select -ExpandProperty FileName -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch '\\\\\\\\Windows\\\\\\\\|\\\\\\\\Program Files\\\\\\\\|\\\\\\\\Program Files \\(x86\\)\\\\\\\\|\\\\\\\\ProgramData\\\\\\\\' } | Select -First 1`
-      const out = execSync(`powershell -Command "${psCmd}"`, {
-        encoding: 'utf-8', timeout: 3000, windowsHide: true,
-      }).trim()
+      const out = execPowerShell(psCmd, { timeout: 3000 }) || ''
       if (out) {
         node.hasUnsignedModule = true
         node.riskSignals.push('unsigned-module-in-non-system-path')

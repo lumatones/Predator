@@ -28,7 +28,7 @@
  * Requires admin privileges. Gracefully fails if unavailable.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../../utils/exec'
 import * as fs from 'fs'
 import { addFindingDedup, type ScanResult, ctx } from '../../types'
 
@@ -76,17 +76,17 @@ export function scanEtwKernelThread(): ScanResult[] {
 
   try {
     // Clean up stale trace sessions and ETL files from previous runs
-    try { execSync(`logman stop "${traceName}" -ets 2>nul`, { encoding: 'utf-8', timeout: 3000, windowsHide: true }) } catch (err) { console.warn('[etw-trace] failed:', (err as Error).message) }
+    try { execWithTimeout(`logman stop "${traceName}" -ets 2>nul`, { timeout: 3000 }) } catch (err) { console.warn('[etw-trace] failed:', (err as Error).message) }
     try { fs.unlinkSync(fileA) } catch {}
     try { fs.unlinkSync(fileB) } catch {}
 
     // ── Start initial trace on file A ──
-    execSync(
+    execWithTimeout(
       `logman start "${traceName}" ` +
       `-p "Microsoft-Windows-Kernel-Thread" 0xFF ` +
       `-p "Microsoft-Windows-Kernel-Process" 0xFF ` +
       `-o "${fileA}" -ets`,
-      { encoding: 'utf-8', timeout: 5000, windowsHide: true },
+      { timeout: 5000 },
     )
 
     // ── Cumulative tracker: PID -> { name, intervalCounts[], totalEvents } ──
@@ -108,8 +108,8 @@ export function scanEtwKernelThread(): ScanResult[] {
 
       // Wait 30 seconds (trace runs on current file)
       try {
-        execSync(`timeout /t ${INTERVAL_SEC} /nobreak >nul`, {
-          encoding: 'utf-8', timeout: (INTERVAL_SEC + 5) * 1000, windowsHide: true,
+        execWithTimeout(`timeout /t ${INTERVAL_SEC} /nobreak >nul`, {
+          timeout: (INTERVAL_SEC + 5) * 1000,
         })
       } catch {
         // timeout may throw on Ctrl+C — still try to parse what we have
@@ -117,12 +117,12 @@ export function scanEtwKernelThread(): ScanResult[] {
 
       // ── Gap-free handoff: start NEW trace first, THEN stop old ──
       try {
-        execSync(
+        execWithTimeout(
           `logman start "${traceName}" ` +
           `-p "Microsoft-Windows-Kernel-Thread" 0xFF ` +
           `-p "Microsoft-Windows-Kernel-Process" 0xFF ` +
           `-o "${nextFile}" -ets`,
-          { encoding: 'utf-8', timeout: 5000, windowsHide: true },
+          { timeout: 5000 },
         )
       } catch {
         // Trace start failed — likely admin lost. Skip remaining intervals.
@@ -131,8 +131,8 @@ export function scanEtwKernelThread(): ScanResult[] {
 
       // Stop old trace (gaps are <1s thanks to start-before-stop ordering)
       try {
-        execSync(`logman stop "${traceName}" -ets`, {
-          encoding: 'utf-8', timeout: 5000, windowsHide: true,
+        execWithTimeout(`logman stop "${traceName}" -ets`, {
+          timeout: 5000,
         })
       } catch { /* trace already stopped */ }
 
@@ -168,10 +168,7 @@ foreach ($kv in $perProc.GetEnumerator()) {
 }
 $out | ConvertTo-Json -Compress
 `
-        const out = execSync(
-          `powershell -NoProfile -Command "${psParse.replace(/"/g, '\\"')}"`,
-          { encoding: 'utf-8', timeout: 15000, windowsHide: true },
-        ).trim()
+        const out = (execPowerShell(psParse, { timeout: 15000 }) || '').trim()
 
         if (out && out !== '[]' && out.length >= 3) {
           let intervalHits: { PID?: number; Count?: number }[] = []
@@ -186,10 +183,7 @@ $out | ConvertTo-Json -Compress
               // Resolve process name once (only on first sighting)
               let procName = `PID:${pid}`
               try {
-                const nameOut = execSync(
-                  `powershell -NoProfile -Command "(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).ProcessName"`,
-                  { encoding: 'utf-8', timeout: 3000, windowsHide: true },
-                ).trim()
+                const nameOut = (execPowerShell(`(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).ProcessName`, { timeout: 3000 }) || '').trim()
                 if (nameOut) procName = nameOut
               } catch {}
 
@@ -216,8 +210,8 @@ $out | ConvertTo-Json -Compress
 
     // ── Stop final trace session (cleanup) ──
     try {
-      execSync(`logman stop "${traceName}" -ets`, {
-        encoding: 'utf-8', timeout: 5000, windowsHide: true,
+      execWithTimeout(`logman stop "${traceName}" -ets`, {
+        timeout: 5000,
       })
     } catch (err) { console.warn('[etw-trace] failed:', (err as Error).message) }
 
@@ -246,7 +240,7 @@ $out | ConvertTo-Json -Compress
     }
   } catch {
     // logman/Get-WinEvent unavailable (no admin, or not on Windows) — graceful skip
-    try { execSync(`logman stop "${traceName}" -ets`, { encoding: 'utf-8', timeout: 3000, windowsHide: true }) } catch (err) { console.warn('[etw-trace] failed:', (err as Error).message) }
+    try { execWithTimeout(`logman stop "${traceName}" -ets`, { timeout: 3000 }) } catch (err) { console.warn('[etw-trace] failed:', (err as Error).message) }
     try { fs.unlinkSync(fileA) } catch {}
     try { fs.unlinkSync(fileB) } catch {}
   }

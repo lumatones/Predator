@@ -8,7 +8,7 @@
  * Normal USB devices max out at 20-50 MB/s for flash drives, 5-40 MB/s for phones.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../../utils/exec'
 import type { UsbDeviceInfo } from './descriptors'
 import { DMA_VENDORS } from './descriptors'
 import { PHONE_VENDORS, FLASH_DRIVE_VENDORS, USB_HUB_VENDORS } from './classification'
@@ -63,9 +63,7 @@ $sample2.CounterSamples | ForEach-Object {
 }
 Write-Host '---SAMPLE2_END---'
 `
-    const out = execSync(`powershell -NoProfile -Command "${combinedScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 12000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(combinedScript, { timeout: 12000, collapseLines: 'semicolons' }) || '').trim()
 
     if (!out || out.includes('UNAVAILABLE') || out.includes('NO_COUNTERS')) return results
 
@@ -158,9 +156,7 @@ foreach ($cls in $classes) {
   } catch {}
 }
 `
-    const out = execSync(`powershell -NoProfile -Command "${wmiScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 15000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(wmiScript, { timeout: 15000, collapseLines: 'semicolons' }) || '').trim()
 
     if (!out || out.length < 5) return results
 
@@ -237,9 +233,7 @@ foreach ($t in $targets) {
   }
 }
 `
-    const out = execSync(`powershell -NoProfile -Command "${batchedScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 15000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(batchedScript, { timeout: 15000, collapseLines: 'semicolons' }) || '').trim()
 
     if (!out || out.length < 5) return results
 

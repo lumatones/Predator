@@ -8,7 +8,7 @@
  *      — инжектированный код исполняется из heap/RWX → не из .exe/.dll
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import { parsePsJson } from './types'
 
 // ── Types ──────────────────────────────────────
@@ -154,11 +154,7 @@ public class RwxScan {
 [RwxScan.Scan(${pid})]
 `.trim()
 
-    const out = execSync(`powershell -Command "${rwxPs.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`, {
-      encoding: 'utf-8',
-      timeout: 15000, // 15 seconds per process
-      windowsHide: true,
-    })
+    const out = execPowerShell(rwxPs, { timeout: 15000, collapseLines: 'semicolons' }) || ''
 
     if (!out || out.trim().length < 5) return regions
 
@@ -228,11 +224,7 @@ Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProp
   ConvertTo-Json -Compress
 `.trim()
 
-    const out = execSync(`powershell -Command "${threadPs}"`, {
-      encoding: 'utf-8',
-      timeout: 5000,
-      windowsHide: true,
-    })
+    const out = execPowerShell(threadPs, { timeout: 5000 }) || ''
 
     if (!out || out.trim().length < 5) return anomalies
 

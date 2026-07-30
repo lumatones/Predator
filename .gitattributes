@@ -1,0 +1,30 @@
+# Auto-detect text files and normalize to LF
+* text=auto
+
+# TypeScript — always LF (cross-platform)
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+
+# Web — always LF
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Windows-specific — always CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+
+# Binary — keep as-is
+*.png binary
+*.ico binary
+*.bmp binary
+*.exe binary
+*.dll binary
+*.zip binary
+*.7z binary

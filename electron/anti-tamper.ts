@@ -11,7 +11,7 @@
  * ExecSync for PowerShell calls is wrapped in try-catch with timeouts.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import os from 'os'
 import type { ScanResult } from './types'
 import { runNativeHypervisorScan } from './native-hv-detect'
@@ -50,11 +50,8 @@ const DEBUGGER_WINDOW_TITLES = [
 export function detectDebuggerProcesses(): string[] {
   const found: string[] = []
   try {
-    const out = execSync(
-      'powershell -Command "Get-Process | Select-Object -ExpandProperty Name"',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
-    const lines = out.toLowerCase().split(/[\r\n]+/)
+      const out = execPowerShell('Get-Process | Select-Object -ExpandProperty Name', { timeout: 5000 }) || ''
+      const lines = out.toLowerCase().split(/[\r\n]+/)
     for (const line of lines) {
       const trimmed = line.trim()
       if (!trimmed) continue
@@ -73,10 +70,7 @@ export function detectDebuggerProcesses(): string[] {
 export function detectDebuggerWindows(): string[] {
   const found: string[] = []
   try {
-    const out = execSync(
-      'powershell -Command "Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object -ExpandProperty MainWindowTitle"',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execPowerShell('Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object -ExpandProperty MainWindowTitle', { timeout: 5000 }) || ''
     const lines = out.split(/[\r\n]+/)
     for (const line of lines) {
       const trimmed = line.trim()
@@ -113,10 +107,7 @@ export function detectDebuggerApi(): { isDebugged: boolean; flags: string[] } {
       $r1 = [DebugCheck]::IsDebuggerPresent();
       Write-Output "IsDebuggerPresent=$r1"
     `
-    const out = execSync(
-      `powershell -Command "${psScript.replace(/"/g, '\\"')}"`,
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execPowerShell(psScript, { timeout: 5000 }) || ''
     if (out.includes('IsDebuggerPresent=True')) {
       flags.push('IsDebuggerPresent: true')
     }
@@ -132,10 +123,7 @@ export function detectDebuggerPorts(): string[] {
   const ports: string[] = []
   const debugPorts = [9222, 9229, 5858, 5959, 8080]
   try {
-    const out = execSync(
-      'netstat -ano',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execWithTimeout('netstat -ano', { timeout: 5000 }) || ''
     const lines = out.split(/[\r\n]+/)
     for (const line of lines) {
       for (const port of debugPorts) {
@@ -217,10 +205,7 @@ export function detectVmByRegistry(): string[] {
   const found: string[] = []
   for (const key of VM_REGISTRY_KEYS) {
     try {
-      const out = execSync(
-        `powershell -Command "Test-Path '${key.replace(/'/g, "''")}'"`,
-        { encoding: 'utf-8', timeout: 3000 },
-      )
+      const out = execPowerShell(`Test-Path '${key.replace(/'/g, "''")}'`, { timeout: 3000 }) || ''
       if (out.trim() === 'True') {
         found.push(key)
       }
@@ -235,11 +220,8 @@ export function detectVmByRegistry(): string[] {
 export function detectVmProcesses(): string[] {
   const found: string[] = []
   try {
-    const out = execSync(
-      'powershell -Command "Get-Process | Select-Object -ExpandProperty Name"',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
-    const lines = out.toLowerCase().split(/[\r\n]+/)
+      const out = execPowerShell('Get-Process | Select-Object -ExpandProperty Name', { timeout: 5000 }) || ''
+      const lines = out.toLowerCase().split(/[\r\n]+/)
     for (const line of lines) {
       const trimmed = line.trim()
       if (!trimmed) continue
@@ -257,20 +239,14 @@ export function detectVmProcesses(): string[] {
  */
 export function detectVmByHypervisor(): { isVm: boolean; detail: string } {
   try {
-    const out = execSync(
-      'powershell -Command "(Get-CimInstance Win32_ComputerSystem).HypervisorPresent"',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execPowerShell('(Get-CimInstance Win32_ComputerSystem).HypervisorPresent', { timeout: 5000 }) || ''
     if (out.trim() === 'True') {
       return { isVm: true, detail: 'Hypervisor detected via WMI' }
     }
   } catch (err) { console.warn('[anti-tamper] failed:', (err as Error).message) }
 
   try {
-    const out = execSync(
-      'powershell -Command "(Get-CimInstance Win32_BaseBoard).Manufacturer"',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execPowerShell('(Get-CimInstance Win32_BaseBoard).Manufacturer', { timeout: 5000 }) || ''
     const mfr = out.trim().toLowerCase()
     const vmMfrs = [
       'microsoft corporation', 'vmware', 'virtualbox',
@@ -330,9 +306,7 @@ if ($avgUs -gt 0.008) {
   Write-Output "TIMING_NORMAL:$avgUs"
 }
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 8000 }) || ''
 
     if (out.startsWith('TIMING_ANOMALY:')) {
       const ratio = parseFloat(out.split(':')[1]) || 0
@@ -373,9 +347,7 @@ if ($found.Count -gt 0) {
   Write-Output "HV_NONE"
 }
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 5000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 5000 }) || ''
 
     if (out.startsWith('HV_SIGNATURE:')) {
       const parts = out.split(':')

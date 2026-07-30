@@ -1,218 +1,204 @@
-# Refactoring Plan — Predator
+# Refactoring Plan &mdash; Predator
 
-> **Прогресс:** 8 из 10 задач выполнено ✅
-> Последнее обновление: 2026-07-27 (v0.1.14)
+> **Progress:** 16 of 18 tasks completed
+> **Last updated:** 2026-07-30 (v0.4.3)
 
-## Метрики текущего кода (обновлено)
+## Current Code Metrics
 
-| Метрика | Было | Стало |
-|---------|------|-------|
-| Файлов electron/ | 14 | 20 (+ modes/, tests, новые модули) |
-| scanner.ts | 2,735 строк (41%) | ~1,500 строк (константы/cloud sync/parsing вынесены) |
-| Использований `any` | 26 | ~5 (остались только в краевых случаях) |
-| module-level `const _` (глобальное состояние) | 8 | 0 ✅ (ScanContext) |
-| `require()` CJS-стиль | 2 | 0 ✅ (все ESM import) |
-
----
-
-## 🔴 Priority 1 — scanner.ts (God Object)
-
-### Проблема
-`electron/scanner.ts` — 2,735 строк, содержит 41% всего кода electron/. В одном файле:
-- Типы (ScanResult, ScanProgress, ScanResponse)
-- Утилиты (calculateEntropy, scanStrings)
-- Бизнес-логика (8 режимов сканирования)
-- IPC handler-ы
-- Cloud sync
-- Dedup-логика
-- Power Shell команды
-
-### Решение: Разделить на модули
-
-```
-electron/
-├── scanner/
-│   ├── index.ts          # Только IPC handlers + dispatch
-│   ├── types.ts          # ScanResult, ScanProgress, ScanResponse
-│   ├── file-scan.ts      # runFileScan, scanFile, heuristicFileScan
-│   ├── process-scan.ts   # scanRunningProcesses, scanRunningProcessesV2
-│   ├── game-scan.ts      # getGamePids, scanGameModules, scanGameIntegrity
-│   ├── browser-scan.ts   # scanBrowserHistory (перенести из scanner.ts)
-│   ├── advanced-scan.ts  # rwx, dvm, behavior, api-hashing integration
-│   ├── utils.ts          # calculateEntropy, scanStrings, matchKnownCheat
-│   ├── dedup.ts          # _findingDedup, _sigCache, _peHeaderCache
-│   └── paths.ts          # _PF, _PF86, _WR, _HOME, PROTECTED_PATHS
-```
-
-**Трудоёмкость**: 2-3 часа
-**Риск**: Высокий (циклические зависимости между модулями)
-**Совет**: Делать после добавления тестов
+| Metric | v0.1.14 | v0.4.3 |
+|--------|---------|--------|
+| Files in electron/ | 20 | 41 (+ submodules) |
+| Source lines (electron) | ~15,000 | ~18,700 |
+| scanner.ts | ~1,500 lines | ~100 lines (pure orchestrator) |
+| `any` usage count | ~5 | ~5 (unchanged) |
+| Module-level mutable state | 0 | 0 |
+| `require()` CJS-style | 0 | 0 |
+| `execSync` in child_process | 161 calls | 0 (all migrated to `execPowerShell`/`execWithTimeout`) |
+| Tests | 165 | 243 |
+| TypeScript errors | 0 | 0 |
 
 ---
 
-## 🟡 Priority 2 — Глобальное состояние (module-level mutables) ✅ ВЫПОЛНЕНО
+## Priority 1 &mdash; scanner.ts (God Object)
 
-### Решение реализовано
-`ScanContext` класс в `electron/types.ts`:
-```ts
-export class ScanContext {
-  findingDedup = new Set<string>()
-  sigCache = new Map<string, boolean>()
-  peHeaderCache = new Map<...>()
-  cheatNameCache = new Map<string, string[]>()
-  readonly PE_CACHE_MAX = 500
-  addFinding(key: string): boolean { ... }
-  clear() { ... }
-}
-export const ctx = new ScanContext()
-```
-- Глобальный `ctx` используется во всех модулях
-- `ctx.clear()` вызывается перед каждым новым сканом
-- Старые алиасы (`_findingDedup`, `addFindingDedup`, `clearFindingDedup`) сохранены для обратной совместимости
+### Problem
+`electron/scanner.ts` was 2,735 lines, containing 41% of all electron/ code. After decomposition:
+- Types moved to `types.ts`
+- Scan mode functions extracted to `scanner/full-scan.ts`, `scanner/quick-scan.ts`, `scanner/cleaner-scan.ts`
+- IPC handler logic extracted to `ipc-handlers-scan.ts`
+- Cloud sync moved to `cloud-sync.ts`
+- Telemetry moved to `telemetry-queue.ts`
 
-**Статус**: ✅ Выполнено в v0.0.21
+### Status: Complete
+
+The scanner.ts is now a thin orchestrator (~100 lines) that dispatches based on mode and runs the post-scan pipeline. All heavy logic lives in dedicated modules.
 
 ---
 
-## 🟡 Priority 3 — CJS require() → ESM import ✅ ВЫПОЛНЕНО
+## Priority 2 &mdash; Global State (module-level mutables)
 
-### Решение реализовано
-- `require('http')` заменён на `import http from 'http'` в `cloud-sync.ts`
-- `require('child_process')` / `require('os')` заменены на импорты в `types.ts`
+### Solution implemented
+`ScanContext` class in `electron/types.ts` provides isolated state per scan session with caching for expensive operations (digital signatures, PE headers).
 
-**Статус**: ✅ Выполнено в v0.0.21
-
----
-
-## 🟡 Priority 4 — Типизация `any` ✅ ЧАСТИЧНО ВЫПОЛНЕНО
-
-### Решение реализовано
-- Все `any[]` в scanner.ts заменены на дженерик `parsePsJson<T>()`
-- `ScanOptions` интерфейс для опций сканирования
-- Типизированные параметры в disk-vs-memory.ts, rwx-scanner.ts, dma.ts, games.ts, processes.ts
-- Осталось ~5 `any` в краевых случаях (cheat-rules.ts return types)
-
-**Статус**: ✅ Выполнено на 80% в v0.0.21
+**Status:** Completed in v0.0.21
 
 ---
 
-## 🟢 Priority 5 — PowerShell JSON парсинг ✅ ВЫПОЛНЕНО
+## Priority 3 &mdash; CJS require() to ESM import
 
-### Решение реализовано
-`parsePsJson<T>()` в `electron/types.ts`:
-```ts
-export function parsePsJson<T>(out: string): T[] {
-  if (!out || out.trim().length < 5) return []
-  try {
-    const parsed = JSON.parse(out)
-    return Array.isArray(parsed) ? parsed : [parsed]
-  } catch { return [] }
-}
-```
-- Используется в: dma.ts, games.ts, processes.ts, disk-vs-memory.ts, rwx-scanner.ts, scanner.ts
-- ~20 строк дублирования убрано
+### Solution implemented
+All `require()` calls replaced with standard ESM `import` statements.
 
-**Статус**: ✅ Выполнено в v0.0.21
+**Status:** Completed in v0.0.21
 
 ---
 
-## 🟢 Priority 6 — const _PATH = process.env (конфиг) ✅ ВЫПОЛНЕНО
+## Priority 4 &mdash; `any` TypeScript typing
 
-### Решение реализовано
-`CFG` объект в `electron/config.ts`:
-```ts
-export const CFG = {
-  PF: process.env.ProgramFiles || 'C:\\Program Files',
-  PF86: process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
-  WR: process.env.SystemRoot || 'C:\\Windows',
-  HOME: os.homedir(),
-  PD: process.env.ProgramData || 'C:\\ProgramData',
-}
-```
-- Используется в cheats-db.ts, browser-history.ts
-- Старые алиасы (`_PF`, `_PF86`, `_HOME`, `_WR`) в types.ts для обратной совместимости
+### Solution implemented
+- All `any[]` replaced with generic `parsePsJson<T>()`
+- `ScanOptions` interface for scan options
+- Typed parameters across all modules
+- ~5 `any` remain in edge cases (cheat-rules.ts return types)
 
-**Статус**: ✅ Выполнено в v0.0.21
+**Status:** 80% complete in v0.0.21
 
 ---
 
-## 🟢 Priority 7 — HTTP-клиент (require('http'))
+## Priority 5 &mdash; PowerShell JSON Parsing
 
-### Проблема
-2 места в scanner.ts делают HTTP запросы через `require('http')`:
-- Cloud hash submission
-- Cloud hash fetch
+### Solution implemented
+`parsePsJson<T>()` in `electron/types.ts` handles single object vs array, empty output, and parse errors. Used across all modules.
 
-Каждый раз:
-```ts
-const http = require('http')
-const data = JSON.stringify(...)
-const req = http.request(...)
-req.on('response', (res) => { ... })
-req.on('error', () => {})
-```
-
-### Решение
-```ts
-import https from 'https'
-
-// Или вынести в api-client.ts
-async function cloudRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const data = body ? JSON.stringify(body) : ''
-    const req = https.request({ hostname: 'api.github.com', path, method, ... })
-    req.on('response', (res) => {
-      let body = ''
-      res.on('data', c => body += c)
-      res.on('end', () => resolve(JSON.parse(body)))
-    })
-    req.on('error', reject)
-    req.end(data)
-  })
-}
-```
-
-**Трудоёмкость**: 1 час
-**Риск**: Низкий
-**Профит**: Переиспользуемый HTTP клиент, единая обработка ошибок
+**Status:** Completed in v0.0.21
 
 ---
 
-## 🟢 Priority 8 — Magic strings
+## Priority 6 &mdash; Config Constants (CFG)
 
-### Проблема
-Множество hardcoded строк по всему коду:
-- `'gta5'`, `'fivem'`, `'ragemp'`, `'altv'` — game platforms
-- `'high'`, `'medium'`, `'low'` — risk levels
-- `'files'`, `'processes'`, `'cheats'`, `'dma'`, `'extended'`, `'network'` — scan modes
-- `'file'`, `'browser'`, `'process'`, `'registry'`, `'hardware'`, `'software'` — result types
+### Solution implemented
+`CFG` object in `electron/config.ts` centralizes system paths. Backward-compatible aliases in `types.ts`.
 
-### Решение: Enum/const
-```ts
-export enum RiskLevel { High = 'high', Medium = 'medium', Low = 'low' }
-export enum ScanMode { Files = 'files', Processes = 'processes', /* ... */ }
-export enum ResultType { File = 'file', Browser = 'browser', /* ... */ }
-```
-
-**Трудоёмкость**: 30 минут
-**Риск**: Средний (везде поменять типы)
-**Профит**: IDE autocomplete, невозможность опечаток
+**Status:** Completed in v0.0.21
 
 ---
 
-## 📊 Итоговый приоритет (обновлено v0.0.21)
+## Priority 7 &mdash; HTTP Client
 
-| # | Задача | Трудоёмкость | Статус |
-|---|--------|-------------|--------|
-| ✅ | ScanContext class | 1-2ч | **Выполнено** |
-| ✅ | Типизировать `any` | 2-3ч | **Выполнено (80%)** |
-| ✅ | require() → import | 5 мин | **Выполнено** |
-| ✅ | PowerShell JSON утилита | 30 мин | **Выполнено** |
-| ✅ | config.ts (CFG) | 20 мин | **Выполнено** |
-| ✅ | Константы → constants.ts | 15 мин | **Выполнено** |
-| ✅ | Cloud sync → cloud-sync.ts | 20 мин | **Выполнено** |
-| ✅ | ScanPipeline (scanner.ts side effects) | 1ч | **Выполнено** |
-| ✅ | Signature Registry (cheat data centralization) | 1ч | **Выполнено** |
-| ✅ | MASQUERADING_SYSTEM_TOOLS (FP fix) | 30 мин | **Выполнено** |
-| 🟢 | HTTP клиент | 1ч | **В планах** |
-| 🟢 | Enum для типов | 30 мин | **В планах** |
+### Problem
+Scattered `http.request()` calls for cloud hash submission and fetching.
+
+### Solution
+Extract into `api-client.ts` with async/await, unified error handling, and retry logic.
+
+**Effort:** 1 hour &middot; **Risk:** Low
+
+---
+
+## Priority 8 &mdash; Magic Strings
+
+### Problem
+Hardcoded strings for game platforms, risk levels, scan modes, and result types throughout the codebase.
+
+### Solution
+Replace with const enums or union types for IDE autocomplete and type safety.
+
+**Effort:** 30 minutes &middot; **Risk:** Medium
+
+---
+
+## Priority 9 &mdash; execSync Migration
+
+### Problem
+161 `execSync` calls in 20+ files using raw `child_process.execSync` with manual try/catch, inconsistent timeout handling, and no process cleanup on timeout.
+
+### Solution
+Created `electron/utils/exec.ts` with three safe wrappers:
+
+- `execWithTimeout(cmd, opts)` for non-PowerShell commands (netstat, wmic, tasklist)
+- `execPowerShell(script, opts)` for PowerShell commands with auto-escaping and `-NoProfile -Command` prefix
+- `execFileWithTimeout(file, args, opts)` for binary execution
+
+All wrappers provide built-in timeout with process kill, `windowsHide` default, and return `string | null` for explicit null handling.
+
+### Migration plan
+
+**Phase 1** (completed by scripts): 14 simple files with single-call patterns.
+
+**Phase 2** (completed manually): 9 complex files with multi-line PowerShell C# scripts.
+
+**Phase 3** (cleanup): Removed 7 temporary migration scripts from `scripts/`.
+
+Files migrated (20 total):
+
+| Category | Files |
+|----------|-------|
+| Helper functions | `forensic-traces.ts`, `anti-forensic.ts`, `pc-cleaner-detection.ts` |
+| PowerShell C# scripts | `anti-tamper.ts`, `rwx-scanner.ts`, `memory-dump.ts`, `disk-vs-memory.ts`, `etw-provider.ts` |
+| Scan modes | `modes/dma.ts`, `modes/byovd.ts`, `modes/anti-debug.ts`, `modes/games.ts`, `modes/registry.ts` |
+| Engine | `behavior-engine.ts`, `heuristic/signature-batch.ts`, `scanner/full-scan.ts` |
+| Special | `types.ts` (execCmd wrapper) |
+| Already completed (git) | `behavior-profile.ts`, `modes/etw-amsi.ts`, `modes/game-memory.ts`, `modes/network.ts`, `modes/network-intel.ts`, `modes/process/behavioral.ts`, `modes/process/enumeration.ts`, `modes/process/pipes-wmi.ts`, `modes/usb/anomaly.ts`, `modes/usb/bandwidth.ts`, `modes/usb/classification.ts`, `modes/usb/descriptors.ts`, `persistent-profile.ts`, `scan-scheduler.ts`, `self-integrity.ts`, `self-protect.ts`, `system-info.ts`, `modes/apc/etw-trace.ts`, `heuristic.ts` |
+
+**Status:** Completed in v0.4.3. 0 `execSync` imports in `electron/` (except `utils/exec.ts` itself).
+
+---
+
+## Priority 10 &mdash; Heuristic Decomposition
+
+### Problem
+`electron/heuristic.ts` was a 400+ line barrel file with inline constants, helper functions, and 6 categories of logic.
+
+### Solution
+Extracted into `electron/heuristic/` submodules:
+
+| Module | Purpose |
+|--------|---------|
+| `constants.ts` | `SUSPICIOUS_EXTENSIONS`, `SCAN_CONFIG`, `PROTECTED_PATHS`, `SYSTEM_PROC_NAMES` |
+| `name-matcher.ts` | `matchKnownCheat`, `riskScoreToLevel`, `getFileRiskLevel` |
+| `combo-detector.ts` | `comboScoreUnsignedBinary` |
+| `signature-batch.ts` | `batchCheckSignatures`, `checkDigitalSignature` |
+| `masquerading.ts` | `checkMasqueradingExecutable` |
+| `archive-scan.ts` | `scanArchiveContents`, `ARCHIVE_EXTS` |
+| `cheat-names.ts` | `PROC_BASES`, `FILE_NAMES`, `LUA_NAMES`, `FOLDER_NAMES` |
+
+`heuristic.ts` is now a thin barrel re-exporting from submodules and keeping only `heuristicFileScan()` and thin helpers (`isKnownElectronDll`, `isSkippableExtension`, `calculateFileHash`).
+
+**Status:** Completed in v0.4.3.
+
+---
+
+## Priority 11 &mdash; Documentation Cleanup
+
+### Completed
+- `RULES.md` updated from v0.1.14 to v0.4.3 with current structure, API endpoints, and 9 threat categories
+- `ARCHITECTURE.md` created with full system architecture, dependency graph, data flows, and security model
+- `README.md` rewritten for GitHub with clean formatting and up-to-date metrics
+- 7 obsolete migration scripts removed from `scripts/`
+
+**Status:** Completed in v0.4.3.
+
+---
+
+## Summary
+
+| # | Task | Effort | Status |
+|---|------|--------|--------|
+| 1 | ScanContext class | 1-2h | Completed |
+| 2 | TypeScript `any` reduction | 2-3h | Completed (80%) |
+| 3 | require() to import | 5min | Completed |
+| 4 | PowerShell JSON utility | 30min | Completed |
+| 5 | Config constants (CFG) | 20min | Completed |
+| 6 | Constants extraction | 15min | Completed |
+| 7 | Cloud sync module | 20min | Completed |
+| 8 | ScanPipeline | 1h | Completed |
+| 9 | Signature Registry | 1h | Completed |
+| 10 | MASQUERADING_SYSTEM_TOOLS | 30min | Completed |
+| 11 | execSync migration | 3h | Completed |
+| 12 | Heuristic decomposition | 1h | Completed |
+| 13 | Documentation cleanup | 1h | Completed |
+| 14 | RULES.md update | 30min | Completed |
+| 15 | ARCHITECTURE.md creation | 1h | Completed |
+| 16 | README.md rewrite | 30min | Completed |
+| &mdash; | HTTP client | 1h | Planned |
+| &mdash; | Enum for types | 30min | Planned |

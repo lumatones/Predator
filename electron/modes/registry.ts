@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import * as path from 'path'
 import * as fs from 'fs'
 import { ScanResult, addFindingDedup, _WR } from '../types'
@@ -25,7 +25,7 @@ export function scanRegistryDeepV2(): ScanResult[] {
 
   for (const keyPath of regPaths) {
     try {
-      const output = execSync(`reg query "${keyPath}" /s 2>nul`, { encoding: 'utf-8' as const, timeout: 5000 })
+      const output = execWithTimeout(`reg query "${keyPath}" /s 2>nul`, { timeout: 5000 }) || ''
       if (!output || output.trim().length === 0) continue
 
       const lower = output.toLowerCase()
@@ -103,7 +103,7 @@ export function scanRegistryForCheats(): ScanResult[] {
 
   for (const keyPath of REGISTRY_SCAN_KEYS) {
     try {
-      const output = execSync(`reg query "${keyPath}" /s 2>nul`, { encoding: 'utf-8' as const, timeout: 5000 })
+      const output = execWithTimeout(`reg query "${keyPath}" /s 2>nul`, { timeout: 5000 }) || ''
       if (!output || output.trim().length === 0) continue
 
       const lower = output.toLowerCase()

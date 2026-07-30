@@ -191,14 +191,15 @@ router.post('/submit-scan', validate(submitScanSchema), async (req: Request, res
       const pUsername = pc_username || 'unknown'
       const classifierInputs = results.map(r => ({
         sha256: r.sha256,
-        // partialHash (first 64KB SHA256) теперь доступен от клиента!
-        // Используется для: safe-files matching, crowdsource-анализ, авто-добавление в safe_files
         partialHash: r.partialHash,
+        tlsh: r.tlsh,
         filePath: r.path,
         fileName: r.fileName,
         fileType: r.type,
         risk: r.risk,
         matches: r.matches,
+        findingKind: r.findingKind || (r.type === 'hardware' ? 'dma' : r.type),
+        size: r.size,
         pcUsername: pUsername,
       }))
 

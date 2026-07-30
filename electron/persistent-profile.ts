@@ -16,7 +16,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { execSync } from 'child_process'
+import { execWithTimeout } from './utils/exec'
 import crypto from 'crypto'
 
 // ── Types ──
@@ -259,10 +259,7 @@ export function generateDeviceFingerprint(): string {
   const components: string[] = []
 
   try {
-    const out = execSync(
-      'wmic baseboard get serialnumber /format:csv 2>nul',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execWithTimeout('wmic baseboard get serialnumber /format:csv 2>nul', { timeout: 5000 }) || ''
     const lines = out.trim().split('\n')
     if (lines.length >= 2) {
       const serial = lines[1].split(',').pop()?.trim()
@@ -271,10 +268,7 @@ export function generateDeviceFingerprint(): string {
   } catch { /* optional */ }
 
   try {
-    const out = execSync(
-      'wmic csproduct get uuid /format:csv 2>nul',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execWithTimeout('wmic csproduct get uuid /format:csv 2>nul', { timeout: 5000 }) || ''
     const lines = out.trim().split('\n')
     if (lines.length >= 2) {
       const uuid = lines[1].split(',').pop()?.trim()
@@ -283,10 +277,7 @@ export function generateDeviceFingerprint(): string {
   } catch { /* optional */ }
 
   try {
-    const out = execSync(
-      'wmic os get installdate /format:csv 2>nul',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execWithTimeout('wmic os get installdate /format:csv 2>nul', { timeout: 5000 }) || ''
     const lines = out.trim().split('\n')
     if (lines.length >= 2) {
       const date = lines[1].split(',').pop()?.trim()
@@ -295,10 +286,7 @@ export function generateDeviceFingerprint(): string {
   } catch { /* optional */ }
 
   try {
-    const out = execSync(
-      'wmic diskdrive where "Index=0" get serialnumber /format:csv 2>nul',
-      { encoding: 'utf-8', timeout: 5000 },
-    )
+    const out = execWithTimeout('wmic diskdrive where "Index=0" get serialnumber /format:csv 2>nul', { timeout: 5000 }) || ''
     const lines = out.trim().split('\n')
     if (lines.length >= 2) {
       const serial = lines[1].split(',').pop()?.trim()

@@ -15,34 +15,19 @@
  * 7. USN Journal gaps (if readable)
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import path from 'path'
 import fs from 'fs'
 import { ScanResult, addFindingDedup, _WR, _HOME } from './types'
 
 // ── PowerShell helper ──
 function ps(command: string, timeout = 8000): string {
-  try {
-    return execSync(`powershell -NoProfile -Command "${command.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8',
-      timeout,
-      windowsHide: true,
-    }).trim()
-  } catch {
-    return ''
-  }
+  return (execPowerShell(command, { timeout }) || '').trim()
 }
 
 // ── Registry query helper ──
 function regQuery(keyPath: string, timeout = 5000): string {
-  try {
-    return execSync(`reg query "${keyPath}" /s 2>nul`, {
-      encoding: 'utf-8',
-      timeout,
-    }).trim()
-  } catch {
-    return ''
-  }
+  return (execWithTimeout(`reg query "${keyPath}" /s 2>nul`, { timeout }) || '').trim()
 }
 
 // ══════════════════════════════════════════════════════════

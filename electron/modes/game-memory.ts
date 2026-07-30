@@ -11,7 +11,7 @@
  * Only scans readable committed memory regions (skips PAGE_GUARD, PAGE_NOACCESS).
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import { type ScanResult, addFindingDedup } from '../types'
 
 // ═══════════════════════════════════════════════════
@@ -136,10 +136,7 @@ export function scanGameMemory(): ScanResult[] {
   for (const procName of GAME_PROCESSES) {
     try {
       // Get PID
-      const pidOut = execSync(
-        `powershell -Command "Get-Process -Name '${procName.replace('.exe', '')}' -ErrorAction SilentlyContinue | Select -ExpandProperty Id -First 1"`,
-        { encoding: 'utf-8', timeout: 5000 },
-      ).trim()
+      const pidOut = (execPowerShell(`Get-Process -Name '${procName.replace('.exe', '')}' -ErrorAction SilentlyContinue | Select -ExpandProperty Id -First 1`, { timeout: 5000 }) || '').trim()
       if (!pidOut) continue
       const pid = parseInt(pidOut, 10)
       if (isNaN(pid)) continue
@@ -198,7 +195,7 @@ export function detectCefDebugPorts(): ScanResult[] {
 
   try {
     const psCmd = `Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { ${CEF_DEBUG_PORTS.map(p => `$_.LocalPort -eq ${p}`).join(' -or ')} } | Select-Object LocalPort,OwningProcess | ConvertTo-Json -Compress`
-    const out = execSync(`powershell -Command "${psCmd}"`, { encoding: 'utf-8', timeout: 8000 })
+    const out = execPowerShell(psCmd, { timeout: 8000 })
 
     if (!out || out.trim().length < 5) return results
 
@@ -213,10 +210,7 @@ export function detectCefDebugPorts(): ScanResult[] {
       // Get process name for the PID
       let procName = 'unknown'
       try {
-        procName = execSync(
-          `powershell -Command "Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select -ExpandProperty ProcessName"`,
-          { encoding: 'utf-8', timeout: 3000 },
-        ).trim()
+        procName = (execPowerShell(`Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select -ExpandProperty ProcessName`, { timeout: 3000 }) || '').trim()
       } catch { /* best effort */ }
 
       // Skip if it's not a game process
@@ -293,9 +287,7 @@ while ([MemInfo]::VirtualQueryEx($hProc, $addr, [ref](New-Object MemInfo+MEMORY_
 [MemInfo]::CloseHandle($hProc)
 $results | Select-Object -First 30 | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 15000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psCmd, { timeout: 15000, collapseLines: 'semicolons' }) || '').trim()
 
     if (!out || out.length < 5) return []
     const parsed = JSON.parse(out)
@@ -332,9 +324,7 @@ if (-not $ok -or $read -eq 0) { exit 0 }
 # Encode as base64 for safe transfer
 [Convert]::ToBase64String($buf, 0, $read)
 `
-    const out = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 10000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psCmd, { timeout: 10000, collapseLines: 'semicolons' }) || '').trim()
 
     if (!out || out.length < 4) return null
     return Buffer.from(out, 'base64').toString('latin1')

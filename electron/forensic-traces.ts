@@ -17,7 +17,7 @@
  * For full forensic analysis, use Eric Zimmerman tools (AppCompatCacheParser, JLECmd).
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import path from 'path'
 import fs from 'fs'
 import { ScanResult, addFindingDedup, _WR, _HOME } from './types'
@@ -35,26 +35,11 @@ function rot13(str: string): string {
 
 // ── Shell helpers ──
 function ps(command: string, timeout = 8000): string {
-  try {
-    return execSync(`powershell -NoProfile -Command "${command}"`, {
-      encoding: 'utf-8',
-      timeout,
-      windowsHide: true,
-    }).trim()
-  } catch {
-    return ''
-  }
+  return (execPowerShell(command, { timeout }) || '').trim()
 }
 
 function regQuery(keyPath: string, timeout = 5000): string {
-  try {
-    return execSync(`reg query "${keyPath}" /s 2>nul`, {
-      encoding: 'utf-8',
-      timeout,
-    }).trim()
-  } catch {
-    return ''
-  }
+  return (execWithTimeout(`reg query "${keyPath}" /s 2>nul`, { timeout }) || '').trim()
 }
 
 // Strip non-alphanumeric chars for fuzzy matching
@@ -163,10 +148,8 @@ export function scanAmcache(): ScanResult[] {
 
   // Use reg.exe load/unload (safer than PowerShell for this)
   try {
-    execSync('reg load HKLM\\Amcache_Temp "' + amcachePath + '" 2>nul', {
-      encoding: 'utf-8',
+    execWithTimeout('reg load HKLM\\Amcache_Temp "' + amcachePath + '" 2>nul', {
       timeout: 8000,
-      windowsHide: true,
     })
   } catch {
     return results // Can't load hive (maybe already loaded or permission denied)
@@ -201,10 +184,8 @@ export function scanAmcache(): ScanResult[] {
 
   // ALWAYS unload the hive
   try {
-    execSync('reg unload HKLM\\Amcache_Temp 2>nul', {
-      encoding: 'utf-8',
+    execWithTimeout('reg unload HKLM\\Amcache_Temp 2>nul', {
       timeout: 5000,
-      windowsHide: true,
     })
   } catch { /* best effort */ }
 

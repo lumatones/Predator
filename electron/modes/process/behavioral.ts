@@ -14,7 +14,7 @@
  * running at ~240MB with self-spawning child process
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../../utils/exec'
 
 import { addFindingDedup, type ScanResult } from '../../types'
 import { MASQUERADING_SYSTEM_TOOLS } from '../../cheats-db'
@@ -26,7 +26,7 @@ import { MASQUERADING_SYSTEM_TOOLS } from '../../cheats-db'
 export function scanBehavioralMasquerading(): ScanResult[] {
   const results: ScanResult[] = []
   try {
-    const output = execSync('tasklist /FO CSV /NH', { encoding: 'utf-8', timeout: 5000 })
+    const output = execWithTimeout('tasklist /FO CSV /NH', { timeout: 5000 }) || ''
     const lines = output.trim().split('\n')
 
     const masqueradingProcs: { name: string; pid: number; memKB: number }[] = []

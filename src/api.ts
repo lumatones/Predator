@@ -137,6 +137,25 @@ export async function checkRequestStatus(id: number): Promise<RequestStatusRespo
 
 // ── Scan Submission API ──
 
+/** Finding with rich metadata for server-side analysis */
+export interface SubmitScanFinding {
+  path: string
+  fileName: string
+  type: string
+  risk: string
+  matches: string[]
+  /** Full SHA256 hash (if available) */
+  sha256?: string
+  /** First 64KB SHA256 — used for safe-files matching */
+  partialHash?: string
+  /** File size in bytes */
+  size?: number
+  /** Last modification timestamp */
+  modifiedAt?: string
+  /** Pre-classified finding kind (dma/process/cleaner/registry/browser/file) */
+  findingKind?: string
+}
+
 export interface SubmitScanRequest {
   token_id?: number
   pc_username: string
@@ -145,16 +164,126 @@ export interface SubmitScanRequest {
   suspicious_files: number
   high_risk_count: number
   scan_time_ms: number
-  results: Array<{ path: string; fileName: string; type: string; risk: string; matches: string[] }>
+  results: SubmitScanFinding[]
+  /** Client version for server-side compatibility tracking */
+  client_version?: string
 }
 
 export interface SubmitScanResponse {
   success: boolean
   message: string
+  /** Server-side classification summary (if processed) */
+  auto_safe_count?: number
+  auto_malicious_count?: number
+  pending_count?: number
+}
+
+// ── Retry helper ──
+
+interface QueueItem {
+  id: string
+  url: string
+  body: unknown
+  retries: number
+  maxRetries: number
+  createdAt: string
+}
+
+const QUEUE_KEY = 'predator_offline_queue'
+const MAX_RETRIES = 3
+
+function loadQueue(): QueueItem[] {
+  try {
+    const raw = localStorage.getItem(QUEUE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function saveQueue(queue: QueueItem[]): void {
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue.slice(-100)))
+  } catch {}
+}
+
+function addToQueue(url: string, body: unknown): void {
+  const queue = loadQueue()
+  queue.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    url,
+    body,
+    retries: 0,
+    maxRetries: MAX_RETRIES,
+    createdAt: new Date().toISOString(),
+  })
+  saveQueue(queue)
+  // Attempt to process queue immediately
+  processQueue().catch(() => {})
+}
+
+/** Process pending offline queue items */
+async function processQueue(): Promise<void> {
+  const queue = loadQueue()
+  if (queue.length === 0) return
+
+  const remaining: QueueItem[] = []
+  for (const item of queue) {
+    try {
+      const res = await fetch(`${getApiBase()}${item.url}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item.body),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    } catch {
+      item.retries++
+      if (item.retries < item.maxRetries) {
+        remaining.push(item)
+      }
+      // else: discard after max retries
+    }
+  }
+  saveQueue(remaining)
+}
+
+// Retry wrapper: 3 attempts with exponential backoff
+async function fetchApiWithRetry<T>(
+  path: string,
+  body: unknown,
+  retries = MAX_RETRIES,
+): Promise<T> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fetchApi<T>(path, body)
+    } catch (err) {
+      if (attempt < retries) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = 1000 * Math.pow(2, attempt - 1)
+        await new Promise(r => setTimeout(r, delay))
+      } else {
+        // Last attempt failed — add to offline queue
+        addToQueue(path, body)
+        throw err
+      }
+    }
+  }
+  throw new Error('All retries exhausted')
+}
+
+// ── Online status tracking for queue processing ──
+
+let _onlineListenerSet = false
+
+function ensureOnlineListener(): void {
+  if (_onlineListenerSet) return
+  _onlineListenerSet = true
+  window.addEventListener('online', () => {
+    processQueue().catch(() => {})
+  })
 }
 
 export async function submitScan(data: SubmitScanRequest): Promise<SubmitScanResponse> {
-  return fetchApi<SubmitScanResponse>('/api/auth/submit-scan', data)
+  ensureOnlineListener()
+  return fetchApiWithRetry<SubmitScanResponse>('/api/auth/submit-scan', data)
 }
 
 // ── Cloud Hash Submission API ──

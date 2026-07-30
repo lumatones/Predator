@@ -546,6 +546,23 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     }, 150)
   }, [activeTab, phase, results, summary])
 
+  /**
+   * Determine findingKind from a scan result.
+   * If the Electron scanner already tagged it — use that.
+   * Otherwise infer from type and mode (dev/fallback).
+   */
+  const inferFindingKind = useCallback((r: ScanResult, mode: string): string => {
+    if (r.findingKind) return r.findingKind
+    if (mode === 'dma' || r.type === 'hardware') return 'dma'
+    if (mode === 'cleaner') return 'cleaner'
+    if (mode === 'usb') return 'usb'
+    if (r.type === 'process') return 'process'
+    if (r.type === 'browser') return 'browser'
+    if (r.type === 'registry') return 'registry'
+    if (r.type === 'software' || r.type === 'system') return 'system'
+    return 'file'
+  }, [])
+
   const submitToServer = useCallback(async (mode: string, summary: ScanResponse['summary'], results: ScanResult[]) => {
     try {
       let pcName = 'unknown'
@@ -558,20 +575,27 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       await submitScan({
         token_id: tokenId ?? undefined,
         pc_username: pcName,
+        client_version: '0.4.3',
         mode,
         total_scanned: summary.totalScanned,
         suspicious_files: summary.suspiciousFiles,
         high_risk_count: summary.highRiskCount,
         scan_time_ms: summary.scanTimeMs,
-        results: results.slice(0, 50).map(r => ({
+        results: results.slice(0, 200).map(r => ({
           path: r.path,
           fileName: r.fileName,
           type: r.type,
           risk: r.risk,
-          matches: r.matches.slice(0, 5),
+          matches: r.matches,
+          sha256: r.sha256,
+          size: r.size,
+          modifiedAt: r.modifiedAt,
+          findingKind: inferFindingKind(r, mode),
         })),
       })
-    } catch { /* ignore */ }
+    } catch {
+      // Error already handled by fetchApiWithRetry + offline queue
+    }
   }, [tokenId])
 
   return (

@@ -3,16 +3,17 @@
  *
  * The core scoring logic that decides whether a file or process is suspicious.
  *
- * v2: Decomposed into heuristic/* modules. This file now acts as the public
- * barrel — keeping constants, helpers, and heuristicFileScan while re-exporting
- * the extracted pure functions.
+ * v2: Decomposed into heuristic/* modules. This file is the public barrel —
+ * it keeps heuristicFileScan() and re-exports everything else from sub-modules.
  *
  * Modules:
- *   heuristic/combo-detector.ts     — comboScoreUnsignedBinary
- *   heuristic/signature-batch.ts    — batchCheckSignatures, checkDigitalSignature
- *   heuristic/masquerading.ts       — checkMasqueradingExecutable
- *   heuristic/archive-scan.ts       — scanArchiveContents, ARCHIVE_EXTS
- *   heuristic/cheat-names.ts        — pre-computed name arrays for matching
+ *   heuristic/constants.ts           — SUSPICIOUS_EXTENSIONS, SCAN_CONFIG, PROTECTED_PATHS, etc.
+ *   heuristic/name-matcher.ts        — matchKnownCheat, riskScoreToLevel, getFileRiskLevel
+ *   heuristic/combo-detector.ts      — comboScoreUnsignedBinary
+ *   heuristic/signature-batch.ts     — batchCheckSignatures, checkDigitalSignature
+ *   heuristic/masquerading.ts        — checkMasqueradingExecutable
+ *   heuristic/archive-scan.ts        — scanArchiveContents, ARCHIVE_EXTS
+ *   heuristic/cheat-names.ts         — pre-computed name arrays for matching
  */
 
 import crypto from 'crypto'
@@ -39,113 +40,52 @@ import {
 
 import type { HeuristicResult } from './types'
 import type { PeAnalysisResult, SectionEntropy } from './cheat-rules'
-import { _PF, _PF86, _HOME, _WR, ctx } from './types'
+import { _WR, ctx } from './types'
 import { isFileSafe } from './safe-files-db'
 import { calculateEntropy } from './analysis/entropy'
 import { scanStrings } from './analysis/strings'
 
-// ── Re-export signature registry (pure data) ──
+// ═══════════════════════════════════════════════════
+// RE-EXPORTS (from sub-modules)
+// ═══════════════════════════════════════════════════
+
+// Constants (pure data)
+export { SUSPICIOUS_EXTENSIONS, KNOWN_ELECTRON_DLLS, SKIPPABLE_EXTENSIONS, SCAN_CONFIG, PROTECTED_PATHS, SYSTEM_PROC_NAMES } from './heuristic/constants'
+import { SUSPICIOUS_EXTENSIONS, KNOWN_ELECTRON_DLLS, SKIPPABLE_EXTENSIONS, SCAN_CONFIG, PROTECTED_PATHS, SYSTEM_PROC_NAMES } from './heuristic/constants'
+
+// Signature registry (pure data)
 export { SUSPICIOUS_CATEGORIES, ALL_CHEAT_KEYWORDS, SUSPICIOUS_PATTERNS, MIN_KEYWORD_LENGTH, matchKeywords, matchPatterns } from './signature-registry'
 import { SUSPICIOUS_CATEGORIES, MIN_KEYWORD_LENGTH, matchKeywords, matchPatterns } from './signature-registry'
 
-// ── Re-export extracted modules ──
+// Heuristic sub-modules
 export { comboScoreUnsignedBinary } from './heuristic/combo-detector'
 export { batchCheckSignatures, checkDigitalSignature } from './heuristic/signature-batch'
 export { checkMasqueradingExecutable } from './heuristic/masquerading'
 export { scanArchiveContents, ARCHIVE_EXTS } from './heuristic/archive-scan'
 
-// ── Local imports of re-exported modules (for heuristicFileScan) ──
+// Cheat name arrays
+export { PROC_BASES, FILE_NAMES, LUA_NAMES, FOLDER_NAMES } from './heuristic/cheat-names'
+
+// Name matcher
+export { matchKnownCheat, riskScoreToLevel, getFileRiskLevel } from './heuristic/name-matcher'
+
+// Analysis engines
+export { calculateEntropy } from './analysis/entropy'
+export { scanStrings } from './analysis/strings'
+
+// ═══════════════════════════════════════════════════
+// LOCAL IMPORTS (for heuristicFileScan)
+// ═══════════════════════════════════════════════════
+
 import { comboScoreUnsignedBinary } from './heuristic/combo-detector'
 import { checkDigitalSignature } from './heuristic/signature-batch'
 import { checkMasqueradingExecutable } from './heuristic/masquerading'
 import { scanArchiveContents, ARCHIVE_EXTS } from './heuristic/archive-scan'
-
-// ── Re-export shared cheat name arrays (for matchKnownCheat) ──
-export { PROC_BASES, FILE_NAMES, LUA_NAMES, FOLDER_NAMES } from './heuristic/cheat-names'
-import { PROC_BASES, FILE_NAMES, LUA_NAMES, FOLDER_NAMES } from './heuristic/cheat-names'
+import { matchKnownCheat } from './heuristic/name-matcher'
 
 // ═══════════════════════════════════════════════════
-// CONSTANTS
+// HELPERS (thin wrappers, kept in barrel for locality)
 // ═══════════════════════════════════════════════════
-
-export const SUSPICIOUS_EXTENSIONS: Record<string, string> = {
-  '.dll': 'Dynamic library (possible inject)',
-  '.asi': 'ASI mod GTA (game modification)',
-  '.lua': 'Lua script (often used in cheats)',
-  '.luac': 'Compiled Lua script',
-  '.exe': 'Executable file',
-  '.sys': 'System driver',
-  '.cfg': 'Configuration file',
-  '.ini': 'Configuration file',
-  '.js': 'JavaScript (may contain cheat loader)',
-  '.ahk': 'AutoHotkey script',
-  '.zip': 'Archive (may contain cheat files)',
-  '.rar': 'Archive (may contain cheat files)',
-  '.7z': 'Archive (may contain cheat files)',
-  '.msi': 'Installer (may contain cheat)',
-}
-
-/** Known Electron/Chromium DLLs bundled unsigned with Electron apps. Never flag these. */
-export const KNOWN_ELECTRON_DLLS = new Set([
-  'd3dcompiler_47.dll', 'ffmpeg.dll', 'libegl.dll', 'libglesv2.dll',
-  'vk_swiftshader.dll', 'vulkan-1.dll', 'vulkaninfo.exe',
-  'elevate.exe', 'nsis7z.dll', 'nsprocess.dll', 'stdutils.dll',
-  'system.dll', '7zr.exe',
-])
-
-/** Extensions to skip entirely (noise files with no cheat value). */
-export const SKIPPABLE_EXTENSIONS = new Set([
-  '.d.ts', '.d.ts.map', '.js.map', '.css.map', '.map',
-  '.tsbuildinfo', '.woff', '.woff2', '.ttf', '.otf', '.eot',
-  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.bmp', '.webp',
-  '.mp4', '.mp3', '.wav', '.ogg', '.flac', '.avi', '.mkv', '.mov',
-  '.pak', '.bin', '.dat',
-])
-
-export const SCAN_CONFIG = {
-  SCAN_DEPTH: 3,
-  MAX_FILE_SIZE: 100 * 1024 * 1024,
-  MIN_FILE_SIZE: 0,
-  SUSPICIOUS_AGE_DAYS: 90,
-  ENTROPY_THRESHOLD: 7.5,
-}
-
-/** Protected paths — game mod directories where files should not be */
-export const PROTECTED_PATHS = [
-  path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'mods'),
-  path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'plugins'),
-  path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'cache'),
-  path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'data'),
-  path.join(_HOME, 'AppData', 'Roaming', 'CitizenFX'),
-  path.join(_PF, 'RAGEMP'),
-  path.join(_PF86, 'RAGEMP'),
-  path.join(_HOME, 'RAGEMP'),
-  path.join(_HOME, 'AppData', 'Local', 'altv', 'modules'),
-  path.join(_HOME, 'AppData', 'Local', 'altv', 'resources'),
-  path.join(_PF, 'Rockstar Games', 'Grand Theft Auto V'),
-  path.join(_PF86, 'Rockstar Games', 'Grand Theft Auto V'),
-  path.join(_PF, 'Steam', 'steamapps', 'common', 'Grand Theft Auto V'),
-  path.join(_PF86, 'Steam', 'steamapps', 'common', 'Grand Theft Auto V'),
-]
-
-/** System process names that cheat loaders commonly masquerade as */
-export const SYSTEM_PROC_NAMES = new Set([
-  'svchost.exe', 'csrss.exe', 'lsass.exe', 'services.exe', 'smss.exe',
-  'winlogon.exe', 'explorer.exe', 'spoolsv.exe', 'conhost.exe',
-  'rundll32.exe', 'taskhostw.exe', 'sihost.exe', 'ctfmon.exe',
-  'dwm.exe', 'fontdrvhost.exe', 'RuntimeBroker.exe',
-  'SearchIndexer.exe', 'SecurityHealthSystray.exe',
-  'LogonUI.exe', 'SystemSettings.exe', 'LockApp.exe',
-  'startmenuexperiencehost.exe', 'shellexperiencehost.exe',
-  'applicationframehost.exe', 'SearchApp.exe',
-])
-
-// ═══════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════
-
-export { calculateEntropy } from './analysis/entropy'
-export { scanStrings } from './analysis/strings'
 
 /** Check if filename is a known Electron bundled DLL (never flag these) */
 export function isKnownElectronDll(fileName: string): boolean {
@@ -156,53 +96,6 @@ export function isKnownElectronDll(fileName: string): boolean {
 export function isSkippableExtension(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase()
   return SKIPPABLE_EXTENSIONS.has(ext)
-}
-
-// ═══════════════════════════════════════════════════
-// CHEAT NAME MATCHING
-// ═══════════════════════════════════════════════════
-
-export function matchKnownCheat(name: string): string[] {
-  const lower = name.toLowerCase()
-  const cached = ctx.cheatNameCache.get(lower)
-  if (cached !== undefined) return cached
-
-  const matches: string[] = []
-  for (const base of PROC_BASES) {
-    if (lower.includes(base)) matches.push(`process:${base}`)
-  }
-  for (const file of FILE_NAMES) {
-    if (lower.includes(file)) matches.push(`file:${file}`)
-  }
-  for (const lua of LUA_NAMES) {
-    if (lower.includes(lua)) matches.push(`lua:${lua}`)
-  }
-  for (const folder of FOLDER_NAMES) {
-    if (lower.includes(folder)) matches.push(`folder:${folder}`)
-  }
-  ctx.cheatNameCache.set(lower, matches)
-  return matches
-}
-
-export function riskScoreToLevel(score: number): 'high' | 'medium' | 'low' {
-  if (score > 80) return 'high'
-  if (score > 50) return 'medium'
-  return 'low'
-}
-
-export function getFileRiskLevel(fileName: string, matches: string[]): 'high' | 'medium' | 'low' {
-  const ext = path.extname(fileName).toLowerCase()
-  const highRiskExts = ['.exe', '.dll', '.sys', '.drv', '.bat', '.ps1', '.vbs', '.ahk']
-  const mediumRiskExts = ['.js', '.lua', '.py', '.cs', '.asi', '.luac']
-
-  const hasHighKeyword = matches.some(k =>
-    ['dll inject', 'memory hack', 'injector', 'aimbot', 'wallhack',
-     'triggerbot', 'dma', 'fpga', 'pcileech', 'fuser'].includes(k),
-  )
-
-  if ((highRiskExts.includes(ext) && hasHighKeyword) || matches.length >= 3) return 'high'
-  if (highRiskExts.includes(ext) || mediumRiskExts.includes(ext) || matches.length >= 2) return 'medium'
-  return 'low'
 }
 
 // ═══════════════════════════════════════════════════

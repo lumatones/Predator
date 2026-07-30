@@ -1,65 +1,125 @@
 # Changelog
 
-## v0.4.3 — Code Quality, Music Player Upgrade, Finding Explainer (2026-07-30)
+## v0.4.4
 
-### 🧹 Code Cleanup & Refactoring
-- **Dead code removal**: `riskClass()`, `calcScanPercent()`, `serverMsg`, `streamActive`, `riskLevels` — удалены неиспользуемые функции и переменные
-- **Removed unused props**: `accent`, `light`, `dark` из Logo; `light` из WelcomeStep; непередаваемые пропсы убраны
-- **`let` → `const`**: `_tlshTrie`, `existing`, `filesScanned` и др. исправлены на `const`
-- **Removed unused import** `useCallback` из PredatorLogo3D.tsx
-- **Removed unused export** `setKnownTlshHashes` из cloud-sync.ts
-- **Removed eslint-disable comments** из ApcDashboard.tsx и ScanTerminal.tsx
+### Project Cleanup and Housekeeping (2026-07-30)
 
-### 🛠 Lint & TypeScript Fixes
-- **`require()` elimination**: все запрещённые `require()` в Electron заменены на ES imports:
-  - `require('os')` → `import os from 'os'` в тестах
-  - `require('socket.io-client')` → динамический `import()` в cloud-sync.ts
-  - `require('electron').app` → `app` import в self-integrity.ts
-  - `require('child_process').execSync` → top-level import в self-protect.ts
-- **ESLint config**: добавлены `no-unused-vars: off`, `no-empty с allowEmptyCatch`, `no-control-regex: off`, улучшен `no-unused-vars`
-- **YARA string escaping** в auto-yara.ts — убраны лишние обратные слэши в кавычках
-- **PowerShell string escaping** в pc-cleaner-detection.ts и pipes-wmi.ts — убрана лишняя экранизация
+**Documentation (6 files updated)**
+- CHANGELOG.md updated with v0.4.1, v0.4.2, v0.4.3 entries
+- ARCHITECTURE.md created with full system architecture
+- RULES.md updated from v0.1.14 to v0.4.3 with current structure and endpoints
+- REFACTORING.md updated with execSync migration and heuristic decomposition
+- DEV.md rewritten with current commands and project structure
+- README.md rewritten for GitHub with clean formatting
 
-### 📦 New npm scripts
-- `npm test` — vitest run
-- `npm run test:electron` — vitest run electron
-- `npm run test:renderer` — vitest run src
-- `npm run typecheck:renderer` — typecheck для renderer
-- `npm run lint:fix` — автоисправление линтера
-- `npm run typecheck` — теперь включает renderer + electron + admin
+**Project Cleanup (16 items removed)**
+- Root junk: Code.zip, Command Prompt.lnk, desktop.ini, nul
+- Alien projects: Eye-Animation-Enhancer, .remotion-skill-temp, promo
+- Debug artifacts: .freebuff with internal scripts and DB files
+- Design briefs: DESIGN_FOR_KIMI, DESIGN_PLAN, VISUAL_DESIGN, VISUAL_FOR_KIMI
+- Stale notes: SCANNER_IMPROVEMENTS, CONTEXT
+- Duplicate: root RULES.md (kept docs/RULES.md)
+- Runtime data: .predator_tlsh_db.json
 
-### 🎵 Music Player Upgrade
-- **iTunes Preview source**: добавлен как основной источник (бесплатно, без API-ключа)
-- **Demo fallback**: если все удалённые источники недоступны, показываются демо-треки
-- **Timeout handling**: 7-секундный AbortController на все fetch-запросы
-- **Invidious instances**: обновлён список (убран мёртвый, добавлены надёжные)
-- **Typed API responses**: вместо `any` — интерфейсы `JamendoTrack`, `InvidiousVideo`, `ITunesTrack`
-- **Better search UX**: улучшенные placeholder, подсказка под строкой поиска, кнопка disabled при пустом запросе
+**execSync Migration (161 calls)**
+- Created electron/utils/exec.ts with execPowerShell, execWithTimeout, execFileWithTimeout
+- All execSync calls migrated across 20 files
+- Removed 7 migration scripts from scripts/
+- 0 remaining child_process execSync imports in electron/
 
-### 🔬 FileDetailModal Complete Rewrite
-- **Real explanations**: вместо `generateFakeAnalysis()` — модуль `finding-explainer.ts`
-- **Finding classification**: автоматическое определение типа (dma, process, registry, browser, cleaner, file, software, system)
-- **Verdict section**: заголовок, описание, whyDangerous, recommendation, confidenceNote на русском и английском
-- **Evidence model**: source, weight, confidence для каждого сигнала
-- **Indicators**: ключевые индикаторы сканера с человеческим описанием
-- **Layout**: полный редизайн модалки — grid-статистика, улучшенная адаптивность, ARIA-атрибуты
-- **Full SHA256** в модалке (был обрезан до 16 символов)
+**Heuristic Decomposition**
+- heuristic.ts barrel decomposed into 7 submodules
+- Constants extracted to heuristic/constants.ts
+- Name matcher to heuristic/name-matcher.ts
 
-### 🖼 PredatorLogo3D Fixes
-- **No more `any` casts**: `(mesh.material as any)` → `(mesh.material as { opacity?: number })`
-- **Destructured `state` → `{ clock }`** в useFrame для читаемости
-
-### 🐛 Other Fixes
-- **Electron config types**: добавлены `telegramBotToken` и `telegramChatId` в `ElectronAPI`
-- **Checker.tsx**: убран `(cfg as any)` для telegram полей (теперь строгая типизация)
-- **Self-integrity.ts**: `IS_DEBUG_BUILD` использует top-level imports вместо `require()`
-- **Self-protect.ts**: `criticalTamperResponse` использует `execSync` из top-level import
-- **connectCloudWebSocket**: теперь async + `void` для игнорирования промиса
-- **export-report.ts**: убрана неиспользуемая переменная `riskLevels`
+**Server Fix**
+- ws-auth.ts SocketData type fixed for Socket.IO v4.8
 
 ---
 
-## v0.3.1 — Smart Pipeline + Digital Signature + Safe-Files Fix (2026-07-28)
+## v0.4.3 — Code Quality, Music Player, Finding Explainer, Documentation (2026-07-30)
+
+**Code Cleanup**
+- Dead code removed: `riskClass()`, `calcScanPercent()`, `serverMsg`, `streamActive`, `riskLevels`
+- `let` changed to `const` across multiple files
+- Removed unused import `useCallback` from PredatorLogo3D.tsx
+- Removed unused export `setKnownTlshHashes` from cloud-sync.ts
+- Removed unused function `inferFindingKindFromResult` from Checker.tsx
+- Removed eslint-disable comments from ApcDashboard.tsx and ScanTerminal.tsx
+
+**Lint and TypeScript Fixes**
+- All `require()` calls replaced with ES imports across Electron
+- ESLint config updated: `no-unused-vars: off`, `no-empty` with allowEmptyCatch, `no-control-regex: off`
+- YARA string escaping fixed in auto-yara.ts
+- PowerShell string escaping fixed in pc-cleaner-detection.ts and pipes-wmi.ts
+
+**New npm Scripts**
+- `npm test`, `npm run test:electron`, `npm run test:renderer`
+- `npm run typecheck:renderer`, `npm run lint:fix`
+- `npm run typecheck` now includes renderer + electron + admin
+
+**Music Player Upgrade**
+- iTunes Preview source added as primary (free, no API key)
+- Demo fallback when all remote sources are unavailable
+- 7-second AbortController timeout on all fetch requests
+- Invidious instances list updated
+- Typed API responses replacing `any`
+
+**FileDetailModal Rewrite**
+- New `finding-explainer.ts` module for real explanations
+- Automatic finding classification (dma, process, registry, browser, cleaner, file, software, system)
+- Verdict section with description, whyDangerous, recommendation, confidenceNote
+- Evidence model with source, weight, confidence per signal
+- Full SHA256 displayed in modal
+
+**execSync Migration (161 calls)**
+- Created `electron/utils/exec.ts` with `execPowerShell`, `execWithTimeout`, `execFileWithTimeout`
+- All 161 `execSync` calls migrated across 20 files
+- Built-in timeout with process kill, null-safe return types
+- Multi-line PowerShell C# scripts use `collapseLines` option
+
+**Heuristic Decomposition**
+- `heuristic.ts` barrel decomposed into 7 submodules under `heuristic/`
+- Constants extracted to `heuristic/constants.ts`
+- `name-matcher.ts`, `combo-detector.ts`, `signature-batch.ts`, `masquerading.ts`, `archive-scan.ts`, `cheat-names.ts`
+
+**Documentation**
+- `ARCHITECTURE.md` created with full system architecture
+- `RULES.md` updated from v0.1.14 to v0.4.3
+- `README.md` rewritten for GitHub with clean formatting
+- `REFACTORING.md` updated with execSync and heuristic decomposition
+- `DEV.md` rewritten with current commands and structure
+- 7 obsolete migration scripts removed from `scripts/`
+
+**Server Fix**
+- `ws-auth.ts` SocketData type fixed for Socket.IO v4.8 compatibility
+
+**Other Fixes**
+- Electron config types updated
+- `(cfg as any)` removed from Checker.tsx
+- `IS_DEBUG_BUILD` uses top-level imports
+- `connectCloudWebSocket` made async
+
+---
+
+## v0.4.2 — Eye Animations, Terminal Removal (2026-07-29)
+
+**UI Improvements**
+- Simplified eye animations in PredatorLogo3D
+- Removed CMD-style terminal in favor of cleaner scan UI
+
+---
+
+## v0.4.1 — Music Player, Server Hash Verify, API Fix (2026-07-28)
+
+**Music Player**
+- Integrated music player with multiple sources
+- MiniPlayer component for compact mode
+- `useMusicPlayer` hook for playback control
+
+**Server**
+- Server-side hash verification endpoint
+- API response format fix
 
 ### 🔧 Safe-Files Deadlock Fix
 - **`refreshSafeFilesDb()`** — новая функция обновляет confirmCount для ВСЕХ существующих safe-файлов при каждом сканировании

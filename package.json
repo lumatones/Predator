@@ -1,6 +1,6 @@
 {
   "name": "predator",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Predator — Cheat checker for GTA 5 RP (Majestic)",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -78,6 +78,20 @@
       "releaseType": "release"
     }
   },
+  "lint-staged": {
+    "electron/**/*.ts": [
+      "eslint --fix --max-warnings 10"
+    ],
+    "src/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings 10"
+    ],
+    "server/src/**/*.ts": [
+      "cd server && npx tsc --noEmit"
+    ],
+    "admin/src/**/*.{ts,tsx}": [
+      "cd admin && npx tsc --noEmit"
+    ]
+  },
   "private": true,
   "workspaces": [
     "admin"
@@ -114,6 +128,7 @@
     "eslint": "^9.39.5",
     "globals": "^17.7.0",
     "husky": "^9.1.7",
+    "lint-staged": "^17.2.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.65.0",
     "vite": "^6.0.0",

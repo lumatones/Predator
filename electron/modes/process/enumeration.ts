@@ -5,7 +5,7 @@
  * and PowerShell module enumeration for cheat signatures.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../../utils/exec'
 
 import { addFindingDedup, parsePsJson, type ScanResult } from '../../types'
 import { SUSPICIOUS_CATEGORIES, matchKnownCheat } from '../../heuristic'
@@ -17,7 +17,7 @@ import { SUSPICIOUS_CATEGORIES, matchKnownCheat } from '../../heuristic'
 export function scanRunningProcesses(): ScanResult[] {
   const results: ScanResult[] = []
   try {
-    const output = execSync('tasklist /FO CSV /NH', { encoding: 'utf-8', timeout: 5000 })
+    const output = execWithTimeout('tasklist /FO CSV /NH', { timeout: 5000 }) || ''
     for (const line of output.trim().split('\n')) {
       try {
         const parts = line.match(/"([^"]+)","(\d+)","(\d+)","([^"]+)"/)
@@ -56,10 +56,7 @@ export function scanRunningProcessesV2(): ScanResult[] {
 
   let processes: { Name?: string; Id?: number; Mods?: string[] }[] = []
   try {
-    const psOut = execSync(
-      `powershell -Command "Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3"`,
-      { encoding: 'utf-8', timeout: 10000 },
-    )
+    const psOut = execPowerShell(`Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3`, { timeout: 10000 }) || ''
     processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
   } catch (err) { console.warn('[enumeration] powershell failed:', (err as Error).message) }
 

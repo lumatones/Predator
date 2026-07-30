@@ -15,7 +15,7 @@
  *   5. Debug privilege stripping — remove SeDebugPrivilege
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import { app } from 'electron'
 import koffi from 'koffi'
 import type { ScanResult } from './types'
@@ -324,9 +324,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 $proc = Get-Process -Id ${process.pid}
 $proc.Modules | Select-Object -ExpandProperty FileName | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psScript, { timeout: 8000 }) || '').trim()
 
     if (out && out.length > 2) {
       const paths: string[] = JSON.parse(out)
@@ -354,9 +352,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 $proc = Get-Process -Id ${process.pid}
 $proc.Modules | Select-Object -ExpandProperty FileName | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psScript, { timeout: 8000 }) || '').trim()
 
     if (!out || out.length < 2) return results
 
@@ -431,7 +427,7 @@ export function criticalTamperResponse(reasons: string[]): void {
   } catch {
     // Last resort
     try {
-      execSync(`taskkill /F /PID ${process.pid}`, { timeout: 2000 })
+      execWithTimeout(`taskkill /F /PID ${process.pid}`, { timeout: 2000 })
     } catch {
       // Nothing more we can do
     }

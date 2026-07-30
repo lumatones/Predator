@@ -74,6 +74,12 @@ export interface ScanResult {
   modifiedAt: string
   /** SHA256 hash of the file (only for HIGH-risk file results) */
   sha256?: string
+  /**
+   * Auto-tagged finding kind for server-side smart classification.
+   * Set by Electron scan-pipeline.ts based on scan mode + result characteristics.
+   * Values: 'dma' | 'process' | 'registry' | 'browser' | 'cleaner' | 'file' | 'software' | 'system' | 'memory' | 'network' | 'usb'
+   */
+  findingKind?: string
 }
 
 export interface ScanProgress {

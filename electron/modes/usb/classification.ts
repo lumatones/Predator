@@ -6,7 +6,7 @@
  * Also verifies driver digital signatures for DMA/FPGA devices.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../../utils/exec'
 import * as fs from 'fs'
 import * as path from 'path'
 import { _WR } from '../../types'
@@ -58,9 +58,7 @@ $sig = Get-AuthenticodeSignature -FilePath '${filepath.replace(/'/g, "''")}'
   Issuer = if ($sig.SignerCertificate) { $sig.SignerCertificate.Issuer } else { '' }
 } | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 5000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psScript, { timeout: 5000 }) || '').trim()
 
     if (!out || out.length < 5) return null
 
@@ -109,9 +107,7 @@ if (-not $dev) { Write-Host 'NO_DEVICE'; exit 0 }
 $svcData = Get-PnpDeviceProperty -InstanceId $dev.InstanceId -KeyName '{a45c254e-df1c-4efd-8020-67d146a850e0} 6' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Data
 if ($svcData) { Write-Host "SERVICE:$svcData" } else { Write-Host 'NO_SERVICE' }
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psScript, { timeout: 8000 }) || '').trim()
 
     if (!out || out === 'NO_DEVICE' || out === 'NO_SERVICE') return null
 

@@ -14,7 +14,7 @@
  * or embed anti-debug code in their cheat to hide from security software.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import { type ScanResult, addFindingDedup, parsePsJson } from '../types'
 
 // ═══════════════════════════════════════════════════
@@ -115,9 +115,7 @@ function scanReToolsByProcess(): ScanResult[] {
 $ErrorActionPreference = 'SilentlyContinue'
 Get-Process | Select-Object Name, Id, MainWindowTitle | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 8000 }) || ''
 
     if (!out || out.length < 5) return results
 
@@ -192,9 +190,7 @@ Get-Process | Where-Object { $_.Modules } | ForEach-Object {
 }
 $suspicious | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 15000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 15000 }) || ''
 
     if (!out || out === '[]' || out.length < 5) return results
 
@@ -292,9 +288,7 @@ foreach ($proc in $suspectProcs) {
 }
 $results | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 20000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 20000 }) || ''
 
     if (!out || out === '[]' || out.length < 5) return results
 
@@ -379,9 +373,7 @@ foreach ($proc in $targets) {
 }
 $results | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 15000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 15000 }) || ''
 
     if (!out || out === '[]' || out.length < 5) return results
 
@@ -485,9 +477,7 @@ foreach ($proc in $targets) {
 }
 $results | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 25000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 25000 }) || ''
 
     if (!out || out === '[]' || out.length < 5) return results
 
@@ -541,9 +531,7 @@ foreach ($d in $debugLaunchers) {
 
 [PSCustomObject]@{ Pid = $parent; Name = $parentName; IsDebugger = $isDebugger } | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 8000 }) || ''
 
     if (!out || out.length < 5) return results
 
@@ -616,9 +604,7 @@ $idpUs = ($idpT2 - $idpT1) * 1.0e6 / $freq
   Suspicious = ($odbUs -gt 100.0 -or $idpUs -gt 50.0 -or $idpResult)
 } | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 8000, windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psScript, { timeout: 8000 }) || ''
 
     if (!out || out.length < 5) return results
 

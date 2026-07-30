@@ -6,7 +6,7 @@
  * and historical devices.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../../utils/exec'
 import { parsePsJson } from '../../types'
 
 // ═══════════════════════════════════════════════════
@@ -109,9 +109,7 @@ foreach ($id in $ids) {
   }
 }
 `
-    const out = execSync(`powershell -NoProfile -Command "${batchedScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 20000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(batchedScript, { timeout: 20000, collapseLines: 'semicolons' }) || '').trim()
 
     if (!out || out.length < 5) return descriptorMap
 
@@ -181,9 +179,7 @@ Get-PnpDevice -PresentOnly |
   Select-Object InstanceId, FriendlyName, Class |
   ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 10000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psScript, { timeout: 10000 }) || '').trim()
 
     if (!out || out.length < 5) return devices
 
@@ -265,9 +261,7 @@ if (Test-Path $pciPath) {
 
 $results | ConvertTo-Json -Compress
 `
-    const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 15000, windowsHide: true,
-    }).trim()
+    const out = (execPowerShell(psScript, { timeout: 15000 }) || '').trim()
 
     if (!out || out.length < 5) return { devices, installDates }
 

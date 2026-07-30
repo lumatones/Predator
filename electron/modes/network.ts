@@ -5,7 +5,7 @@
  * and suspicious IP patterns.
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import fs from 'fs'
 import path from 'path'
 import type { BrowserWindow } from 'electron'
@@ -26,7 +26,7 @@ const SUSPICIOUS_IP_PATTERNS = [
 function scanDnsCache(): ScanResult[] {
   const results: ScanResult[] = []
   try {
-    const out = execSync('ipconfig /displaydns', { encoding: 'utf-8', timeout: 5000 })
+    const out = execWithTimeout('ipconfig /displaydns', { timeout: 5000 }) || ''
     if (!out.trim()) return results
     const lines = out.split('\n').map(l => l.trim())
     for (let i = 0; i < lines.length; i++) {
@@ -110,7 +110,7 @@ function scanHostsFile(): ScanResult[] {
 function scanNetstat(): ScanResult[] {
   const results: ScanResult[] = []
   try {
-    const out = execSync('netstat -ano', { encoding: 'utf-8', timeout: 5000 })
+    const out = execWithTimeout('netstat -ano', { timeout: 5000 }) || ''
     if (!out.trim()) return results
     const lines = out.split('\n')
     let estCount = 0, lstnCount = 0, foreignCount = 0
@@ -151,7 +151,7 @@ function scanNetstat(): ScanResult[] {
 export function scanNetstatV2(): ScanResult[] {
   const results: ScanResult[] = []
   try {
-    const out = execSync('netstat -ano', { encoding: 'utf-8', timeout: 5000 })
+    const out = execWithTimeout('netstat -ano', { timeout: 5000 }) || ''
     if (!out.trim()) return results
     const lines = out.split('\n')
     for (const line of lines) {

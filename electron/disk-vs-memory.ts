@@ -13,7 +13,7 @@
  */
 
 import fs from 'fs'
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import { parsePsJson } from './types'
 
 // ── Types ──────────────────────────────────────
@@ -244,15 +244,7 @@ function batchReadProcessMemory(pid: number, entries: BatchEntry[]): Map<string,
     .replace('MODULES_JSON_PLACEHOLDER', modulesJson)
 
   try {
-    const out = execSync(
-      `powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, '; ')}"`,
-      {
-        encoding: 'utf-8',
-        timeout: 20000,
-        windowsHide: true,
-        maxBuffer: 50 * 1024 * 1024,
-      }
-    ).trim()
+    const out = execPowerShell(psScript, { timeout: 20000, maxBuffer: 50 * 1024 * 1024, collapseLines: 'semicolons' }) || ''
 
     if (out.startsWith('ERROR_')) return result
 
@@ -302,11 +294,7 @@ export function scanDiskVsMemory(pid: number, processName: string): DiskVsMemRes
       `Select-Object ModuleName, FileName, @{N='BaseAddr';E={[long]$_.BaseAddress}} | ` +
       `ConvertTo-Json -Compress`
 
-    const out = execSync(`powershell -Command "${psCmd}"`, {
-      encoding: 'utf-8',
-      timeout: 8000,
-      windowsHide: true,
-    }).trim()
+    const out = execPowerShell(psCmd, { timeout: 8000 }) || ''
 
     if (out && out.length > 5) {
       const rawModules = parsePsJson<{ ModuleName?: string; FileName?: string; BaseAddr?: number }>(out)

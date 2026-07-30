@@ -8,7 +8,7 @@
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from '../utils/exec'
 import { BrowserWindow } from 'electron'
 
 import { EXTENDED_SCAN_PATHS } from '../constants'
@@ -238,11 +238,11 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
   if (aborted()) return { results, filesScanned }
 
   try {
-    const psOut = execSync(
-      `powershell -Command "Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3"`,
-      { encoding: 'utf-8', timeout: 10000 },
+    const psOut = execPowerShell(
+      `Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3`,
+      { timeout: 10000 },
     )
-    const processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
+    const processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut || '')
     for (const proc of processes) {
       if (aborted()) break
       const mods: string[] = proc.Mods || []

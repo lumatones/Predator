@@ -11,7 +11,7 @@
  * (ETW runs at kernel level, below user-mode hooks/patches).
  */
 
-import { execSync } from 'child_process'
+import { execPowerShell, execWithTimeout } from './utils/exec'
 import { addFindingDedup, type ScanResult } from './types'
 
 // ── Types ──
@@ -86,10 +86,7 @@ export function scanEtwProcessEvents(): ScanResult[] {
       ConvertTo-Json -Compress
     `.trim()
 
-    const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-      encoding: 'utf-8',
-      timeout: 8000,
-    }).trim()
+    const out = execPowerShell(psCmd, { timeout: 8000, collapseLines: 'spaces' }) || ''
 
     if (!out || out.length < 5) return results
 
@@ -112,7 +109,7 @@ export function scanEtwProcessEvents(): ScanResult[] {
       // Check: spawned from suspicious parent
       if (ppid > 0) {
         try {
-          const parentOut = execSync(`wmic process where ProcessId=${ppid} get Name /format:csv 2>nul`, { encoding: 'utf-8', timeout: 3000 })
+          const parentOut = execWithTimeout(`wmic process where ProcessId=${ppid} get Name /format:csv 2>nul`, { timeout: 3000 }) || ''
           const parentName = parentOut.split('\n')[1]?.split(',')[2]?.trim()?.toLowerCase() || ''
           if (suspiciousParents.has(parentName)) {
             signals.push(`ETW: suspicious parent process: ${parentName}`)
@@ -170,10 +167,7 @@ export function scanEtwImageLoadEvents(): ScanResult[] {
       ConvertTo-Json -Compress
     `.trim()
 
-    const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-      encoding: 'utf-8',
-      timeout: 8000,
-    }).trim()
+    const out = execPowerShell(psCmd, { timeout: 8000, collapseLines: 'spaces' }) || ''
 
     if (!out || out.length < 5) return results
 
@@ -226,10 +220,7 @@ export function scanEtwThreadInjection(): ScanResult[] {
       ConvertTo-Json -Compress
     `.trim()
 
-    const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-      encoding: 'utf-8',
-      timeout: 6000,
-    }).trim()
+    const out = execPowerShell(psCmd, { timeout: 6000, collapseLines: 'spaces' }) || ''
 
     if (!out || out.length < 5) return results
 
@@ -282,10 +273,7 @@ export function scanEtwProcessHollowing(): ScanResult[] {
       } | ConvertTo-Json -Compress
     `.trim()
 
-    const out = execSync(`powershell -Command "${psCmd.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-      encoding: 'utf-8',
-      timeout: 25000,
-    }).trim()
+    const out = execPowerShell(psCmd, { timeout: 25000, collapseLines: 'spaces' }) || ''
 
     if (!out || out.length < 5) return results
 
