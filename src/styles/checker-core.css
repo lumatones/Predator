@@ -497,6 +497,16 @@
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
+  animation: errorShake 0.4s var(--ease-out) both;
+}
+
+@keyframes errorShake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(5px); }
+  45% { transform: translateX(-3px); }
+  60% { transform: translateX(2px); }
+  75% { transform: translateX(-1px); }
 }
 
 /* ── Results ── */
@@ -990,6 +1000,28 @@
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-8px) scale(1.03); }
 }
+
+/* ── Success Celebration (scan clean) ── */
+@keyframes successSparkle {
+  0% { opacity: 0; transform: translateY(0) scale(0); }
+  40% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-60px) scale(1.2); }
+}
+
+.success-sparkle {
+  position: absolute;
+  pointer-events: none;
+  animation: successSparkle 1.2s var(--ease-out) both;
+}
+
+@keyframes successPulse {
+  0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.3); }
+  70% { box-shadow: 0 0 0 16px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
+
+.checker-summary.safe { animation: summaryPopIn 0.5s var(--ease-out) both, successPulse 1.5s 0.3s ease-out; }
 
 /* ── Groups ── */
 .checker-groups {

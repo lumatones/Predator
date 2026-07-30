@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo, memo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
 
@@ -240,6 +240,28 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
     },
   }
 }
+
+// ── Success celebration sparkles (stable config, no Math.random in render) ──
+const SPARKLE_CONFIGS = [0,1,2,3,4].map(i => ({
+  left: `${20 + ((i * 17 + 7) % 60)}%`,
+  top: `${10 + ((i * 13 + 3) % 50)}%`,
+  delay: `${0.1 + i * 0.15}s`,
+  size: `${6 + (i % 3) * 4}px`,
+  bg: i % 2 === 0 ? 'var(--color-success)' as const : 'var(--chart-lime)' as const,
+  radius: i % 3 === 0 ? '50%' as const : '2px' as const,
+}))
+
+const SuccessSparkles = memo(function SuccessSparkles() {
+  return <>
+    {SPARKLE_CONFIGS.map((cfg, i) => (
+      <span key={i} className="success-sparkle" style={{
+        left: cfg.left, top: cfg.top, animationDelay: cfg.delay,
+        width: cfg.size, height: cfg.size,
+        background: cfg.bg, borderRadius: cfg.radius,
+      }} />
+    ))}
+  </>
+})
 
 const INITIAL_SHOW = 5
 
@@ -691,12 +713,18 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
              currentTab.icon === 'Globe' ? <IconGlobe size={24} color={currentTab.color} animated /> :
              currentTab.icon === 'Eraser' ? <IconEraser size={24} color={currentTab.color} /> : null}
           </div>
-          <Button className="checker-start-btn" onClick={handleStartScan}>
+          <motion.button
+            className="checker-start-btn"
+            onClick={handleStartScan}
+            whileHover={prefersReducedMotion ? undefined : { scale: 1.02, y: -1 }}
+            whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+          >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
             </svg>
             {t('startBtn')}
-          </Button>
+          </motion.button>
         </div>
       )}
 
@@ -758,6 +786,8 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                 </div>
               ) : (
                 <div className="checker-empty-state">
+                  {/* Success sparkles — stable seed via useMemo */}
+                  <SuccessSparkles />
                   <div className="checker-empty-logo">
                     <PredatorLogo3D accent={accent} light={light} dark={dark} size={72} phase="done" threatCount={0} />
                   </div>
