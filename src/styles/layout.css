@@ -338,10 +338,11 @@
 
 .subtitle {
   font-family: var(--font-heading);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
-  font-weight: 300;
+  font-weight: var(--fw-medium);
+  line-height: 1.4;
 }
 

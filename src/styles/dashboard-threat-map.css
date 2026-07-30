@@ -8,7 +8,10 @@
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5);
   margin-top: var(--space-4);
+  transition: border-color var(--duration-fast);
 }
+
+.threat-map:hover { border-color: var(--border-hover); }
 
 .threat-map-title {
   font-size: var(--text-xs);
@@ -50,6 +53,7 @@
   color: var(--text-secondary);
   flex: 1;
   font-weight: var(--fw-medium);
+  font-size: var(--text-xs);
 }
 
 .threat-map-count {
