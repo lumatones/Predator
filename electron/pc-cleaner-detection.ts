@@ -311,6 +311,18 @@ const SECURE_DELETE_PREFETCH = [
   'SDELETE', 'SDELETE64',
   'CIPHER', // Windows built-in cipher /w
   'DISKPART',
+  'KUDU', 'KUDU_SETUP', // Kudu open-source cleaner
+]
+
+const KNOWN_CLEANER_EXES = [
+  'kudu.exe', 'kudu-setup',
+  'ccleaner', 'ccleaner64',
+  'bleachbit',
+  'glary', 'glaryutilities',
+  'wisecare', 'wisediskcleaner',
+  'privazer',
+  'cleanmgr', // Windows built-in Disk Cleanup
+  'cleanmgr+', // Third-party Disk Cleanup replacement
 ]
 
 export function detectSecureDeleteTools(): ScanResult[] {
@@ -447,6 +459,8 @@ const CLEANING_SCRIPT_NAMES = [
   'pc_clean', 'beforecheck', 'cleanup', 'traces_cleaner',
   'clean_traces', 'wipe_pc', 'clear_logs',
   'purge', 'sanitize', 'nuke_traces',
+  // Kudu-related script names
+  'kudu-clean', 'kudu_clean',
 ]
 
 export function detectCleaningScripts(): ScanResult[] {
@@ -1080,6 +1094,138 @@ Write-Output ("MFT_SIZE_MB:" + [math]::Round($mftSizeMB, 1))
 }
 
 // ══════════════════════════════════════════════════════════
+// 11. KNOWN CLEANER TOOL DETECTION (Kudu, CCleaner, BleachBit, etc.)
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Detects traces of known PC cleaning tools via:
+ * 1. Executable presence in common install paths
+ * 2. Prefetch entries
+ * 3. AppData directories
+ * 4. Kudu-specific: deletion-log.jsonl, quarantine-manifest.json
+ */
+export function detectKnownCleanerTools(): ScanResult[] {
+  const results: ScanResult[] = []
+  const prefetchDir = path.join(_WR, 'Prefetch')
+
+  // ── 1. Prefetch scan ──
+  if (fs.existsSync(prefetchDir)) {
+    try {
+      for (const file of fs.readdirSync(prefetchDir)) {
+        const upper = file.toUpperCase()
+        for (const tool of KNOWN_CLEANER_EXES) {
+          if (upper.includes(tool.toUpperCase()) && upper.endsWith('.PF')) {
+            const filePath = path.join(prefetchDir, file)
+            let mtime = new Date().toISOString()
+            try { mtime = fs.statSync(filePath).mtime.toISOString() } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
+
+            const dedupKey = `pc-cleaner:cleaner-tool:${tool}`
+            if (addFindingDedup(dedupKey)) {
+              // Higher risk for Kudu since it also has malware scanner capability
+              const isKudu = tool.toLowerCase().includes('kudu')
+              results.push({
+                path: filePath,
+                fileName: `PC Cleaner Tool Detected: ${tool}`,
+                type: 'file',
+                risk: isKudu ? 'high' : 'medium',
+                matches: [
+                  `prefetch:${tool}`,
+                  `last-exec:${mtime.slice(0, 10)}`,
+                  isKudu
+                    ? 'Kudu is an open-source cleaner with malware scanner, YARA engine, and 1400+ rules'
+                    : 'Known PC cleaning software was executed on this system',
+                ],
+                size: 0,
+                modifiedAt: mtime,
+              })
+            }
+          }
+        }
+      }
+    } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
+  }
+
+  // ── 2. Kudu-specific: deletion-log.jsonl (Kudu writes every deleted file here) ──
+  const kuduAppData = path.join(_HOME, 'AppData', 'Roaming', 'kudu')
+  if (fs.existsSync(kuduAppData)) {
+    const dedupKey = 'pc-cleaner:kudu-appdata'
+    if (addFindingDedup(dedupKey)) {
+      results.push({
+        path: kuduAppData,
+        fileName: 'Kudu Cleaner AppData Found',
+        type: 'file',
+        risk: 'high',
+        matches: [
+          'cleaner:kudu',
+          'Kudu is an open-source system cleaner + malware scanner',
+          'Features: YARA engine (1400+ rules), Defender integration, secure delete',
+        ],
+        size: 0,
+        modifiedAt: new Date().toISOString(),
+      })
+    }
+
+    // Check for deletion log (Kudu writes a log of every deleted file)
+    const deletionLog = path.join(kuduAppData, 'deletion-log.jsonl')
+    if (fs.existsSync(deletionLog)) {
+      try {
+        const logSize = fs.statSync(deletionLog).size
+        const dedupLogKey = 'pc-cleaner:kudu-deletion-log'
+        if (addFindingDedup(dedupLogKey)) {
+          // Read first few entries to show what was cleaned
+          let sampleEntries = ''
+          try {
+            const firstLines = fs.readFileSync(deletionLog, 'utf-8').split('\n').slice(0, 3)
+            sampleEntries = firstLines.map(l => {
+              try { return JSON.parse(l).path || '' } catch { return l.slice(0, 80) }
+            }).filter(Boolean).join(', ')
+          } catch { /* best effort */ }
+
+          results.push({
+            path: deletionLog,
+            fileName: `Kudu Deletion Log Found: ${(logSize / 1024).toFixed(0)} KB`,
+            type: 'file',
+            risk: 'high',
+            matches: [
+              `deletion-log:${(logSize / 1024).toFixed(0)} KB`,
+              sampleEntries ? `recent-deletes:${sampleEntries}` : '',
+              'Kudu deletion log contains a complete audit trail of every file deleted',
+            ].filter(Boolean),
+            size: logSize,
+            modifiedAt: new Date().toISOString(),
+          })
+        }
+      } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
+    }
+
+    // Check for quarantine manifest (Kudu quarantines detected malware)
+    const quarantineManifest = path.join(kuduAppData, 'quarantine-manifest.json')
+    if (fs.existsSync(quarantineManifest)) {
+      try {
+        const qSize = fs.statSync(quarantineManifest).size
+        const dedupQKey = 'pc-cleaner:kudu-quarantine'
+        if (addFindingDedup(dedupQKey)) {
+          results.push({
+            path: quarantineManifest,
+            fileName: 'Kudu Quarantine Manifest Found',
+            type: 'file',
+            risk: 'medium',
+            matches: [
+              `quarantine-manifest:${(qSize / 1024).toFixed(0)} KB`,
+              'Kudu quarantined files — user may have run malware scans before check',
+            ],
+            size: qSize,
+            modifiedAt: new Date().toISOString(),
+          })
+        }
+      } catch (err) { console.warn('[pc-cleaner-detection] failed:', (err as Error).message) }
+    }
+  }
+
+  return results
+}
+
+// ══════════════════════════════════════════════════════════
 // COMBINED ENHANCED PC CLEANER SCAN
 // ══════════════════════════════════════════════════════════
 
@@ -1115,6 +1261,9 @@ export function runPcCleanerScan(): ScanResult[] {
 
   // Phase 10: MFT orphaned entries
   results.push(...detectMftOrphanedEntries())
+
+  // Phase 11: Known cleaner tools (Kudu, CCleaner, BleachBit, etc.)
+  results.push(...detectKnownCleanerTools())
 
   return results
 }

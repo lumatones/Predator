@@ -14,6 +14,56 @@ import { ctx } from '../types'
 import { PROC_BASES, FILE_NAMES, LUA_NAMES, FOLDER_NAMES } from './cheat-names'
 
 // ═══════════════════════════════════════════════════
+// DOUBLE EXTENSION DETECTION (from Kudu malware scanner)
+// ═══════════════════════════════════════════════════
+
+/** Executable extensions that can run code when double-clicked */
+const EXECUTABLE_EXTS = new Set([
+  '.exe', '.scr', '.bat', '.cmd', '.com', '.pif',
+  '.vbs', '.vbe', '.js', '.jse', '.wsh', '.wsf', '.ps1',
+])
+
+/** Bait extensions — looks like a document/media file */
+const BAIT_EXTS = new Set([
+  // Documents
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.txt', '.rtf', '.csv', '.odt', '.ods',
+  // Media
+  '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico',
+  '.mp3', '.mp4', '.avi', '.mov', '.wav', '.flac', '.mkv',
+  // Archives
+  '.zip', '.rar', '.7z', '.tar', '.gz',
+  // Web
+  '.html', '.htm', '.xml', '.json',
+])
+
+/**
+ * Detects files with double extensions like "invoice.pdf.exe" or "photo.jpg.scr".
+ * This is a common malware/cheat distribution tactic — the user sees ".pdf"
+ * but the file actually executes.
+ *
+ * Ported from Kudu's malware scanner (AdventDevInc/kudu).
+ */
+export function hasDoubleExtension(fileName: string): { isSuspicious: boolean; bait: string; real: string } {
+  const ext = path.extname(fileName).toLowerCase()
+  if (!ext) return { isSuspicious: false, bait: '', real: '' }
+
+  // Remove last extension and check if there's another
+  const nameWithoutExt = fileName.slice(0, -ext.length)
+  const secondExt = path.extname(nameWithoutExt).toLowerCase()
+  if (!secondExt) return { isSuspicious: false, bait: '', real: '' }
+
+  const isExecutable = EXECUTABLE_EXTS.has(ext)
+  const isBait = BAIT_EXTS.has(secondExt)
+
+  if (isExecutable && isBait) {
+    return { isSuspicious: true, bait: secondExt, real: ext }
+  }
+
+  return { isSuspicious: false, bait: '', real: '' }
+}
+
+// ═══════════════════════════════════════════════════
 // CHEAT NAME MATCHING
 // ═══════════════════════════════════════════════════
 

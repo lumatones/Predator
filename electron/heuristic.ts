@@ -67,7 +67,7 @@ export { scanArchiveContents, ARCHIVE_EXTS } from './heuristic/archive-scan'
 export { PROC_BASES, FILE_NAMES, LUA_NAMES, FOLDER_NAMES } from './heuristic/cheat-names'
 
 // Name matcher
-export { matchKnownCheat, riskScoreToLevel, getFileRiskLevel } from './heuristic/name-matcher'
+export { matchKnownCheat, riskScoreToLevel, getFileRiskLevel, hasDoubleExtension } from './heuristic/name-matcher'
 
 // Analysis engines
 export { calculateEntropy } from './analysis/entropy'
