@@ -1,164 +1,176 @@
 <p align="center">
   <a href="https://github.com/lumatones/Predator/releases/latest">
-    <img src="https://img.shields.io/badge/Download_Predator-ff4444?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a1a2e" alt="Download Predator">
+    <img src="https://img.shields.io/badge/Скачать_Predator-ff4444?style=for-the-badge&logo=windows&logoColor=white&labelColor=1a1a2e" alt="Скачать Predator">
   </a>
 </p>
 
 <p align="center">
   <a href="https://github.com/lumatones/Predator/releases">
-    <img src="https://img.shields.io/github/v/release/lumatones/Predator?style=flat-square&label=Version&color=ff4444" alt="Version">
+    <img src="https://img.shields.io/github/v/release/lumatones/Predator?style=flat-square&label=Версия&color=ff4444" alt="Версия">
   </a>
   <a href="https://github.com/lumatones/Predator/releases">
-    <img src="https://img.shields.io/github/downloads/lumatones/Predator/total?style=flat-square&label=Downloads&color=ff6b35" alt="Downloads">
+    <img src="https://img.shields.io/github/downloads/lumatones/Predator/total?style=flat-square&label=Скачиваний&color=ff6b35" alt="Скачиваний">
   </a>
   <a href="https://github.com/lumatones/Predator/actions/workflows/release.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/lumatones/Predator/release.yml?style=flat-square&label=Build&color=3B82F6" alt="Build">
+    <img src="https://img.shields.io/github/actions/workflow/status/lumatones/Predator/release.yml?style=flat-square&label=Сборка&color=3B82F6" alt="Сборка">
   </a>
   <a href="https://github.com/lumatones/Predator/blob/main/LICENSE.txt">
-    <img src="https://img.shields.io/badge/License-UNLICENSED-808080?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/Лицензия-UNLICENSED-808080?style=flat-square" alt="Лицензия">
   </a>
 </p>
 
 ---
 
-Predator is a cross-platform desktop anti-cheat scanner for GTA 5 roleplay servers. It performs deep multi-layered analysis of files, processes, registry, network connections, DMA hardware, browser history, and game directories to detect cheat software on a player's PC. Built for FiveM, RAGE MP, and ALT:V communities.
+Predator — десктопный античит-сканер для GTA 5 RP серверов. Выполняет глубокий многослойный анализ файлов, процессов, реестра, сетевых подключений, DMA-устройств, истории браузера и игровых директорий для обнаружения читерского ПО на ПК игрока. Создан для сообществ FiveM, RAGE MP и ALT:V.
 
-**[Download Latest Release](https://github.com/lumatones/Predator/releases/latest)**
-
----
-
-## Quick Start
-
-1. Download the latest `.exe` from [Releases](https://github.com/lumatones/Predator/releases)
-2. Run the installer (requires administrator privileges)
-3. Follow the onboarding flow to set language, theme, and authorize with your access token
-4. Choose a scan mode and start scanning
-
-**System requirements:** Windows 10 or 11, 64-bit
+**[Скачать последнюю версию](https://github.com/lumatones/Predator/releases/latest)**
 
 ---
 
-## Scan Modes
+## Быстрый старт
 
-Four scan modes cover different threat profiles
+1. Скачай последний `.exe` из раздела [Releases](https://github.com/lumatones/Predator/releases)
+2. Запусти установщик (требуются права администратора)
+3. Пройди онбординг: выбери язык, тему и авторизуйся токеном доступа
+4. Выбери режим сканирования и запусти проверку
 
-**Full Scan** - 15 phases covering every detection layer. Processes, heuristic file analysis, registry deep scan, prefetch history, network connections, game memory, DMA devices, browser history, behavior analysis, anti-debug, anti-tamper, and cloud submission. Recommended for thorough checks.
+**Системные требования:** Windows 10 или 11, 64-bit
 
-**Quick Scan** - 6 phases for fast verification. Processes, prefetch, registry, named pipes, network, and browser history. Completes in under 30 seconds.
+---
 
-**DMA Devices** - Hardware-focused scan. Detects PCI FPGA devices, USB-FPGA bridges, PCILeech ecosystem, and registry services commonly used with DMA cheat cards.
+## Режимы сканирования
 
-**PC Cleaner Detection** - Anti-forensic analysis. Detects USN journal tampering, timestomping, ShellBags wiping, HWID changes, and traces of cleaning tools like CCleaner or BleachBit.
+Четыре режима покрывают разные профили угроз
 
-## Detection Engine
+**Полное сканирование** — 15 фаз глубокой проверки. Процессы, эвристический анализ файлов, глубокий скан реестра, история Prefetch, сетевые подключения, память игр, DMA-устройства, история браузера, поведенческий анализ, анти-отладка, анти-взлом и отправка на сервер. Рекомендуется для тщательных проверок.
 
-Nine threat categories drive the signature engine
+**Быстрое сканирование** — 6 фаз для быстрой верификации. Процессы, Prefetch, реестр, именованные каналы, сеть и история браузера. Завершается менее чем за 30 секунд.
 
-| Category | Risk | Targets |
-|----------|------|---------|
-| Injector | Critical | DLL injection, CreateRemoteThread, VirtualAllocEx |
-| Debugger | Critical | x64dbg, Cheat Engine, IDA Pro, Ghidra |
-| Hook | High | SetWindowsHookEx, DetourAttach, MinHook |
-| Driver | Critical | Kernel drivers, IoCreateDevice |
-| Spoofer | High | HWID spoofing, MAC address manipulation |
-| Bypass | Critical | Anti-cheat evasion, security mechanism bypass |
-| Menu | High | Game overlays, ImGui, Direct3D rendering hooks |
-| Network | Medium | Proxy chains, VPNs, packet manipulation |
-| Obfuscator | High | VMProtect, Themida, code packing |
+**DMA-устройства** — проверка оборудования. Обнаруживает PCI FPGA-устройства, USB-FPGA мосты, экосистему PCILeech и службы реестра, связанные с DMA-читами.
 
-Multiple detection layers work together
+**Обнаружение чистильщиков** — анти-форензик анализ. Обнаруживает подделку USN-журнала, timestomping, затирание ShellBags, смену HWID и следы чистильщиков вроде CCleaner или BleachBit.
 
-- **Signatures** - 250+ known cheat names, SHA256 hashes, TLSH fuzzy hashes with prefix trie indexing
-- **Heuristics** - Shannon entropy analysis, YARA rules (13 rules), PE header inspection, digital signature verification
-- **Behavioral** - Cross-process correlation, injection pair detection, attack chain reconstruction
-- **Memory** - RWX region scanning, disk-vs-memory comparison, MiniDump analysis, thread start address anomalies
-- **Anti-Debug** - 7-tier protection: RE tool detection, hardware breakpoints, ProcessDebugPort, PEB scan, QPC timing analysis
-- **Risk Scorer** - 25 weighted signal categories with log-scale accumulation and cross-session persistence
+---
 
-## Architecture
+## Движок обнаружения
 
-Three components form the Predator ecosystem
+Девять категорий угроз в сигнатурном движке
+
+| Категория | Риск | Что ищет |
+|-----------|------|----------|
+| Инжектор | Критический | DLL-инъекции, CreateRemoteThread, VirtualAllocEx |
+| Отладчик | Критический | x64dbg, Cheat Engine, IDA Pro, Ghidra |
+| Хук | Высокий | SetWindowsHookEx, DetourAttach, MinHook |
+| Драйвер | Критический | Kernel-драйверы, IoCreateDevice |
+| Спуфер | Высокий | Подмена HWID, манипуляции с MAC-адресом |
+| Обход защиты | Критический | Обход античитов, отключение механизмов безопасности |
+| Меню | Высокий | Игровые оверлеи, ImGui, хуки рендеринга Direct3D |
+| Сеть | Средний | Прокси-цепочки, VPN, манипуляции пакетами |
+| Обфускатор | Высокий | VMProtect, Themida, упаковка кода |
+
+Пять слоёв детекции работают вместе
+
+- **Сигнатуры** — 250+ известных имён читов, SHA256-хеши, TLSH-хеши с префиксным trie-индексом
+- **Эвристика** — анализ энтропии Шеннона, 13 YARA-правил, инспекция PE-заголовков, проверка цифровой подписи
+- **Поведенческий анализ** — межпроцессные корреляции, обнаружение инжектор-жертва пар, реконструкция цепочек атак
+- **Память** — сканирование RWX-регионов, сравнение диск-память, анализ MiniDump, аномалии стартовых адресов потоков
+- **Анти-отладка** — 7-уровневая защита: обнаружение RE-инструментов, аппаратные брейкпоинты, ProcessDebugPort, скан PEB, анализ QPC-тайминга
+- **Risk Scorer** — 25 взвешенных категорий сигналов с логарифмической аккумуляцией и кросс-сессионной персистентностью
+
+---
+
+## Архитектура
+
+Три компонента образуют экосистему Predator
 
 ```
-Desktop App (Electron)      Backend API (Express)      Admin Panel (React)
+Десктоп (Electron)         Бэкенд API (Express)       Админ-панель (React)
        │                          │                         │
        │   start-scan            │                         │
        │────────────────────────►│                         │
        │                          │   Socket.IO             │
        │                          │────────────────────────►│
-       │   submit hashes         │                         │
+       │   отправка хешей        │                         │
        │────────────────────────►│                         │
-       │   fetch hashes          │                         │
+       │   получение хешей       │                         │
        │◄────────────────────────│                         │
-       │                          │   JWT auth              │
+       │                          │   JWT-авторизация       │
        │                          │◄────────────────────────│
-       │                          │   approve/reject        │
+       │                          │   одобрение/отклонение  │
        │                          │◄────────────────────────│
 ```
 
-**Desktop App** - Electron 33 with React 19 frontend. 41 main-process modules, 15 scan phases, 243 tests. Runs with administrator privileges for deep system access.
+**Десктопное приложение** — Electron 33 + React 19. 41 модуль главного процесса, 15 фаз сканирования, 243 теста. Работает с правами администратора для глубокого доступа к системе.
 
-**Backend API** - Express 4 server with MySQL 8 and Drizzle ORM. JWT authentication with RBAC roles, Socket.IO for real-time updates, Prometheus metrics, structured audit logging, and auto-classifier service.
+**Бэкенд API** — Express 4 + MySQL 8 + Drizzle ORM. JWT-аутентификация с ролевым доступом (RBAC), Socket.IO для реалтайм-обновлений, Prometheus-метрики, структурированный аудит и авто-классификатор.
 
-**Admin Panel** - React 19 dashboard with WebSocket real-time notifications. Manage access requests, tokens, suspicious hashes, shadow findings, and community whitelist.
+**Админ-панель** — React 19 с WebSocket-уведомлениями в реальном времени. Управление запросами на доступ, токенами, подозрительными хешами, теневыми находками и общим вайтлистом.
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full module map and data flow diagrams.
+Подробнее в [ARCHITECTURE.md](docs/ARCHITECTURE.md) — полная карта модулей и схема потоков данных.
 
-## Development
+---
+
+## Разработка
 
 ```bash
-# Install dependencies
+# Установка зависимостей
 npm install
 
-# Desktop app (renderer only)
+# Десктоп (только рендерер)
 npm run dev
 
-# Desktop app (Electron + Vite)
+# Десктоп (Electron + Vite)
 npm run electron:dev
 
-# Backend server
+# Бэкенд-сервер
 cd server && npm run dev
 
-# Admin panel
+# Админ-панель
 cd admin && npm run dev
 
-# Type checking
+# Проверка типов
 npm run typecheck
 
-# Run tests (243 tests)
+# Запуск тестов (243 теста)
 npx vitest run
 
-# Build Windows executable
+# Сборка Windows .exe
 npm run electron:build:win
 
-# Full release cycle
+# Полный цикл релиза
 npm run release
 ```
 
-Requires `GITHUB_TOKEN` in `.env` for release uploads. See [DEV.md](docs/DEV.md) for detailed setup instructions.
+Требуется `GITHUB_TOKEN` в `.env` для загрузки релизов. Подробная инструкция в [DEV.md](docs/DEV.md).
 
-## Documentation
+---
 
-| Document | Purpose |
-|----------|---------|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Full system architecture, module map, data flows |
-| [CHANGELOG.md](docs/CHANGELOG.md) | Version history and release notes |
-| [DEV.md](docs/DEV.md) | Developer guide and setup instructions |
-| [RULES.md](docs/RULES.md) | Development rules and domain glossary |
-| [ROADMAP.md](docs/ROADMAP.md) | Planned features and milestones |
+## Документация
 
-## Security
+| Документ | Назначение |
+|----------|------------|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Полная архитектура системы, карта модулей, потоки данных |
+| [CHANGELOG.md](docs/CHANGELOG.md) | История версий и заметки к релизам |
+| [DEV.md](docs/DEV.md) | Гайд для разработчиков и инструкция по развёртыванию |
+| [RULES.md](docs/RULES.md) | Правила разработки и глоссарий доменных терминов |
+| [ROADMAP.md](docs/ROADMAP.md) | Запланированные фичи и вехи |
 
-The application handles sensitive cheat detection data and implements multiple security layers
+---
 
-- Parameterized SQL queries throughout (Drizzle ORM)
-- JWT authentication with 24-hour expiry and RBAC (admin, operator, viewer)
-- Rate limiting at multiple levels (100/min general, 5/15min login, WebSocket connection limits)
-- Access tokens generated as 32-character hex via crypto.randomBytes
-- Admin passwords hashed with bcrypt and salt
-- Application self-protection via ACL hardening, SeDebugPrivilege removal, and DLL injection monitoring
-- X-Request-ID propagation and structured audit logging for traceability
+## Безопасность
 
-## License
+Приложение обрабатывает чувствительные данные об обнаружении читов и реализует несколько уровней защиты
 
-All rights reserved. Unauthorized copying or distribution is prohibited.
+- Параметризованные SQL-запросы (Drizzle ORM)
+- JWT-аутентификация с 24-часовым сроком и ролевым доступом (admin, operator, viewer)
+- Многоуровневый рейт-лимитинг (100/мин общий, 5/15мин для логина, лимиты WebSocket-подключений)
+- Токены доступа — 32 символа hex через crypto.randomBytes
+- Пароли администраторов хешируются bcrypt с солью
+- Самозащита приложения: ACL-харденинг, удаление SeDebugPrivilege, мониторинг DLL-инъекций
+- X-Request-ID и структурированное аудит-логирование для отслеживаемости
+
+---
+
+## Лицензия
+
+Все права защищены. Несанкционированное копирование или распространение запрещено.
