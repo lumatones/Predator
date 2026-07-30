@@ -171,26 +171,33 @@
 
 .settings-trigger {
   position: static;
-  width: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   height: 36px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text-secondary);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: all var(--duration-fast) ease;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  font-family: inherit;
+}
+
+.settings-trigger-label {
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
 }
 
 .settings-trigger:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: var(--border-hover);
   color: var(--text-primary);
-  transform: rotate(30deg);
+  transform: translateY(-1px);
 }
 
 @media (max-width: 420px) {
