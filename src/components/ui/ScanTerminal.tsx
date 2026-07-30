@@ -173,12 +173,12 @@ export const ScanTerminal: React.FC<ScanTerminalProps> = memo(function ScanTermi
 
   const getLineColor = (type: TerminalLine['type']): string => {
     switch (type) {
-      case 'ok': return '#22c55e'
-      case 'warn': return '#fbbf24'
+      case 'ok': return 'var(--color-success)'
+      case 'warn': return 'var(--color-warning)'
       case 'crit': return accent
       case 'phase': return light
-      case 'info': return 'rgba(255,255,255,0.5)'
-      default: return 'rgba(255,255,255,0.6)'
+      case 'info': return 'var(--text-muted)'
+      default: return 'var(--text-secondary)'
     }
   }
 
@@ -218,7 +218,7 @@ export const ScanTerminal: React.FC<ScanTerminalProps> = memo(function ScanTermi
           Files: {progress?.filesScanned ?? 0}
         </span>
         <span className="terminal-stat">
-          <span className="stat-dot" style={{ background: '#fbbf24' }} />
+          <span className="stat-dot" style={{ background: 'var(--color-warning)' }} />
           Findings: {progress?.filesFound ?? 0}
         </span>
         <span className="terminal-stat">

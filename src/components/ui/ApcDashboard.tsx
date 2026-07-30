@@ -87,9 +87,9 @@ function tierStatus(findings: ScanResult[]): { status: TierStatus; risk: 'high' 
 
 // ── Status colors ──
 const STATUS_COLORS: Record<TierStatus, { bg: string; border: string; dot: string; text: string; pulse: boolean }> = {
-  clean:      { bg: 'rgba(34,197,94,0.06)',  border: 'rgba(34,197,94,0.2)',  dot: '#22c55e', text: '#22c55e', pulse: false },
-  suspicious: { bg: 'rgba(245,158,11,0.06)',  border: 'rgba(245,158,11,0.2)',  dot: '#f59e0b', text: '#fbbf24', pulse: true },
-  detected:   { bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.25)',  dot: '#ef4444', text: '#ef4444', pulse: true },
+  clean:      { bg: 'rgba(34,197,94,0.06)',  border: 'rgba(34,197,94,0.2)',  dot: 'var(--color-success)', text: 'var(--color-success)', pulse: false },
+  suspicious: { bg: 'rgba(245,158,11,0.06)',  border: 'rgba(245,158,11,0.2)',  dot: 'var(--color-warning)', text: 'var(--color-warning)', pulse: true },
+  detected:   { bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.25)',  dot: 'var(--color-error)',  text: 'var(--color-error)',  pulse: true },
 }
 
 const STATUS_LABELS_RU: Record<TierStatus, string> = {

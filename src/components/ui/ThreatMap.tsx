@@ -36,6 +36,25 @@ function extractRegion(filePath: string): string {
 }
 
 const REGION_COLORS: Record<string, string> = {
+  'Downloads': 'var(--chart-red)',
+  'Desktop': 'var(--chart-orange)',
+  'Temp': 'var(--chart-coral)',
+  'AppData': 'var(--chart-warning)',
+  'FiveM': 'var(--chart-success)',
+  'RAGE MP': 'var(--chart-info)',
+  'ALT:V': 'var(--chart-purple)',
+  'Prefetch': 'var(--chart-pink)',
+  'Registry': 'var(--chart-cyan)',
+  'Processes': 'var(--chart-tangerine)',
+  'DMA': 'var(--chart-error)',
+  'Browser': 'var(--chart-indigo)',
+  'Windows': 'var(--chart-slate)',
+  'Program Files': 'var(--chart-lime)',
+  'Other': 'var(--chart-gray)',
+}
+
+// Raw hex for gradient alpha suffix (88 = ~53% transparency)
+const REGION_HEX: Record<string, string> = {
   'Downloads': '#ff4444',
   'Desktop': '#ff6b35',
   'Temp': '#ff8a5b',
@@ -111,8 +130,8 @@ export const ThreatMap: React.FC<ThreatMapProps> = ({ results }) => {
                 transition={{ delay: i * 0.06 + 0.2, duration: 0.6, ease: 'easeOut' }}
                 style={{
                   background: `linear-gradient(90deg,
-                    ${REGION_COLORS[region.name] || REGION_COLORS['Other']},
-                    ${REGION_COLORS[region.name] || REGION_COLORS['Other']}88)`,
+                    ${REGION_HEX[region.name] || REGION_HEX['Other']},
+                    ${REGION_HEX[region.name] || REGION_HEX['Other']}88)`,
                 }}
               />
               {region.highCount > 0 && (

@@ -474,6 +474,9 @@ body {
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
 .text-gradient { background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 
+/* ── Prose width constraint (Refactoring UI: 45-75 chars) ── */
+.text-prose { max-width: var(--max-w-prose); }
+
 /* ═══════════════════════════════════════════════════
    SKELETON LOADING
    ═══════════════════════════════════════════════════ */

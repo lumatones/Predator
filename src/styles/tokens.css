@@ -45,6 +45,24 @@
   --color-error-dim: rgba(239, 68, 68, 0.4);
   --color-info: #3b82f6;
 
+  /* ── Chart Palette (12 colors for threat map, graphs, dashboards) ── */
+  --chart-red: #ff4444;
+  --chart-orange: #ff6b35;
+  --chart-coral: #ff8a5b;
+  --chart-purple: #8B5CF6;
+  --chart-pink: #ec4899;
+  --chart-cyan: #06b6d4;
+  --chart-tangerine: #f97316;
+  --chart-indigo: #6366f1;
+  --chart-slate: #64748b;
+  --chart-lime: #84cc16;
+  --chart-gray: #6B7280;
+  /* Aliases for semantic status colors in chart contexts */
+  --chart-success: var(--color-success);
+  --chart-warning: var(--color-warning);
+  --chart-error: var(--color-error);
+  --chart-info: var(--color-info);
+
   /* ── Typography ── */
   --font-display: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
   --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -107,6 +125,7 @@
 
   /* ── Layout ── */
   --container-max: 680px;
+  --max-w-prose: 65ch;
   --container-pad: var(--space-8);
 }
 

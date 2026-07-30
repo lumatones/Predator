@@ -90,8 +90,8 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ state: modal, theme, lang, on
               <>
                 <div className="update-modal-icon">
                   <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
-                    <circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" />
-                    <path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="24" cy="24" r="22" stroke="var(--color-success)" strokeWidth="2" />
+                    <path d="M16 24L22 30L32 18" stroke="var(--color-success)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
                 <p className="update-modal-title">{t('downloaded')}</p>
@@ -108,13 +108,13 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ state: modal, theme, lang, on
               <>
                 <div className="update-modal-icon error">
                   <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
-                    <circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" />
-                    <line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
-                    <line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
+                    <circle cx="24" cy="24" r="22" stroke="var(--color-error)" strokeWidth="2" />
+                    <line x1="16" y1="16" x2="32" y2="32" stroke="var(--color-error)" strokeWidth="3" strokeLinecap="round" />
+                    <line x1="32" y1="16" x2="16" y2="32" stroke="var(--color-error)" strokeWidth="3" strokeLinecap="round" />
                   </svg>
                 </div>
-                <p className="update-modal-title" style={{ color: '#EF4444' }}>{t('updateAvailable')}</p>
-                <p className="update-modal-version" style={{ color: 'rgba(255,68,68,0.6)' }}>{modal.errorMsg}</p>
+                <p className="update-modal-title" style={{ color: 'var(--color-error)' }}>{t('updateAvailable')}</p>
+                <p className="update-modal-version" style={{ color: 'var(--color-error-dim)' }}>{modal.errorMsg}</p>
                 <div className="update-modal-actions">
                   <button className="update-modal-btn secondary" onClick={onClose}>{t('close')}</button>
                   <button className="update-modal-btn primary" onClick={onDownload}>{t('download')}</button>
