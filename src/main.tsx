@@ -21,6 +21,10 @@ import './styles/checker-terminal.css'
 import './styles/checker-modal.css'
 import './styles/checker-groups.css'
 import './styles/dashboard.css'
+import './styles/dashboard-gauges.css'
+import './styles/dashboard-processes.css'
+import './styles/dashboard-stats.css'
+import './styles/dashboard-threat-map.css'
 import './styles/onboarding-v2.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

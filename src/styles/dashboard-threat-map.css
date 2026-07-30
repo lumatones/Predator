@@ -1,0 +1,91 @@
+/* ═══════════════════════════════════════════════════
+   THREAT MAP (Dashboard + Checker)
+   ═══════════════════════════════════════════════════ */
+
+.threat-map {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  margin-top: var(--space-4);
+}
+
+.threat-map-title {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  font-weight: var(--fw-semibold);
+  margin-bottom: var(--space-3);
+}
+
+.threat-map-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.threat-map-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.threat-map-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.threat-map-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px currentColor;
+}
+
+.threat-map-name {
+  color: var(--text-secondary);
+  flex: 1;
+  font-weight: var(--fw-medium);
+}
+
+.threat-map-count {
+  color: var(--text-muted);
+  font-family: var(--font-code);
+  font-weight: var(--fw-bold);
+  font-size: 11px;
+  min-width: 24px;
+  text-align: right;
+}
+
+.threat-map-track {
+  position: relative;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.threat-map-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+.threat-map-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 3px;
+}
+
+.threat-map-high {
+  background: rgba(255, 68, 68, 0.6);
+  box-shadow: 0 0 6px rgba(255, 68, 68, 0.3);
+}
+

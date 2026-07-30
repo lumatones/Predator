@@ -1,0 +1,48 @@
+/* ── Gauges ── */
+.dash-gauges {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.dash-gauge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.dash-gauge svg { display: block; }
+
+.dash-gauge-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.dash-gauge-value {
+  font-size: var(--text-xl);
+  font-weight: var(--fw-extrabold);
+  line-height: 1;
+  font-family: var(--font-display);
+}
+
+.dash-gauge-text {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: var(--fw-semibold);
+}
+
+.dash-gauge-sub {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
