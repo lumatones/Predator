@@ -10,5 +10,5 @@
  */
 
 export { scanRunningProcessesV2 } from './process/enumeration'
-export { scanNamedPipes, scanWmiPersistence } from './process/pipes-wmi'
+export { scanNamedPipes, scanWmiPersistence, scanStartupFolder } from './process/pipes-wmi'
 export { scanBehavioralMasquerading } from './process/behavioral'

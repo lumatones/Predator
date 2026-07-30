@@ -6,8 +6,10 @@
  */
 
 import { execPowerShell, execWithTimeout } from '../../utils/exec'
+import * as fs from 'fs'
+import * as path from 'path'
 
-import { addFindingDedup, execCmd, parsePsJson, type ScanResult } from '../../types'
+import { addFindingDedup, execCmd, parsePsJson, type ScanResult, _HOME } from '../../types'
 import { matchKnownCheat } from '../../heuristic'
 
 // ═══════════════════════════════════════════════════
@@ -64,6 +66,53 @@ export function scanWmiPersistence(): ScanResult[] {
         }
       }
     }
-  } catch (err) { console.warn('[pipes-wmi] failed:', (err as Error).message) }
+  } catch (err) { console.warn('[pipes-wmi] WMI failed:', (err as Error).message) }
+  return results
+}
+
+// ═══════════════════════════════════════════════════
+// STARTUP FOLDER PERSISTENCE (KUDU-inspired)
+// ═══════════════════════════════════════════════════
+
+/** Windows startup folder paths */
+const STARTUP_PATHS = [
+  path.join(_HOME, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'),
+  'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup',
+]
+
+const SUSPICIOUS_STARTUP_EXTS = new Set(['.exe', '.bat', '.ps1', '.vbs', '.cmd', '.js', '.vbe', '.wsf', '.scr'])
+
+export function scanStartupFolder(): ScanResult[] {
+  const results: ScanResult[] = []
+  for (const startupDir of STARTUP_PATHS) {
+    try {
+      if (!fs.existsSync(startupDir)) continue
+      for (const entry of fs.readdirSync(startupDir)) {
+        const ext = path.extname(entry).toLowerCase()
+        if (!SUSPICIOUS_STARTUP_EXTS.has(ext)) continue
+        const entryPath = path.join(startupDir, entry)
+        const lower = entry.toLowerCase()
+        const matches: string[] = []
+        const cheatKw = ['cheat', 'hack', 'inject', 'bypass', 'loader', 'spoofer', 'dma', 'menu', 'mod']
+        for (const kw of cheatKw) {
+          if (lower.includes(kw)) matches.push(`startup-name:${kw}`)
+        }
+        const nameMatches = matchKnownCheat(entry)
+        if (nameMatches.length > 0) matches.push(...nameMatches)
+        let stat: fs.Stats | undefined
+        try { stat = fs.statSync(entryPath) } catch { /* skip */ }
+        if (stat && Date.now() - stat.mtimeMs < 30 * 24 * 60 * 60 * 1000) {
+          matches.push('Recently modified (within 30 days)')
+        }
+        if (matches.length > 0 && addFindingDedup(`startup:${entryPath}`)) {
+          results.push({
+            path: entryPath, fileName: `Startup folder: ${entry}`, type: 'software',
+            risk: matches.length >= 2 ? 'high' : 'medium', matches: matches.slice(0, 5),
+            size: stat?.size ?? 0, modifiedAt: stat?.mtime.toISOString() ?? new Date().toISOString(),
+          })
+        }
+      }
+    } catch (err) { console.warn('[startup] failed:', (err as Error).message) }
+  }
   return results
 }
