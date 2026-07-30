@@ -1,0 +1,158 @@
+/* ═══ TABLE ═══ */
+
+.table-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.table-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.table-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.table-empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.table-empty-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  padding: 12px 20px;
+  text-align: left;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border);
+}
+
+tbody td {
+  padding: 14px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  vertical-align: middle;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+/* ═══ BADGES ═══ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.badge-pending {
+  background: var(--yellow-dim);
+  color: var(--yellow);
+}
+
+.badge-approved {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.badge-rejected {
+  background: rgba(255, 68, 68, 0.1);
+  color: #ff6b6b;
+}
+
+.badge-active {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.badge-inactive {
+  background: rgba(255, 68, 68, 0.1);
+  color: #ff6b6b;
+}
+
+/* ═══ TOKEN DISPLAY ═══ */
+
+.token-code {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.token-code-sm {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.copy-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.copy-btn.copied {
+  color: var(--green);
+}
+
+/* ═══ ACTION BUTTONS IN TABLE ═══ */
+
+.action-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.action-btns .btn {
+  padding: 6px 10px;
+  font-size: 11px;
+  min-width: 70px;
+}
+

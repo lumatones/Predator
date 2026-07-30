@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './App.css'
+import './admin-login.css'
+import './admin-dashboard.css'
+import './admin-tables.css'
+import './admin-forms.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
