@@ -1151,27 +1151,27 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
           )}
 
           <div className="checker-actions">
-            <Button className="checker-action-btn secondary" size="sm" onClick={handleClear}>{t('clear')}</Button>
+            <Button className="start-button secondary" size="sm" onClick={handleClear}>{t('clear')}</Button>
             <div className="checker-export-group">
-              <Button className="checker-action-btn export" size="sm" onClick={() => handleExport('html')} title={t('exportHtml')}>
+              <Button className="start-button secondary" size="sm" onClick={() => handleExport('html')} title={t('exportHtml')}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
                 {t('exportHtml')}
               </Button>
-              <Button className="checker-action-btn export" size="sm" onClick={() => handleExport('md')} title="Markdown">
+              <Button className="start-button secondary" size="sm" onClick={() => handleExport('md')} title="Markdown">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
                 MD
               </Button>
-              <Button className="checker-action-btn export" size="sm" onClick={handleExportPdf} title="PDF (печать)">
+              <Button className="start-button secondary" size="sm" onClick={handleExportPdf} title="PDF (печать)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
                 PDF
               </Button>
-              <Button className="checker-action-btn export" size="sm" onClick={handleTelegramExport} title="Отправить в Telegram">
+              <Button className="start-button secondary" size="sm" onClick={handleTelegramExport} title="Отправить в Telegram">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
                 </svg>
@@ -1179,7 +1179,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
               </Button>
               <span className="checker-export-msg">{exportMsg}</span>
             </div>
-            <Button className="checker-action-btn primary" size="sm" onClick={handleStartScan}>{t('scanAgain')}</Button>
+            <Button className="start-button" size="sm" onClick={handleStartScan}>{t('scanAgain')}</Button>
           </div>
         </div>
       )}

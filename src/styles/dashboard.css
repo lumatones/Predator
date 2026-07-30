@@ -81,21 +81,7 @@
   color: var(--text-primary);
 }
 
-.update-progress-bar {
-  width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.update-progress-fill {
-  height: 100%;
-  background: var(--accent-gradient);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-red) 40%, transparent);
-}
+/* .update-progress-bar / .update-progress-fill → используй .progress-bar / .progress-fill из components.css */
 
 .progress-info {
   width: 100%;

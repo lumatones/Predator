@@ -73,8 +73,8 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ state: modal, theme, lang, on
                 </div>
                 <p className="update-modal-title">{t('downloading')}</p>
                 <div className="update-modal-actions" style={{ flexDirection: 'column', gap: 8 }}>
-                  <div className="update-progress-bar">
-                    <div className="update-progress-fill" style={{ width: `${modal.percent}%` }} />
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${modal.percent}%` }} />
                   </div>
                   <div className="progress-info">
                     <span>{modal.speed}</span>

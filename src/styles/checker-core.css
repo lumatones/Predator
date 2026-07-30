@@ -450,34 +450,7 @@
 
 .pct-num { display: inline-block; }
 
-.checker-progress-bar {
-  width: 100%;
-  height: 6px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 3px;
-  overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
-}
-
-.checker-progress-fill {
-  height: 100%;
-  background: var(--accent-gradient);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-  box-shadow: 0 0 12px rgba(255,68,68,0.4);
-  position: relative;
-}
-
-.checker-progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 40%;
-  background: linear-gradient(180deg, rgba(255,255,255,0.3), transparent);
-  border-radius: 3px 3px 0 0;
-}
+/* .checker-progress-bar / .checker-progress-fill → используй .progress-bar / .progress-fill из components.css */
 
 .checker-progress-info {
   width: 100%;
@@ -1191,57 +1164,12 @@
   .checker-export-group {
     justify-content: center;
   }
-  .checker-action-btn {
+  .start-button {
     flex: 1;
     justify-content: center;
     min-width: 0;
   }
 }
 
-.checker-action-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: all var(--duration-slow) var(--ease-out);
-  font-family: inherit;
-}
-
-.checker-action-btn:hover {
-  background: rgba(255,255,255,0.06);
-  color: var(--text-primary);
-  border-color: rgba(255,255,255,0.15);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-}
-
-.checker-action-btn:active {
-  transform: translateY(0);
-}
-
-.checker-action-btn.primary {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-red) 15%, transparent) 0%, color-mix(in srgb, var(--accent-red) 8%, transparent) 100%);
-  border-color: color-mix(in srgb, var(--accent-red) 25%, transparent);
-  color: var(--accent-red);
-}
-
-.checker-action-btn.primary:hover {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-red) 25%, transparent) 0%, color-mix(in srgb, var(--accent-red) 12%, transparent) 100%);
-  border-color: color-mix(in srgb, var(--accent-red) 50%, transparent);
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent-red) 20%, transparent);
-}
-
-.checker-action-btn svg {
-  transition: transform var(--duration-slow) var(--ease-spring);
-}
-
-.checker-action-btn:hover svg {
-  transform: scale(1.15);
-}
+/* .checker-action-btn → используй .start-button / .start-button.secondary из components.css */
 
