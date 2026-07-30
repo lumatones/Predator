@@ -1,0 +1,171 @@
+/* ═══ BUTTONS ═══ */
+.start-button {
+  background: var(--accent-gradient);
+  color: white;
+  border: none;
+  padding: var(--space-3) var(--space-8);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  transition: all var(--duration-normal) ease;
+  letter-spacing: 0.5px;
+  background-size: 200% 100%;
+  background-position: 0% 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.start-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--accent-red) 30%, transparent);
+  background-position: 100% 0;
+}
+
+.start-button:active { transform: translateY(0); box-shadow: none; }
+.start-button:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
+.start-button:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.start-button svg {
+  transition: transform var(--duration-slow) var(--ease-spring);
+}
+
+.start-button:hover svg {
+  transform: scale(1.15);
+}
+
+.start-button.secondary {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  box-shadow: none;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-5);
+}
+
+.start-button.secondary:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.skip-button {
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-normal);
+  cursor: pointer;
+  transition: color var(--duration-normal) ease;
+  font-family: inherit;
+}
+
+.skip-button:hover { color: var(--text-primary); }
+
+/* ═══ SPINNER & PROGRESS ═══ */
+.spinner {
+  width: 48px;
+  height: 48px;
+  position: relative;
+}
+
+.spinner-ring {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: var(--accent-red);
+  border-right-color: var(--accent-orange);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.status-text {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  font-weight: var(--fw-normal);
+  animation: textPulse 2s ease-in-out infinite;
+}
+
+@keyframes textPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ═══ PROGRESS BAR (unified) ═══ */
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.progress-bar--thin {
+  height: 3px;
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent-gradient);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-red) 40%, transparent);
+  position: relative;
+}
+
+.progress-bar--thin .progress-fill { border-radius: 2px; }
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.3), transparent);
+  border-radius: 3px 3px 0 0;
+}
+
+@keyframes progressIndeterminate {
+  0% { width: 0%; margin-left: 0; }
+  50% { width: 60%; }
+  100% { width: 0%; margin-left: 100%; }
+}
+
+.progress-bar.indeterminate .progress-fill {
+  animation: progressIndeterminate 1.5s ease-in-out infinite;
+  background-size: 200% 100%;
+}
+
+/* ═══ READY STATE ═══ */
+.ready-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  animation: readyBounce 0.5s var(--ease-spring);
+}
+
+@keyframes readyBounce {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.ready-text {
+  font-size: var(--text-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--color-success);
+}
+
