@@ -74,6 +74,12 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
+.checker-back-btn:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ── Status Dot ── */
 .checker-status-dot {
   width: 8px;
@@ -178,6 +184,12 @@
   transform: translateY(0) scale(0.97);
 }
 
+.checker-tab:focus-visible {
+  outline: 2px solid var(--tab-accent, var(--accent-red));
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
+}
+
 .checker-tab-icon {
   font-size: 20px;
   line-height: 1;
@@ -195,7 +207,7 @@
 .checker-tab-label {
   font-family: var(--font-heading);
   font-weight: var(--fw-bold);
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.2;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -216,7 +228,7 @@
   border-radius: 9px;
   background: var(--tab-accent, var(--accent-red));
   color: white;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--fw-bold);
   display: flex;
   align-items: center;
@@ -485,7 +497,7 @@
 .checker-current-dir {
   width: 100%;
   font-size: var(--text-xs);
-  color: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.4);
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
@@ -589,7 +601,13 @@
   padding: var(--space-2) 0;
 }
 
-.search-input::placeholder { color: rgba(255,255,255,0.15); }
+.search-input:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: -2px;
+  border-radius: 2px;
+}
+
+.search-input::placeholder { color: rgba(255,255,255,0.35); }
 
 .search-clear {
   background: none;
@@ -704,6 +722,13 @@
 
 .result-row[data-risk="medium"]::before { background: var(--color-warning); box-shadow: 0 0 8px var(--color-warning-dim); }
 .result-row[data-risk="low"]::before { background: #6B7280; }
+
+.result-row:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+}
 
 .result-row:hover {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
@@ -1028,6 +1053,12 @@
   background: rgba(255,255,255,0.03);
 }
 
+.group-header:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
 .group-header-left {
   display: flex;
   align-items: center;
@@ -1331,7 +1362,7 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(0, 0, 0, 0.3);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
@@ -1359,11 +1390,11 @@
   }
   .scan-terminal-content {
     padding: var(--space-3);
-    font-size: 9px;
+    font-size: 10px;
   }
   .scan-terminal-stats {
     padding: var(--space-1) var(--space-3);
-    font-size: 8px;
+    font-size: 10px;
     gap: var(--space-2);
   }
 }
@@ -1486,7 +1517,7 @@
 }
 
 .filedetail-stat-label {
-  font-size: 9px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-muted);
@@ -1577,7 +1608,7 @@
 
 .filedetail-section-header-row {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-family: var(--font-body);
@@ -1590,7 +1621,7 @@
 }
 
 .filedetail-section-warn {
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .filedetail-section-entropy {
@@ -1854,7 +1885,7 @@
   }
   .filedetail-section-row {
     grid-template-columns: 1fr 56px 56px 56px;
-    font-size: 9px;
+    font-size: 10px;
     overflow-x: auto;
   }
   .filedetail-explanation-head {
@@ -2064,7 +2095,7 @@
 }
 
 .cheat-group-badge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--fw-bold);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -2156,7 +2187,7 @@
 }
 
 .cheat-group-tag {
-  font-size: 9px;
+  font-size: 10px;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   background: rgba(255,255,255,0.04);
@@ -2250,7 +2281,7 @@
 }
 
 .cheat-group-item-risk {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--fw-bold);
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -2417,7 +2448,7 @@
 }
 
 .device-item-risk {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--fw-bold);
   padding: 2px 6px;
   border-radius: 4px;
@@ -2536,7 +2567,7 @@
 }
 
 .apc-dashboard-badge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--fw-bold);
   padding: 2px 8px;
   border-radius: 10px;
@@ -2694,7 +2725,7 @@
 }
 
 .apc-tier-desc {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -2708,7 +2739,7 @@
 }
 
 .apc-count {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--fw-bold);
   min-width: 18px;
   height: 18px;
@@ -2812,7 +2843,7 @@
 }
 
 .apc-finding-tag {
-  font-size: 9px;
+  font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
   background: rgba(255,255,255,0.03);

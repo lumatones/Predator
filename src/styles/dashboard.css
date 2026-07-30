@@ -402,7 +402,7 @@
 }
 
 .server-status-input::placeholder {
-  color: rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.35);
 }
 
 .server-status-edit-actions {
@@ -744,7 +744,7 @@
 }
 
 .stats-bar-label {
-  font-size: 8px;
+  font-size: 10px;
   color: var(--text-muted);
   text-align: center;
   white-space: nowrap;
@@ -980,9 +980,9 @@ body {
 .main-cards { display: grid; grid-template-columns: 1fr; gap: 16px; width: 100%; }
 .main-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 18px; }
 .main-card-icon { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; }
-.main-card-arrow { color: rgba(255,255,255,0.35); }
+.main-card-arrow { color: rgba(255,255,255,0.15); }
 .token-input { background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.12); color: #fff; }
-.token-input:focus { border-color: rgba(255,255,255,0.35); box-shadow: 0 0 0 4px rgba(255,255,255,0.08); }
+.token-input:focus { border-color: rgba(255,255,255,0.15); box-shadow: 0 0 0 4px rgba(255,255,255,0.08); }
 .theme-btn.active, .lang-btn.active { border-color: rgba(255,255,255,0.28); background: rgba(255,255,255,0.05); }
 .spinner-ring { border-top-color: #fff; }
 .update-modal { background: rgba(10,10,10,0.92); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 30px 100px rgba(0,0,0,0.6); }

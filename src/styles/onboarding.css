@@ -68,13 +68,13 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: var(--fw-bold);
   color: white;
 }
 
 .onb-step-label {
-  font-size: 8px;
+  font-size: 10px;
   color: rgba(255, 255, 255, 0.2);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -399,7 +399,7 @@
 .token-input::placeholder {
   letter-spacing: 1px;
   font-size: var(--text-xs);
-  color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .token-error {

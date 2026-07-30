@@ -98,7 +98,7 @@
 }
 
 .ob-feature-desc {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
   line-height: 1.3;
 }
@@ -383,6 +383,6 @@
     max-width: 100%;
   }
   .onb-steps-v2 .onb-step-label {
-    font-size: 7px;
+    font-size: 9px;
   }
 }

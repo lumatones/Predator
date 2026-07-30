@@ -27,6 +27,11 @@
 
 .start-button:active { transform: translateY(0); box-shadow: none; }
 .start-button:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
+.start-button:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
 
 .start-button.secondary {
   background: rgba(255,255,255,0.04);
