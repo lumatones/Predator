@@ -413,21 +413,21 @@ export function reportFalsePositive(filepath: string) {
 export function exportRulesToYara(): string {
   const rules = loadRules().filter(r => r.weight > 0.4)
   let out = '/* Predator Auto-Generated YARA v2 */\n'
-  out += 'import \"pe\"\n'
-  out += 'import \"math\"\n\n'
+  out += 'import "pe"\n'
+  out += 'import "math"\n\n'
 
   for (const r of rules) {
     const safeId = r.id.replace(/-/g, '_')
     out += `rule auto_${safeId} {\n`
     out += `  meta:\n`
-    out += `    description = \"Auto-learned from ${r.sourceFile}\"\n`
-    out += `    author = \"Predator Auto-YARA\"\n`
-    out += `    date = \"${new Date(r.createdAt).toISOString().slice(0, 10)}\"\n`
+    out += `    description = "Auto-learned from ${r.sourceFile}"\n`
+    out += `    author = "Predator Auto-YARA"\n`
+    out += `    date = "${new Date(r.createdAt).toISOString().slice(0, 10)}"\n`
     out += `    weight = ${r.weight.toFixed(2)}\n`
-    out += `    risk = \"${r.risk}\"\n`
+    out += `    risk = "${r.risk}"\n`
     out += `    match_count = ${r.matchCount}\n`
     out += `    false_positive_count = ${r.falsePositiveCount}\n`
-    out += `    source_hash = \"${r.sourceHash.slice(0, 16)}\"\n`
+    out += `    source_hash = "${r.sourceHash.slice(0, 16)}"\n`
     out += `  strings:\n`
     r.strings.forEach((s, i) => {
       // Strip prefix markers for YARA export
@@ -443,7 +443,7 @@ export function exportRulesToYara(): string {
         const hex = Buffer.from(clean, 'utf-8').toString('hex')
         out += `    $s${i} = { ${hex.match(/.{2}/g)!.join(' ')} }\n`
       } else {
-        out += `    $s${i} = \"${escaped}\" nocase wide\n`
+        out += `    $s${i} = "${escaped}" nocase wide\n`
       }
     })
     const minHits = Math.max(2, Math.ceil(r.strings.length * 0.6))

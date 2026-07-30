@@ -116,7 +116,6 @@ export const DemoScanStep: React.FC<DemoScanStepProps> = ({
     return () => {
       if (scanRef.current) clearInterval(scanRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, demoFindings])
 
   // Reset demo when unmounted

@@ -250,10 +250,6 @@ function formatTime(ms: number, secLabel: string): string {
   return `${(ms / 1000).toFixed(1)} ${secLabel}`
 }
 
-function riskClass(risk: string): string {
-  return risk === 'high' ? 'risk-high' : risk === 'medium' ? 'risk-medium' : 'risk-low'
-}
-
 function riskLabel(risk: string, lang: 'ru' | 'en'): string {
   const t = (k: string) => T[lang][k] || k
   return risk === 'high' ? t('high') : risk === 'medium' ? t('medium') : t('low')
@@ -287,17 +283,6 @@ function typeIcon(type: string, size = 14) {
   }
 }
 
-function calcScanPercent(progress: ScanProgress | null): number {
-  if (!progress) return 0
-  if (progress.phase === 'done') return 100
-  if (progress.phase === 'analyzing') return 85 + Math.min(progress.filesFound * 2, 14)
-  const dirWeight = progress.totalDirs > 0
-    ? Math.min(progress.dirsDone / progress.totalDirs, 1)
-    : 0
-  const fileWeight = Math.min(progress.filesScanned / 300, 1)
-  return Math.min(dirWeight * 70 + fileWeight * 14, 84)
-}
-
 // ── Component ──
 
 export default function Checker({ lang, tokenId, onBack, accent, light, dark }: CheckerProps) {
@@ -326,7 +311,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
   const [showAllGroups, setShowAllGroups] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [exportMsg, setExportMsg] = useState('')
-  const [serverMsg, setServerMsg] = useState('')
   const [copiedPath, setCopiedPath] = useState('')
   const [tabCounts, setTabCounts] = useState<Map<ScanMode, number>>(new Map())
   const [detailModalOpen, setDetailModalOpen] = useState(false)
@@ -510,8 +494,8 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       let chatId = ''
       if (window.electronAPI?.getConfig) {
         const cfg = await window.electronAPI.getConfig()
-        botToken = (cfg as any).telegramBotToken || ''
-        chatId = (cfg as any).telegramChatId || ''
+        botToken = cfg.telegramBotToken || ''
+        chatId = cfg.telegramChatId || ''
       }
       if (!botToken || !chatId) {
         setExportMsg('⚙ Настройте Telegram бота в конфиге')
@@ -587,14 +571,8 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
           matches: r.matches.slice(0, 5),
         })),
       })
-      if (isMounted.current) {
-        setServerMsg('✓')
-        setTimeout(() => {
-          if (isMounted.current) setServerMsg('')
-        }, 3000)
-      }
     } catch { /* ignore */ }
-  }, [tokenId, t])
+  }, [tokenId])
 
   return (
     <div className="checker-wrapper">
@@ -1195,6 +1173,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
           matches={selectedResult.matches}
           size={selectedResult.size}
           sha256={selectedResult.sha256}
+          lang={lang}
         />
       )}
 

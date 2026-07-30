@@ -17,7 +17,7 @@ import { type ScanResult, sendProgress, clearFindingDedup, ctx } from '../types'
 
 export async function runQuickScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
   const results: ScanResult[] = []
-  let filesScanned = 0
+  const filesScanned = 0
   const signal = ctx.abortController?.signal
   const aborted = () => signal?.aborted ?? false
 

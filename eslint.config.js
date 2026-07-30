@@ -30,9 +30,12 @@ export default tseslint.config(
     },
     rules: {
       // Custom overrides (same as the old config)
+      'no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
       'prefer-const': 'warn',
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-control-regex': 'off',
     },
   },
 )

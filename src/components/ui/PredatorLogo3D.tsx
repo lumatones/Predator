@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState, useId, useEffect, useCallback } from 'react'
+import { useRef, useMemo, useState, useId, useEffect } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Edges, Torus } from '@react-three/drei'
 import { useReducedMotion } from 'framer-motion'
@@ -20,15 +20,15 @@ function OrbitingParticles({
     [count],
   )
 
-  useFrame((state) => {
+  useFrame(({ clock }) => {
     if (!pointsRef.current || !active) return
-    const t = state.clock.elapsedTime
+    const t = clock.elapsedTime
     // Orbit around Y axis
     pointsRef.current.rotation.y += 0.003 * speed
     pointsRef.current.rotation.x = Math.sin(t * 0.3) * 0.15
     // Pulse opacity
-    const mat = pointsRef.current.material as any
-    if (mat?.opacity !== undefined) {
+    const mat = pointsRef.current.material as { opacity?: number }
+    if (mat.opacity !== undefined) {
       mat.opacity = 0.25 + Math.sin(t * 2) * 0.15
     }
   })
@@ -76,7 +76,7 @@ function PulseRings({ active, color, count = 3 }: { active: boolean; color: stri
   )
   const ringRefs = useRef<(Mesh | null)[]>([])
 
-  useFrame((state) => {
+  useFrame(() => {
     if (!groupRef.current || !active) return
     const now = performance.now()
     ringRefs.current.forEach((ring, i) => {
@@ -85,8 +85,8 @@ function PulseRings({ active, color, count = 3 }: { active: boolean; color: stri
       const cycle = elapsed % 2.5
       const scale = 0.3 + cycle * 1.5
       ring.scale.setScalar(scale)
-      const mat = ring.material as any
-      if (mat?.opacity !== undefined) {
+      const mat = ring.material as { opacity?: number }
+      if (mat.opacity !== undefined) {
         mat.opacity = Math.max(0, 0.45 * (1 - cycle / 2.5))
       }
     })

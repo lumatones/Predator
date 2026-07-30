@@ -39,8 +39,6 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
   const mediumCount = results.filter(r => r.risk === 'medium').length
   const lowCount = results.filter(r => r.risk === 'low').length
 
-  const riskLevels = { high: highCount, medium: mediumCount, low: lowCount }
-
   // Group by type
   const typeCounts: Record<string, number> = {}
   for (const r of results) {

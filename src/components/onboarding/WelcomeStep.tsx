@@ -26,7 +26,7 @@ const featuresEn = [
 
 export const WelcomeStep: React.FC<WelcomeStepProps> = ({
   welcomeTitle, welcomeDesc, welcomeStart,
-  accent, light, lang, onNext,
+  accent, lang, onNext,
 }) => {
   const featList = lang === 'ru' ? featuresRu : featuresEn
 

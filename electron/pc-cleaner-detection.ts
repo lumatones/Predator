@@ -826,17 +826,17 @@ Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4688} -MaxEvents 200 -Err
     const logInfo = ps(`
 $log = Get-WinEvent -ListLog Security -ErrorAction SilentlyContinue
 if ($log) {
-  Write-Output (\"LOG_SIZE:\" + $log.LogMode + \":\" + $log.LogFilePath + \":\" + $log.IsEnabled + \":\" + $log.MaximumSizeInBytes + \":\" + $log.LogIsolation)
+  Write-Output ("LOG_SIZE:" + $log.LogMode + ":" + $log.LogFilePath + ":" + $log.IsEnabled + ":" + $log.MaximumSizeInBytes + ":" + $log.LogIsolation)
 }
 
 # Also check uptime for reference
 $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
 $uptimeHrs = [math]::Round(((Get-Date) - $boot).TotalHours, 1)
-Write-Output (\"UPTIME_HOURS:\" + $uptimeHrs)
+Write-Output ("UPTIME_HOURS:" + $uptimeHrs)
 
 # Check event count in Security log
 $count = (Get-WinEvent -ListLog Security -ErrorAction SilentlyContinue).RecordCount
-if ($count) { Write-Output (\"EVENT_COUNT:\" + $count) }
+if ($count) { Write-Output ("EVENT_COUNT:" + $count) }
 `, 20000)
 
     if (logInfo) {
@@ -1014,8 +1014,8 @@ if ($usnDump) {
 }
 
 if ($foundDeletes.Count -gt 0) {
-  Write-Output (\"DELETED_CHEAT_FILES:\" + ($foundDeletes -join ';'))
-  Write-Output (\"DELETED_COUNT:\" + $foundDeletes.Count)
+  Write-Output ("DELETED_CHEAT_FILES:" + ($foundDeletes -join ';'))
+  Write-Output ("DELETED_COUNT:" + $foundDeletes.Count)
 }
 `, 20000)
 
@@ -1054,11 +1054,11 @@ if ($foundDeletes.Count -gt 0) {
       const uptimeInfo = ps(`
 $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
 $uptimeHrs = [math]::Round(((Get-Date) - $boot).TotalHours, 1)
-Write-Output (\"UPTIME_HOURS:\" + $uptimeHrs)
+Write-Output ("UPTIME_HOURS:" + $uptimeHrs)
 
 # MFT typically grows ~1-2 MB per day of active use
 $mftSizeMB = ${mftSize} / 1MB
-Write-Output (\"MFT_SIZE_MB:\" + [math]::Round($mftSizeMB, 1))
+Write-Output ("MFT_SIZE_MB:" + [math]::Round($mftSizeMB, 1))
 `, 10000)
 
       if (uptimeInfo) {

@@ -363,7 +363,7 @@ export function updateThreatActors(
   const patternHash = hashPattern(detectedCheats)
 
   // Find existing profile or create new one
-  let existing = profile.threatActors.find(t => t.patternHash === patternHash)
+  const existing = profile.threatActors.find(t => t.patternHash === patternHash)
 
   if (existing) {
     existing.occurrences++

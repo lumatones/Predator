@@ -1221,7 +1221,7 @@
   position: fixed;
   top: 24px;
   right: 24px;
-  width: 380px;
+  width: min(440px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -1277,8 +1277,7 @@
 .music-search {
   display: flex;
   gap: 8px;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 14px 24px 8px;
   flex-shrink: 0;
 }
 
@@ -1324,6 +1323,16 @@
 .music-search-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.music-search-hint {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0 24px 12px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 /* Body */
@@ -1397,21 +1406,27 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  min-height: 52px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: inherit;
   font-family: inherit;
   font-size: 13px;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.music-track-row:hover {
+  border-color: rgba(255,255,255,0.07);
 }
 
 .music-track-row.active {
   background: rgba(255, 60, 60, 0.08);
-  border: 1px solid rgba(255, 60, 60, 0.15);
+  border-color: rgba(255, 60, 60, 0.15);
 }
 
 .music-track-cover {

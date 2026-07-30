@@ -122,7 +122,6 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
   const t = (key: string) => T[lang][key] || key
   const [snapshot, setSnapshot] = useState<SystemInfoSnapshot | null>(null)
   const [processFilter, setProcessFilter] = useState('')
-  const [streamActive, setStreamActive] = useState(false)
   const isMounted = useRef(true)
 
   useEffect(() => {
@@ -166,11 +165,9 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
       }
       const unsubscribeSystemUpdate = api.onSystemUpdate(handler)
       api.startSystemStream(2000)
-      setStreamActive(true)
 
       return () => {
         api.stopSystemStream()
-        setStreamActive(false)
         if (typeof unsubscribeSystemUpdate === 'function') unsubscribeSystemUpdate()
       }
     }

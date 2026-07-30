@@ -158,7 +158,6 @@ export const ScanTerminal: React.FC<ScanTerminalProps> = memo(function ScanTermi
 
     return () => clearInterval(id)
     // Only setup once — progress read via ref
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Auto-scroll to bottom

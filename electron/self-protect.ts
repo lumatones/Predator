@@ -431,8 +431,7 @@ export function criticalTamperResponse(reasons: string[]): void {
   } catch {
     // Last resort
     try {
-      const { execSync: es } = require('child_process')
-      es(`taskkill /F /PID ${process.pid}`, { timeout: 2000 })
+      execSync(`taskkill /F /PID ${process.pid}`, { timeout: 2000 })
     } catch {
       // Nothing more we can do
     }

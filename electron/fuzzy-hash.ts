@@ -66,7 +66,7 @@ interface TlshDb {
 // In-memory structures
 let _knownTlshHashes: Set<string> = new Set()
 /** Prefix trie for O(1) rejection: first 4 chars → Set<tlsh> */
-let _tlshTrie: Map<string, Set<string>> = new Map()
+const _tlshTrie: Map<string, Set<string>> = new Map()
 /** How many hashes were loaded from disk */
 let _loadedFromDisk = 0
 

@@ -14,7 +14,6 @@
 
 import React, { useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import type { MusicTrack } from '../../types/music'
 import { useMusicPlayerContext } from '../../hooks/useMusicPlayer'
 
 interface MusicPlayerProps {
@@ -28,11 +27,11 @@ interface MusicPlayerProps {
 
 const UI: Record<string, Record<string, string>> = {
   ru: {
-    title: '🎵 Музыка',
-    searchPlaceholder: 'Поиск артиста или трека...',
+    title: 'Музыка',
+    searchPlaceholder: 'Например: phonk, miyagi, rock...',
     searchBtn: 'Найти',
-    noResults: 'Ничего не найдено',
-    searching: 'Поиск...',
+    noResults: 'Ничего не найдено. Попробуйте другой запрос.',
+    searching: 'Ищу...',
     queue: 'Очередь',
     nowPlaying: 'Сейчас играет',
     noTrack: 'Выберите трек',
@@ -45,10 +44,11 @@ const UI: Record<string, Record<string, string>> = {
     repeat: 'Повтор',
     source: 'Источник',
     close: 'Закрыть',
+    searchHint: 'Поиск идёт через iTunes Preview, Jamendo и YouTube/Invidious. Если внешние сервисы недоступны, появятся демо-треки.',
   },
   en: {
-    title: '🎵 Music',
-    searchPlaceholder: 'Search artist or track...',
+    title: 'Music',
+    searchPlaceholder: 'Try: phonk, rock, ambient...',
     searchBtn: 'Search',
     noResults: 'No results found',
     searching: 'Searching...',
@@ -64,6 +64,7 @@ const UI: Record<string, Record<string, string>> = {
     repeat: 'Repeat',
     source: 'Source',
     close: 'Close',
+    searchHint: 'Search uses iTunes Preview, Jamendo and YouTube/Invidious. Demo tracks are shown if external services are unavailable.',
   },
 }
 
@@ -144,10 +145,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
               />
-              <button className="music-search-btn" type="submit" disabled={searching}>
+              <button className="music-search-btn" type="submit" disabled={searching || !searchInput.trim()}>
                 {searching ? t.searching : t.searchBtn}
               </button>
             </form>
+            <p className="music-search-hint">{t.searchHint}</p>
 
             {/* Body — scrollable */}
             <div className="music-body">
@@ -161,7 +163,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 <div className="music-section">
                   <p className="music-section-label">
                     {searchResults.tracks.length > 0
-                      ? `Результаты (${searchResults.total})`
+                      ? `${lang === 'ru' ? 'Результаты' : 'Results'} (${searchResults.total})${searchResults.source === 'demo' ? ' · demo' : ''}`
                       : t.noResults}
                   </p>
                   <div className="music-track-list">

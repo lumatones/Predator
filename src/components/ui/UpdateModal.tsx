@@ -1,7 +1,7 @@
 import React from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ThemeId, ThemeColors, THEMES, Lang, T } from '../../types'
+import { ThemeId, THEMES, Lang, T } from '../../types'
 
 interface UpdateModalProps {
   state: { show: boolean; version: string; state: 'available' | 'downloading' | 'done' | 'error'; percent: number; speed: string; size: string; errorMsg: string }

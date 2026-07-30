@@ -19,7 +19,7 @@ export function scanNamedPipes(): ScanResult[] {
   try {
     const out = execCmd(
       'cmd /c "dir \\\\.\\pipe\\ /b 2>nul"',
-      'powershell -Command "[System.IO.Directory]::GetFiles(\\\"\\\\\\\\.\\\\pipe\\\\\\\") | ConvertTo-Json -Compress"',
+      'powershell -Command "[System.IO.Directory]::GetFiles(\'\\\\.\\pipe\\\') | ConvertTo-Json -Compress"',
       { timeout: 3000 },
     )
     if (!out.trim()) return results

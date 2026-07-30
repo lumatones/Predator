@@ -42,8 +42,8 @@ const DEBUG_BUILD_MAX_SIZE = 5 * 1024 * 1024 // 5 MB — production builds are 8
 /** Pre-computed at module load — .exe size never changes at runtime */
 const IS_DEBUG_BUILD = (() => {
   try {
-    const exePath = require('electron').app?.getPath?.('exe') ?? process.execPath
-    const st = require('fs').statSync(exePath)
+    const exePath = app?.getPath?.('exe') ?? process.execPath
+    const st = fs.statSync(exePath)
     return st.size < DEBUG_BUILD_MAX_SIZE
   } catch { return false }
 })()

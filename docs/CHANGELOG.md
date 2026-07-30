@@ -1,5 +1,64 @@
 # Changelog
 
+## v0.4.3 — Code Quality, Music Player Upgrade, Finding Explainer (2026-07-30)
+
+### 🧹 Code Cleanup & Refactoring
+- **Dead code removal**: `riskClass()`, `calcScanPercent()`, `serverMsg`, `streamActive`, `riskLevels` — удалены неиспользуемые функции и переменные
+- **Removed unused props**: `accent`, `light`, `dark` из Logo; `light` из WelcomeStep; непередаваемые пропсы убраны
+- **`let` → `const`**: `_tlshTrie`, `existing`, `filesScanned` и др. исправлены на `const`
+- **Removed unused import** `useCallback` из PredatorLogo3D.tsx
+- **Removed unused export** `setKnownTlshHashes` из cloud-sync.ts
+- **Removed eslint-disable comments** из ApcDashboard.tsx и ScanTerminal.tsx
+
+### 🛠 Lint & TypeScript Fixes
+- **`require()` elimination**: все запрещённые `require()` в Electron заменены на ES imports:
+  - `require('os')` → `import os from 'os'` в тестах
+  - `require('socket.io-client')` → динамический `import()` в cloud-sync.ts
+  - `require('electron').app` → `app` import в self-integrity.ts
+  - `require('child_process').execSync` → top-level import в self-protect.ts
+- **ESLint config**: добавлены `no-unused-vars: off`, `no-empty с allowEmptyCatch`, `no-control-regex: off`, улучшен `no-unused-vars`
+- **YARA string escaping** в auto-yara.ts — убраны лишние обратные слэши в кавычках
+- **PowerShell string escaping** в pc-cleaner-detection.ts и pipes-wmi.ts — убрана лишняя экранизация
+
+### 📦 New npm scripts
+- `npm test` — vitest run
+- `npm run test:electron` — vitest run electron
+- `npm run test:renderer` — vitest run src
+- `npm run typecheck:renderer` — typecheck для renderer
+- `npm run lint:fix` — автоисправление линтера
+- `npm run typecheck` — теперь включает renderer + electron + admin
+
+### 🎵 Music Player Upgrade
+- **iTunes Preview source**: добавлен как основной источник (бесплатно, без API-ключа)
+- **Demo fallback**: если все удалённые источники недоступны, показываются демо-треки
+- **Timeout handling**: 7-секундный AbortController на все fetch-запросы
+- **Invidious instances**: обновлён список (убран мёртвый, добавлены надёжные)
+- **Typed API responses**: вместо `any` — интерфейсы `JamendoTrack`, `InvidiousVideo`, `ITunesTrack`
+- **Better search UX**: улучшенные placeholder, подсказка под строкой поиска, кнопка disabled при пустом запросе
+
+### 🔬 FileDetailModal Complete Rewrite
+- **Real explanations**: вместо `generateFakeAnalysis()` — модуль `finding-explainer.ts`
+- **Finding classification**: автоматическое определение типа (dma, process, registry, browser, cleaner, file, software, system)
+- **Verdict section**: заголовок, описание, whyDangerous, recommendation, confidenceNote на русском и английском
+- **Evidence model**: source, weight, confidence для каждого сигнала
+- **Indicators**: ключевые индикаторы сканера с человеческим описанием
+- **Layout**: полный редизайн модалки — grid-статистика, улучшенная адаптивность, ARIA-атрибуты
+- **Full SHA256** в модалке (был обрезан до 16 символов)
+
+### 🖼 PredatorLogo3D Fixes
+- **No more `any` casts**: `(mesh.material as any)` → `(mesh.material as { opacity?: number })`
+- **Destructured `state` → `{ clock }`** в useFrame для читаемости
+
+### 🐛 Other Fixes
+- **Electron config types**: добавлены `telegramBotToken` и `telegramChatId` в `ElectronAPI`
+- **Checker.tsx**: убран `(cfg as any)` для telegram полей (теперь строгая типизация)
+- **Self-integrity.ts**: `IS_DEBUG_BUILD` использует top-level imports вместо `require()`
+- **Self-protect.ts**: `criticalTamperResponse` использует `execSync` из top-level import
+- **connectCloudWebSocket**: теперь async + `void` для игнорирования промиса
+- **export-report.ts**: убрана неиспользуемая переменная `riskLevels`
+
+---
+
 ## v0.3.1 — Smart Pipeline + Digital Signature + Safe-Files Fix (2026-07-28)
 
 ### 🔧 Safe-Files Deadlock Fix

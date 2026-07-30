@@ -21,6 +21,8 @@ export interface ElectronAPI {
     lang: 'ru' | 'en'
     theme: 'predator' | 'ocean' | 'stealth' | 'nebula'
     onboardingComplete: boolean
+    telegramBotToken?: string
+    telegramChatId?: string
   }>
   saveConfig: (partial: Partial<{
     apiUrl: string
@@ -28,12 +30,16 @@ export interface ElectronAPI {
     lang: 'ru' | 'en'
     theme: 'predator' | 'ocean' | 'stealth' | 'nebula'
     onboardingComplete: boolean
+    telegramBotToken?: string
+    telegramChatId?: string
   }>) => Promise<{
     apiUrl: string
     tokenId: number | null
     lang: 'ru' | 'en'
     theme: 'predator' | 'ocean' | 'stealth' | 'nebula'
     onboardingComplete: boolean
+    telegramBotToken?: string
+    telegramChatId?: string
   }>
   getApiBase: () => Promise<string>
   setApiBase: (url: string) => Promise<string>

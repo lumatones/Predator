@@ -14,7 +14,7 @@ import http from 'http'
 import https from 'https'
 import { getApiBase } from './config'
 import { mergeCheatHashes } from './cheats-db'
-import { setKnownTlshHashes, mergeTlshHashes } from './fuzzy-hash'
+import { mergeTlshHashes } from './fuzzy-hash'
 import { addKeywords, addPatterns, getSignatureStats } from './signature-registry'
 
 let _syncTimer: ReturnType<typeof setInterval> | null = null
@@ -80,16 +80,10 @@ export async function fetchSignatures(): Promise<void> {
 
 // ── WebSocket connection (real-time) ──
 
-export function connectCloudWebSocket(serverUrl: string): void {
+export async function connectCloudWebSocket(serverUrl: string): Promise<void> {
   try {
-    // Dynamic import to avoid requiring socket.io-client in all builds
-     
-    const io = require('socket.io-client') as { default?: { io?: (url: string, opts: Record<string, unknown>) => { on: (e: string, cb: (data: unknown) => void) => void; emit: (e: string) => void; disconnect: () => void } } }
-    const ioFn = io?.default?.io ?? (io as { io?: (url: string, opts: Record<string, unknown>) => { on: (e: string, cb: (data: unknown) => void) => void; emit: (e: string) => void; disconnect: () => void } })?.io
-    if (!ioFn) {
-      console.log('  ⚠️  socket.io-client not available — falling back to HTTP polling')
-      return
-    }
+    const module = await import('socket.io-client')
+    const ioFn = module.io
     const socket = ioFn(serverUrl, {
       transports: ['websocket'],
       reconnection: true,
@@ -172,7 +166,7 @@ export function startCloudSync(): void {
   // Try WebSocket first
   try {
     const base = getApiBase()
-    connectCloudWebSocket(base)
+      void connectCloudWebSocket(base)
   } catch {
     console.log('  ℹ️  WebSocket connect failed — using HTTP polling')
   }

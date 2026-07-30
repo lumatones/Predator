@@ -165,7 +165,6 @@ export function ApcDashboard({ results, lang }: ApcDashboardProps) {
         return next
       })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // run once on mount
 
   return (

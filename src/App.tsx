@@ -22,7 +22,7 @@ import { useAuth } from './hooks/useAuth'
 import { useThemeEngine } from './hooks/useThemeEngine'
 import { useUpdateManager } from './hooks/useUpdateManager'
 import { useOnboarding } from './hooks/useOnboarding'
-import type { AppPhase, ThemeId, Lang } from './types'
+import type { ThemeId, Lang } from './types'
 import { THEMES, T } from './types'
 
 // ── Eye Easter egg phrases ──
@@ -33,7 +33,7 @@ const EYE_PHRASES = [
   { text: 'Я предупреждал...',  syllables: 6, pitch: 'low'  as const },
 ]
 
-const Logo: React.FC<{ accent: string; light: string; dark: string; subtitle: string }> = ({ accent, light, dark, subtitle }) => {
+const Logo: React.FC<{ subtitle: string }> = ({ subtitle }) => {
   const hoverCount = useRef(0)
   const [phraseIdx, setPhraseIdx] = useState(0)
   const [scaryMode, setScaryMode] = useState(false)
@@ -299,7 +299,6 @@ const App: React.FC = () => {
     tokenError, setTokenError,
     authLoading,
     authError, setAuthError,
-    pcName,
     requestId, requestStatus,
     handleAuth,
     handleRequestAccess,
@@ -367,7 +366,7 @@ const App: React.FC = () => {
       </div>
       <div className="scan-line" />
       <div className="container">
-        <Logo accent={c.accent} light={c.light} dark={c.dark} subtitle={subtitle} />
+        <Logo subtitle={subtitle} />
         {phase.startsWith('onboarding-') && (
           <PageWrapper key="onboarding">
             <ErrorBoundary name="Onboarding">

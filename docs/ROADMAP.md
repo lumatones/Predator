@@ -1,217 +1,565 @@
-# Predator — Development Roadmap v4.0 (Final)
+# Predator — Roadmap развития
 
-> **Версия документа:** 4.0 | **Обновлено:** 2026-07-29
-> **Текущая версия продукта:** v0.4.0
-> **Принцип:** THINK FIRST → Research → Propose → Implement by stages
-
----
-
-## 📊 ФИНАЛЬНАЯ СВОДКА: ВСЕ ФАЗЫ 1-7
-
-| Метрика | До (v0.3.3) | После (v0.4.0) | Δ |
-|---------|-------------|-----------------|---|
-| **Electron TS-файлов** | ~68 | **92** | +24 |
-| **Новых файлов (Electron)** | — | **11** | +11 |
-| **Модифицировано (Electron)** | — | **7** | +7 |
-| **Новых файлов (Server)** | — | **5** | +5 |
-| **Новых файлов (Admin)** | — | **5** | +5 |
-| **Всего новых/изменённых файлов** | — | **28** | +28 |
-| **Строк кода (новые Electron)** | — | **3,665** | — |
-| **Строк кода (всего изменено)** | — | **~8,366** | — |
-| **Тестовых файлов** | 6 | **9** | +3 |
-| **Тестов (всего)** | 165 | **243** | +78 |
-| **Фаз сканирования (full scan)** | 11 | **15** | +4 |
-| **Anti-debug tiers** | 2 | **7** | +5 |
-| **Protection layers** | 2 | **5** | +3 |
-| **Signature weight categories** | 0 | **25** | +25 |
-| **Auto-YARA features** | Basic | **v2 (6 improvements)** | — |
-| **Fuzzy hash DB** | In-memory | **Persistent + Prefix Trie** | — |
+> **Версия документа:** 0.5  
+> **Обновлено:** 2026-07-29  
+> **Текущая версия продукта:** v0.4.2  
+> **Фокус:** качество детекта, меньше false positive, стабильная архитектура, понятный UI для проверяющего
 
 ---
 
-## 📋 ДЕТАЛЬНЫЙ ОТЧЁТ ПО ФАЗАМ
+## 1. Видение продукта
 
-### ФАЗА 1: УПРОЧНЕНИЕ — 27/27 ✅
+Predator должен стать не просто сканером файлов, а полноценной системой проверки ПК для GTA 5 RP/FiveM/RAGE MP/ALT:V:
 
-| Группа | Задачи | Строк кода | Файлы |
-|--------|--------|-----------|-------|
-| **EXE (E1-E10)** | Декомпозиция + тесты + ErrorBoundary + IPC + scanner | ~600 | `heuristic/`, `scanner/`, `ErrorBoundary.tsx` |
-| **Сервер (S1-S8)** | Drizzle миграции + пагинация + WS auth + audit log + X-Request-ID + error format + TTL + индексы | ~445 | `drizzle/`, `db/schema.ts`, `helpers/pagination.ts`, `middleware/ws-auth.ts` |
-| **Админка (A1-A7)** | Hash detail modal + session timeout + keyboard shortcuts + поиск + блокировка + RBAC + login tracking | ~909 | `HashDetailModal.tsx`, `SessionTimeoutModal.tsx`, `KeyboardShortcutsHelp.tsx`, `useSessionTimeout.ts`, `useKeyboardShortcuts.ts`, `rate-limit-login.ts`, `roles.ts` |
+- быстро показывает понятный итог проверки;
+- объясняет каждую Finding человеческим языком;
+- собирает доказательства из разных Detection Layers;
+- снижает false positive за счёт whitelist, shadow rules и накопительного Risk Score;
+- работает оффлайн, но усиливается через cloud-sync;
+- даёт администратору прозрачный отчёт, который можно проверить и оспорить.
 
-### ФАЗА 2: ИНТЕЛЛЕКТ — 3/21 ✅ (приоритетная выборка)
-
-| Задача | Файл | Строк |
-|--------|------|-------|
-| **E11**: Инкрементальный скан | `scanner/full-scan.ts` | +30 (hasFileChanged + markFileScanned) |
-| **E12**: Scan scheduler | `scan-scheduler.ts` (NEW) | 147 |
-| **E13**: Hot-reload сигнатур | `cloud-sync.ts` | +50 (fetchSignatures) |
-
-### ФАЗА 3: GAME-SPECIFIC DETECTORS — 3/3 ✅
-
-| Задача | Файл | Строк | Ключевые техники |
-|--------|------|-------|-----------------|
-| **E14**: Game memory scanner | `modes/game-memory.ts` (NEW) | 344 | ReadProcessMemory, 10 byte-паттернов (aimbot/ESP/overlay), CEF debug ports |
-| **E15**: Network threat intel | `modes/network-intel.ts` (NEW) | 362 | Proxy/VPN detection (20 адаптеров), C2 blacklist (35 доменов + 4 IP range), firewall rule scan |
-| **E16**: USB anomaly detection | `modes/usb/anomaly.ts` (NEW) | 304 | VID/PID spoofing, cloned serials (12 known), PCIe config space scan (Xilinx/Altera) |
-
-### ФАЗА 4: BEHAVIOR & ML — 3/3 ✅
-
-| Задача | Файл | Строк | Ключевые техники |
-|--------|------|-------|-----------------|
-| **E17**: Behavior engine | `behavior-engine.ts` (NEW) | 418 | Process tree (WMI), injector-victim пары, 3 attack chain паттерна |
-| **E18**: ML risk scorer | `risk-scorer.ts` (NEW) | 295 | 25 signal categories (0.15-1.0), log-scale evidence, adaptive threshold, rescoreResults |
-| **E19**: Persistent profiles | `persistent-profile.ts` | +130 | Device fingerprint (SHA256 HWID), threat actor profiles, cross-scan correlation |
-
-### ФАЗА 5: ANTI-DEBUG & SELF-PROTECTION — 3/3 ✅
-
-| Задача | Файл | Строк | Ключевые техники |
-|--------|------|-------|-----------------|
-| **E20**: Anti-debug hardening | `modes/anti-debug.ts` | 688 (расширен) | 7 tiers: RE tools → DLLs → HWBP (Dr0-Dr3) → ProcessDebugPort → PEB (IsWow64Process) → parent check → QPC timing |
-| **E21**: Self-integrity | `self-integrity.ts` (NEW) | 451 | SHA256 .exe baseline, VirtualQuery code section, INT3 scan (.text only), IAT DLL proxy detection |
-| **E22**: Self-protection | `self-protect.ts` (NEW) | 444 | ACL Deny ACE (InitializeAcl+AddAccessDeniedAce), PROTECT_FROM_CLOSE + BreakOnTermination, SeDebugPrivilege removal, DLL injection snapshot |
-
-### ФАЗА 6: SIGNATURE & ML — 4/4 ✅
-
-| Задача | Файл | Строк | Ключевые техники |
-|--------|------|-------|-----------------|
-| **E23**: TLSH persistence | `fuzzy-hash.ts` | 346 (v2) | Persistent DB (.predator_tlsh_db.json), prefix trie, size-aware thresholds |
-| **E24**: Fast-path matching | `fuzzy-hash.ts` | — | O(1) rejection via prefix trie, size-aware threshold (tiny=15, small=22, medium=30, large=35) |
-| **E25**: Auto-YARA v2 | `auto-yara.ts` | 492 (v2) | In-memory cache (60s TTL), Unicode/UTF-16LE extraction, rule sharding, confidence decay, YARA 4.x export |
-| **E26**: Effectiveness tracking | `signature-registry.ts` | 534 (+120) | Hit counters in matchKeywords/matchPatterns, top-N, zero-hit detection, pruneColdSignatures, getEffectivenessReport |
-
-### ФАЗА 7: ТЕСТЫ & ДОКУМЕНТАЦИЯ — 4/4 ✅
-
-| Задача | Файл | Строк | Тестов |
-|--------|------|-------|--------|
-| Fuzzy hash tests | `__tests__/fuzzy-hash.test.ts` (NEW) | 306 | 20 |
-| Risk scorer tests | `__tests__/risk-scorer.test.ts` (NEW) | 373 | 30 |
-| Signature effectiveness tests | `__tests__/signature-effectiveness.test.ts` (NEW) | 221 | 17 |
-| ROADMAP v4.0 | `docs/ROADMAP.md` | — | Полный апдейт |
+Главный принцип развития: **не добавлять шум ради количества детектов**. Каждый новый модуль должен повышать доказательность ScanResult, а не просто увеличивать число красных карточек.
 
 ---
 
-## 📂 ПОЛНЫЙ ИНВЕНТАРЬ НОВЫХ ФАЙЛОВ
+## 2. Северная звезда на 2026
 
-```
-ELECTRON (11 новых файлов — 3,665 строк)
-├── behavior-engine.ts              (418 строк) — E17: Cross-process behavioral correlation
-├── risk-scorer.ts                  (295 строк) — E18: Weighted ML-inspired scoring
-├── self-integrity.ts               (451 строк) — E21: SHA256 + .text + INT3 + IAT
-├── self-protect.ts                 (444 строк) — E22: ACL + handles + privilege + DLL injection
-├── scan-scheduler.ts               (147 строк) — E12: Background scan scheduler
-├── modes/
-│   ├── game-memory.ts              (344 строк) — E14: Game memory pattern scanner
-│   ├── network-intel.ts            (362 строк) — E15: Network threat intelligence
-│   └── usb/anomaly.ts              (304 строк) — E16: USB anomaly detection
-└── __tests__/
-    ├── fuzzy-hash.test.ts          (306 строк) — E23/E24: 20 тестов
-    ├── risk-scorer.test.ts         (373 строк) — E18: 30 тестов
-    └── signature-effectiveness.test.ts (221 строк) — E26: 17 тестов
+### Целевые метрики
 
-ELECTRON (7 модифицированных файлов — 3,347 строк итого)
-├── modes/anti-debug.ts             (688 строк) — E20: +5 tiers
-├── anti-tamper.ts                  (551 строк) — E20: +hypervisor API overhead
-├── fuzzy-hash.ts                   (346 строк) — E23/E24: v2 persistent + prefix trie
-├── auto-yara.ts                    (492 строк) — E25: v2 cache + Unicode + decay + YARA 4.x
-├── signature-registry.ts           (534 строк) — E26: +hit counters + pruning
-├── scanner/full-scan.ts            (309 строк) — E11+E14+E15+E17+E21+E22 integration
-└── persistent-profile.ts           (427 строк) — E19: +device fingerprint + threat actors
-
-SERVER (5 новых файлов — 445 строк)
-├── drizzle/                        — S1: Drizzle ORM миграции
-├── src/db/schema.ts                (172 строк) — S1: Drizzle schema
-├── src/db/index.ts                 (51 строк) — S1: DB инициализация
-├── src/helpers/pagination.ts       (96 строк) — S2: Пагинация
-├── src/middleware/
-│   ├── rate-limit-login.ts         (78 строк) — A5: Brute-force защита
-│   └── roles.ts                    (48 строк) — A6: RBAC (admin/superadmin/moderator)
-└── src/__tests__/                  — +3 тестовых файла (admin, auth-extra, v1)
-
-ADMIN (5 новых файлов — 909 строк)
-├── src/components/
-│   ├── HashDetailModal.tsx         (372 строк) — A1: Hash detail panel
-│   ├── SessionTimeoutModal.tsx     (146 строк) — A2: Session timeout
-│   └── KeyboardShortcutsHelp.tsx   (138 строк) — A3: Keyboard shortcuts
-└── src/hooks/
-    ├── useSessionTimeout.ts        (114 строк) — A2: Session timeout hook
-    └── useKeyboardShortcuts.ts     (139 строк) — A3: Navigation shortcuts hook
-
-ИТОГО: 28 новых/модифицированных файлов, ~8,366 строк кода
-```
+| Метрика | Цель |
+|--------|-----:|
+| TypeScript build | 100% без ошибок |
+| Critical runtime crashes | 0 |
+| False positive по high-risk | < 3% после ручной валидации |
+| Время Quick Scan | до 30 секунд |
+| Время Full Scan | до 5 минут на обычном ПК |
+| Покрытие ключевых модулей тестами | 70%+ |
+| Понятность отчёта для модератора | каждая high/medium Finding имеет объяснение |
+| Offline usability | Scan работает без сервера |
+| Admin review flow | одна проверка разбирается за 1-2 минуты |
 
 ---
 
-## 📈 МЕТРИКИ ДО/ПОСЛЕ
+## 3. Приоритеты по фазам
 
-| Метрика | v0.3.3 (до) | v0.4.0 (после) |
-|---------|-------------|-----------------|
-| **Electron файлов** | ~68 | **92** |
-| **Строк кода (Electron)** | ~15,000 | **~18,700** |
-| **Тестовых файлов** | 6 | **9** |
-| **Тестов** | 165 | **243** |
-| **Full scan фаз** | 11 | **15** |
-| **Anti-debug tiers** | 2 (RE tools, DLLs) | **7** (+HWBP, DebugPort, PEB, parent, timing) |
-| **Protection layers** | 2 (anti-tamper, anti-debug) | **5** (+self-integrity, self-protect, ACL) |
-| **Signal weight categories** | 0 | **25** |
-| **Fuzzy hash DB** | Memory-only | **Persistent + Prefix Trie** |
-| **Auto-YARA** | Basic (disk read per check) | **v2** (cache, Unicode, decay, YARA 4.x) |
-| **Signature effectiveness** | Не отслеживалось | **Hit counters + pruning + report** |
-| **Серверные миграции** | init.ts (сырой SQL) | **Drizzle ORM** |
-| **Server auth** | JWT only | **JWT + RBAC + brute-force + audit log** |
-| **Admin UI** | Базовый | **Hash modal + session timeout + shortcuts + поиск** |
-| **TypeScript ошибок** | 0 | **0** |
-| **Test pass rate** | 100% (165/165) | **100% (243/243)** |
+## Фаза 1. Стабилизация и технический долг
 
----
+**Цель:** сделать базу проекта предсказуемой перед добавлением новых детектов.
 
-## 🐛 ИСПРАВЛЕННЫЕ БАГИ (все фазы)
+### P0
 
-| # | Баг | Где | Исправление |
-|---|-----|-----|------------|
-| 1 | `hardenProcessAcl` был no-op (pDacl=null) | self-protect.ts | InitializeAcl + AddAccessDeniedAce с CreateWellKnownSid |
-| 2 | DebugObject 0x1F — per-boot type index | anti-debug.ts | NtQueryInformationProcess(ProcessDebugPort=7) |
-| 3 | PEB NtGlobalFlag только для x64 (offset 0xBC) | anti-debug.ts | IsWow64Process → 0xBC (x64) / 0x68 (x86) |
-| 4 | GetTickCount64 granularity (10-16ms) | anti-debug.ts | QueryPerformanceCounter (μs) |
-| 5 | INT3 сканировал весь файл (не только .text) | self-integrity.ts | PE parser → только .text секция |
-| 6 | `checkCodeSectionProtection` проверял PE header | self-integrity.ts | VirtualQuery walk по адресному пространству |
-| 7 | `require('child_process')` inline | self-integrity.ts | top-level `import { execSync }` |
-| 8 | `loadDb()` до `app.whenReady()` | fuzzy-hash.ts | initFuzzyHashDb() в main.ts |
-| 9 | `_bucketedHashes` мёртвый код | fuzzy-hash.ts | Удалён полностью |
-| 10 | Hit counters никогда не вызывались | signature-registry.ts | recordKeywordHit/PatternHit в matchKeywords/Patterns |
-| 11 | `nocase wide ascii` невалидный YARA | auto-yara.ts | `nocase wide` |
-| 12 | Дублирующий `filter(r => r.weight >= 0.2)` | auto-yara.ts | Удалён |
-| 13 | `pruneColdSignatures` уничтожал все keywords | signature-registry.ts | Добавлена защита (хиты перед prune) |
-| 14 | `SIGNAL_WEIGHTS`/`classifySignal` не экспортировались | risk-scorer.ts | `export const`/`export function` |
-| 15 | WS без JWT auth → scanner-комната открыта | main.ts | `auth: { token }` в Socket.IO |
+- Привести `npm run lint` к зелёному состоянию.
+- Убрать запрещённые `require()` из Electron-кода и тестов.
+- Исправить `no-empty`, `no-useless-escape`, `no-control-regex` без отключения правил глобально.
+- Добавить отдельные npm scripts:
+  - `typecheck:renderer`;
+  - `typecheck:electron`;
+  - `test:electron`;
+  - `test:renderer`;
+  - `lint:fix`.
+- Зафиксировать минимальный quality gate перед релизом:
+  - typecheck;
+  - build;
+  - unit tests;
+  - smoke scan.
+
+### P1
+
+- Декомпозировать большие файлы:
+  - `Checker.tsx`;
+  - крупные scanner модули;
+  - большие CSS-файлы.
+- Убрать оставшийся мёртвый код и неиспользуемые переменные.
+- Ввести единый формат ошибок для IPC Handler.
+- Разделить ScanResult и внутренний Finding, если внутренним модулям нужны дополнительные поля.
+
+### Результат фазы
+
+- Проект стабильно собирается.
+- Lint не скрывает реальные проблемы.
+- Новые модули можно добавлять без страха сломать соседние части.
 
 ---
 
-## 🗺️ ОСТАВШИЕСЯ ЗАДАЧИ
+## Фаза 2. Улучшение качества детекта
 
-| # | Задача | Приоритет | Сложность |
-|---|--------|-----------|-----------|
-| E14 | Community JSON формат сигнатур | 🟡 P1 | 🟡 4ч |
-| E19 | Code splitting (lazy load) | 🟢 P2 | 🟢 2ч |
-| E21 | i18n: react-i18next (RU/EN) | 🟡 P1 | 🟡 6ч |
-| E22 | E2E Playwright тесты | 🔴 P0 | 🔴 8ч |
-| S9 | HTTP-only cookie для JWT | 🟡 P1 | 🟢 2ч |
-| A8 | VirusTotal интеграция | 🟡 P1 | 🟡 3ч |
-| A9 | Player leaderboard | 🟢 P2 | 🟡 6ч |
+**Цель:** меньше случайных совпадений, больше доказательной силы.
+
+### P0
+
+- Ввести Evidence Model для Finding:
+  - источник сигнала;
+  - вес сигнала;
+  - confidence;
+  - human explanation;
+  - raw evidence;
+  - timestamp;
+  - related findings.
+- Сделать Risk Score объяснимым:
+  - какие сигналы подняли риск;
+  - какие сигналы были нейтральными;
+  - какие whitelist-правила снизили риск.
+- Ввести “correlation boost”: high-risk ставится увереннее, если совпали независимые слои:
+  - файл + Prefetch;
+  - процесс + DLL/module;
+  - browser history + downloaded file;
+  - registry + process;
+  - DMA hardware + DMA software.
+
+### P1
+
+- Улучшить whitelist:
+  - безопасные игровые моды;
+  - известные легитимные драйверы;
+  - системные пути;
+  - signed binaries;
+  - community whitelist.
+- Добавить quarantine-safe режим:
+  - Predator не удаляет файлы сам;
+  - предлагает путь, объяснение и рекомендацию;
+  - сохраняет доказательства в отчёт.
+- Ввести shadow rules:
+  - новое правило сначала собирает телеметрию;
+  - не влияет на итоговый risk;
+  - после проверки переводится в active.
+
+### P2
+
+- Добавить локальные тестовые наборы:
+  - clean PC fixtures;
+  - suspicious but legal tools;
+  - known cheat traces;
+  - anti-forensic traces.
+
+### Результат фазы
+
+- High-risk Finding становится доказательным объектом, а не просто строкой с совпадением.
+- Модератор понимает, почему ScanResult опасен.
 
 ---
 
-## ⚠️ РИСКИ
+## Фаза 3. Scanner UX и отчёты
 
-| Риск | Вероятность | Влияние | Митигация |
-|------|-----------|--------|-----------|
-| False positives | 🟡 Средняя | 🔴 Высокое | Shadow-mode, FP dashboard |
-| Cheat devs bypass | 🔴 Высокая | 🟡 Среднее | ML + behavioral + hot-reload sigs |
-| Server downtime | 🟢 Низкая | 🔴 Высокое | Оффлайн-режим |
-| DB degradation | 🔴 Высокая | 🟡 Среднее | TTL archival (90д), индексы |
-| Token abuse | 🟡 Средняя | 🔴 Высокое | Device fingerprinting |
+**Цель:** сделать проверку удобной для реального использования.
+
+### P0
+
+- Улучшить экран результатов:
+  - единый список Finding с группировкой по угрозам;
+  - фильтры по risk/type/source;
+  - быстрый поиск по пути, имени, matches, объяснению;
+  - “показать только доказательные high-risk”.
+- Доработать модалку Finding:
+  - таймлайн возникновения следа;
+  - связанные Finding;
+  - объяснение risk score;
+  - что проверяющему спросить у игрока;
+  - копирование доказательств одним кликом.
+- Улучшить экспорт отчёта:
+  - HTML для модератора;
+  - JSON для сервера;
+  - Markdown для ручного разбора;
+  - PDF/print-friendly режим.
+
+### P1
+
+- Добавить Review Summary:
+  - краткий вердикт;
+  - top-5 причин риска;
+  - спорные места;
+  - что требует ручной проверки.
+- Добавить режим “чистая проверка”:
+  - не перегружать пользователя зелёными блоками;
+  - показать, какие Detection Layers были пройдены.
+- Сделать статусы Scan более понятными:
+  - текущий модуль;
+  - сколько осталось примерно;
+  - что делать, если скан завис.
+
+### P2
+
+- Добавить onboarding для модераторов:
+  - как читать отчёт;
+  - что значит high/medium/low;
+  - какие Finding не являются доказательством сами по себе.
+
+### Результат фазы
+
+- Результат Scan можно быстро прочитать, объяснить и отправить.
+- Новичок понимает, что произошло и что делать дальше.
 
 ---
 
-*План поддерживается командой Predator. Обновляется каждый спринт.*
-*Принцип: THINK FIRST → Research → Propose → Implement by stages.*
+## Фаза 4. Производительность и архитектура ScanPipeline
+
+**Цель:** ускорить сканы и сделать ScanPipeline расширяемым.
+
+### P0
+
+- Ввести общий ScanContext для одного запуска:
+  - кеши;
+  - dedup;
+  - telemetry;
+  - cancellation token;
+  - лимиты времени на модуль.
+- Сделать cancellation безопасным:
+  - пользователь может остановить Scan;
+  - временные ресурсы закрываются;
+  - отчёт помечается как incomplete.
+- Добавить timeout per Detection Layer:
+  - process scan;
+  - browser history;
+  - registry;
+  - DMA;
+  - forensic.
+
+### P1
+
+- Перевести тяжёлые операции в worker/child process там, где это оправдано.
+- Добавить incremental scan:
+  - кеш файлов;
+  - modifiedAt/size/hash;
+  - повторно сканировать только изменённое.
+- Ввести профили ScanMode:
+  - quick: только быстрые сигналы;
+  - full: все слои;
+  - forensic: глубокие следы;
+  - dma: hardware/software DMA;
+  - cleaner: anti-forensic.
+
+### P2
+
+- Добавить performance trace:
+  - сколько занял каждый IPC Handler;
+  - какие директории самые тяжёлые;
+  - где происходят задержки.
+
+### Результат фазы
+
+- Quick Scan становится быстрым и предсказуемым.
+- Full Scan не зависает без объяснения.
+- Новые Detection Layers подключаются через понятный контракт.
+
+---
+
+## Фаза 5. Cloud Sync, сервер и админ-панель
+
+**Цель:** превратить Predator в экосистему: desktop app → server → admin review.
+
+### P0
+
+- Укрепить token lifecycle:
+  - generate;
+  - validate;
+  - activate/use;
+  - revoke;
+  - expiration;
+  - device binding.
+- Добавить audit log для ключевых действий:
+  - запуск проверки;
+  - отправка отчёта;
+  - просмотр Finding;
+  - approve/reject модератором;
+  - изменение сигнатур.
+- Сделать server API устойчивым:
+  - request id;
+  - rate limit;
+  - pagination;
+  - единый формат ошибок.
+
+### P1
+
+- Admin review dashboard:
+  - очередь проверок;
+  - фильтр по high-risk;
+  - история игрока/устройства;
+  - diff между проверками;
+  - комментарии модератора.
+- Signature management:
+  - добавить новую signature;
+  - включить shadow mode;
+  - посмотреть hit rate;
+  - отключить шумное правило.
+- False Positive dashboard:
+  - какие правила чаще всего спорные;
+  - какие Finding отменяют модераторы;
+  - какие whitelist-кандидаты повторяются.
+
+### P2
+
+- WebSocket hot reload:
+  - новые signatures;
+  - revoked rules;
+  - server status;
+  - уведомления о новых версиях.
+
+### Результат фазы
+
+- Сигнатуры можно обновлять без релиза клиента.
+- Модераторы получают удобный рабочий процесс.
+- False positive становятся измеримыми.
+
+---
+
+## Фаза 6. Безопасность и защита клиента
+
+**Цель:** снизить риск обхода, подмены и невалидных отчётов.
+
+### P0
+
+- Защитить целостность отчёта:
+  - подпись отчёта;
+  - hash chain для Finding;
+  - отметка версии клиента;
+  - отметка версии signatures.
+- Проверять целостность клиента:
+  - hash исполняемого файла;
+  - version seed;
+  - проверка preload/main bundle;
+  - явное предупреждение при tamper.
+- Укрепить IPC boundary:
+  - валидация входных параметров;
+  - запрет произвольных команд из renderer;
+  - минимальный surface в preload.
+
+### P1
+
+- Улучшить anti-debug/self-protection без вреда для легитимных пользователей.
+- Добавить безопасный degraded mode:
+  - если self-protect недоступен, Scan не падает;
+  - отчёт помечает protection warning.
+- Проверять suspicious environment:
+  - VM;
+  - sandbox;
+  - debugger;
+  - injected DLL.
+
+### P2
+
+- Ввести release signing plan:
+  - code signing certificate;
+  - проверка подписи автообновлений;
+  - reproducible release checklist.
+
+### Результат фазы
+
+- Отчёты сложнее подделать.
+- Клиент устойчивее к вмешательству.
+- Ошибки защиты не ломают обычный Scan.
+
+---
+
+## Фаза 7. Тестирование, QA и релизный процесс
+
+**Цель:** релизы должны быть скучными, предсказуемыми и проверенными.
+
+### P0
+
+- Добавить smoke tests:
+  - запуск приложения;
+  - открытие Checker;
+  - mock scan;
+  - открытие модалки Finding;
+  - export report.
+- Добавить Playwright/Electron E2E:
+  - onboarding;
+  - смена темы;
+  - ScanMode переключение;
+  - поиск по результатам;
+  - музыкальный плеер.
+- Добавить fixtures для scanner модулей.
+
+### P1
+
+- Release checklist:
+  - typecheck;
+  - lint;
+  - tests;
+  - build;
+  - smoke;
+  - changelog;
+  - installer check.
+- Каналы релизов:
+  - dev;
+  - beta;
+  - stable.
+- Автоматический changelog из commit/PR labels.
+
+### P2
+
+- Crash reporting:
+  - renderer errors;
+  - main process errors;
+  - failed IPC Handler;
+  - scan module timeout.
+
+### Результат фазы
+
+- Перед релизом понятно, что проверять.
+- Баги ловятся до пользователей.
+- Откат и диагностика становятся проще.
+
+---
+
+## Фаза 8. Локализация и документация
+
+**Цель:** весь продукт должен быть понятен на русском и английском без хаоса строк в компонентах.
+
+### P0
+
+- Ввести нормальный i18n слой:
+  - `ru`;
+  - `en`;
+  - общий словарь risk/explanations;
+  - отсутствие inline-переводов в больших компонентах.
+- Перевести все пользовательские сообщения:
+  - errors;
+  - scan phases;
+  - Finding explanations;
+  - report export;
+  - settings;
+  - onboarding.
+
+### P1
+
+- Документация для разработчика:
+  - как добавить Detection Layer;
+  - как добавить Signature;
+  - как добавить ScanMode;
+  - как написать тест для IPC Handler.
+- Документация для модератора:
+  - как читать Risk Score;
+  - как отличать доказательство от слабого сигнала;
+  - как разбирать спорные кейсы.
+
+### P2
+
+- Встроенная справка в приложении:
+  - “что значит эта угроза”;
+  - “как читать отчёт”;
+  - “почему Scan может занять долго”.
+
+### Результат фазы
+
+- Тексты не размазаны по компонентам.
+- Документация помогает поддерживать проект без устных объяснений.
+
+---
+
+## 4. Backlog идей
+
+### Scanner
+
+- Community signature pack в JSON/YAML формате.
+- Import/export локальных signatures.
+- Дифф двух Scan по одному ПК.
+- Отдельный forensic-only режим.
+- Улучшенный анализ Prefetch/Amcache/BAM/UserAssist.
+- Проверка известных spoofing tools.
+- Более точный browser history parser с датами и доменами.
+
+### UI/UX
+
+- Command palette.
+- Глобальный поиск по отчёту.
+- Timeline активности.
+- “Evidence board” для одной проверки.
+- Улучшенный empty state после чистого Scan.
+- Compact mode для маленьких экранов.
+- Accessibility audit: focus states, contrast, keyboard navigation.
+
+### Admin
+
+- Очередь проверок.
+- Назначение проверки модератору.
+- Комментарии и финальный verdict.
+- История игрока.
+- Сравнение нескольких отчётов.
+- Экспорт дела в ZIP.
+
+### Security
+
+- Подпись отчётов.
+- Защита update channel.
+- Device fingerprint review.
+- Тампер-индикаторы в отчёте.
+- Safe degraded mode.
+
+### Music Player
+
+- Локальные плейлисты.
+- Горячие клавиши.
+- Последний поиск.
+- История воспроизведения.
+- Выбор источника.
+- Улучшенная обработка недоступных stream URL.
+
+---
+
+## 5. Что не делать без необходимости
+
+- Не добавлять новые high-risk правила без shadow mode или тестовых fixtures.
+- Не делать автоудаление файлов.
+- Не блокировать ПК пользователя.
+- Не превращать UI в “ёлку” из красных предупреждений.
+- Не хранить секреты в renderer.
+- Не расширять preload API без явной необходимости.
+- Не добавлять тяжёлые зависимости ради одной маленькой функции.
+- Не ломать offline Scan ради cloud-фич.
+
+---
+
+## 6. Definition of Done
+
+Любая новая фича считается готовой только если:
+
+- есть понятный user-facing результат;
+- есть обработка ошибок;
+- есть loading/empty state, если это UI;
+- есть тест или fixture для критичной логики;
+- не сломан `npm run build`;
+- новые Finding имеют русское объяснение;
+- новая Detection Layer не создаёт шум без корреляции;
+- документация обновлена, если изменился ScanMode, IPC Handler или формат отчёта.
+
+---
+
+## 7. Ближайший практический план
+
+### Спринт 1
+
+- Довести lint до зелёного состояния.
+- Почистить оставшиеся pre-existing lint errors.
+- Выделить Finding explanation helpers из модалки в отдельный модуль.
+- Добавить тесты на классификацию объяснений Finding.
+
+### Спринт 2
+
+- Ввести Evidence Model.
+- Обновить формат ScanResult/Report.
+- Добавить risk explanation в HTML/Markdown export.
+- Улучшить поиск по результатам Scan.
+
+### Спринт 3
+
+- Добавить smoke/E2E тесты для главного сценария.
+- Улучшить ScanPipeline cancellation/timeout.
+- Сделать performance trace по Detection Layers.
+
+### Спринт 4
+
+- Сделать Admin review queue.
+- Добавить false positive dashboard.
+- Подключить shadow rules management.
+
+---
+
+## 8. Главный ориентир
+
+Predator должен отвечать на три вопроса:
+
+1. **Что найдено?**  
+2. **Почему это подозрительно?**  
+3. **Насколько этому можно доверять?**
+
+Если новая задача не помогает ответить хотя бы на один из этих вопросов — её нужно отложить.

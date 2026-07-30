@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
 
 // ═══════════════════════════════════════════════════
 // MOCKS (set up BEFORE importing modules under test)
@@ -274,7 +275,7 @@ describe('handleGetPcName', () => {
   })
 
   it('falls back to USERNAME env when os.userInfo throws', () => {
-    vi.spyOn(require('os'), 'userInfo').mockImplementationOnce(() => {
+    vi.spyOn(os, 'userInfo').mockImplementationOnce(() => {
       throw new Error('No user info')
     })
     process.env.USERNAME = 'TestFallbackUser'
@@ -283,7 +284,7 @@ describe('handleGetPcName', () => {
   })
 
   it('returns "unknown" as last resort', () => {
-    vi.spyOn(require('os'), 'userInfo').mockImplementationOnce(() => {
+    vi.spyOn(os, 'userInfo').mockImplementationOnce(() => {
       throw new Error('No user info')
     })
     delete process.env.USERNAME
