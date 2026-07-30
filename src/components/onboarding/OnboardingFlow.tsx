@@ -141,7 +141,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 </button>
               </div>
               <div className="onb-step-actions">
-                <button className="start-button btn btn-primary" onClick={onNextLang}>
+                <button className="start-button" onClick={onNextLang}>
                   {t('next')}
                 </button>
               </div>
@@ -239,7 +239,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 </div>
                 {(tokenError || authError) && <p className="token-error">{tokenError || authError}</p>}
               </div>
-              <button className="start-button btn btn-primary" onClick={onNextAuth} disabled={authLoading} style={{ marginTop: 8 }}>
+              <button className="start-button" onClick={onNextAuth} disabled={authLoading} style={{ marginTop: 8 }}>
                 {authLoading ? (
                   <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, position: 'relative', display: 'inline-block' }}>
                     <span className="spinner-ring" style={{ position: 'absolute', inset: 0 }} />

@@ -1215,23 +1215,5 @@ body {
    SPRING BUTTON COMPONENT BASE
    ═══════════════════════════════════════════════════ */
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  font-family: inherit;
-  cursor: pointer;
-  transition: color var(--duration-normal) ease, background var(--duration-normal) ease, border-color var(--duration-normal) ease;
-}
-
-.btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent-red) 60%, transparent);
-  outline-offset: 2px;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* .btn → используй .btn из App.css */
 
