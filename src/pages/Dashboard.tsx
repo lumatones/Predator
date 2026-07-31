@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import type { SystemInfoSnapshot } from '../types/electron'
 import ServerStatus from '../components/ServerStatus'
 import { SkeletonGauge, SkeletonCard, SkeletonTable } from '../components/ui/Skeleton'
@@ -26,6 +26,9 @@ const T: Record<string, Record<string, string>> = {
     cores: 'ядер',
     online: 'Работает',
     loading: 'Загрузка...',
+    search: 'Поиск по процессам, именам читов, директориям...',
+    searchNoResults: 'Ничего не найдено',
+    path: 'Путь',
   },
   en: {
     title: 'System Monitor',
@@ -43,6 +46,9 @@ const T: Record<string, Record<string, string>> = {
     cores: 'cores',
     online: 'Online',
     loading: 'Loading...',
+    search: 'Search by process, cheat names, directories...',
+    searchNoResults: 'Nothing found',
+    path: 'Path',
   },
 }
 
@@ -121,15 +127,14 @@ function Gauge({ value, label, sub, color, size = 100 }: {
 export default function Dashboard({ lang, onBack }: DashboardProps) {
   const t = (key: string) => T[lang][key] || key
   const [snapshot, setSnapshot] = useState<SystemInfoSnapshot | null>(null)
-  const [processFilter, setProcessFilter] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const isMounted = useRef(true)
 
   useEffect(() => {
     return () => { isMounted.current = false }
   }, [])
 
-  useEffect(() => {
-    // Dev mode — use mock data with periodic updates
+  useEffect(() => {      // Dev mode — use mock data with periodic updates
     function mockSnapshot() {
       const totalMem = 16
       const usedMem = 5.2 + Math.random() * 2
@@ -140,16 +145,16 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
         uptime: { days: 0, hours: 2, minutes: 15 + Math.round(Math.random() * 30) },
         os: { platform: 'win32', release: '10.0.26100', arch: 'x64', hostname: 'DEV-PC' },
         processes: [
-          { pid: 4821, name: 'Predator.exe', memoryMB: 89, cpuPercent: 0 },
-          { pid: 1234, name: 'chrome.exe', memoryMB: 452, cpuPercent: 0 },
-          { pid: 5678, name: 'Discord.exe', memoryMB: 234, cpuPercent: 0 },
-          { pid: 9012, name: 'explorer.exe', memoryMB: 118, cpuPercent: 0 },
-          { pid: 3456, name: 'spotify.exe', memoryMB: 167, cpuPercent: 0 },
-          { pid: 7890, name: 'Code.exe', memoryMB: 312, cpuPercent: 0 },
-          { pid: 1111, name: 'System', memoryMB: 45, cpuPercent: 0 },
-          { pid: 2222, name: 'svchost.exe', memoryMB: 34, cpuPercent: 0 },
-          { pid: 3333, name: 'powershell.exe', memoryMB: 67, cpuPercent: 0 },
-          { pid: 4444, name: 'msedge.exe', memoryMB: 198, cpuPercent: 0 },
+          { pid: 4821, name: 'Predator.exe', memoryMB: 89, cpuPercent: 0, path: 'C:\\Program Files\\Predator\\Predator.exe' },
+          { pid: 1234, name: 'chrome.exe', memoryMB: 452, cpuPercent: 0, path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' },
+          { pid: 5678, name: 'Discord.exe', memoryMB: 234, cpuPercent: 0, path: 'C:\\Users\\Luma\\AppData\\Local\\Discord\\app-1.0.9171\\Discord.exe' },
+          { pid: 9012, name: 'explorer.exe', memoryMB: 118, cpuPercent: 0, path: 'C:\\Windows\\explorer.exe' },
+          { pid: 3456, name: 'spotify.exe', memoryMB: 167, cpuPercent: 0, path: 'C:\\Users\\Luma\\AppData\\Roaming\\Spotify\\Spotify.exe' },
+          { pid: 7890, name: 'Code.exe', memoryMB: 312, cpuPercent: 0, path: 'C:\\Users\\Luma\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe' },
+          { pid: 1111, name: 'System', memoryMB: 45, cpuPercent: 0, path: 'C:\\Windows\\System32\\ntoskrnl.exe' },
+          { pid: 2222, name: 'svchost.exe', memoryMB: 34, cpuPercent: 0, path: 'C:\\Windows\\System32\\svchost.exe' },
+          { pid: 3333, name: 'powershell.exe', memoryMB: 67, cpuPercent: 0, path: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' },
+          { pid: 4444, name: 'msedge.exe', memoryMB: 198, cpuPercent: 0, path: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' },
         ],
         timestamp: Date.now(),
       })
@@ -178,11 +183,16 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
     return () => clearInterval(pollTimer)
   }, [])
 
-  const filteredProcesses = snapshot
-    ? snapshot.processes.filter(p =>
-        !processFilter || p.name.toLowerCase().includes(processFilter.toLowerCase())
-      )
-    : []
+  const filteredProcesses = useMemo(() => {
+    if (!snapshot) return []
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return snapshot.processes
+    return snapshot.processes.filter(p => {
+      return p.name.toLowerCase().includes(q) ||
+        String(p.pid).includes(q) ||
+        (p.path && p.path.toLowerCase().includes(q))
+    })
+  }, [snapshot, searchQuery])
 
   return (
     <div className="dash-wrapper">
@@ -253,35 +263,69 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
             </div>
           </div>
 
+          {/* ── Global Search ── */}
+          <div className="dash-search">
+            <svg className="dash-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              className="dash-search-input"
+              placeholder={t('search')}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="dash-search-clear" onClick={() => setSearchQuery('')} aria-label="Clear">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
+            {searchQuery && (
+              <span className="dash-search-count">{filteredProcesses.length}/{snapshot.processes.length}</span>
+            )}
+          </div>
+
           {/* ── Process List ── */}
           <div className="dash-processes card-section">
             <div className="dash-processes-header">
               <span className="dash-card-label">{t('processes')} ({snapshot.processes.length})</span>
-              <input
-                type="text"
-                className="dash-process-filter"
-                placeholder="Filter..."
-                value={processFilter}
-                onChange={e => setProcessFilter(e.target.value)}
-              />
             </div>
-            <div className="dash-process-list">
-              <div className="dash-process-row header">
-                <span className="dash-pid">PID</span>
-                <span className="dash-pname">{t('processName')}</span>
-                <span className="dash-pmem">{t('mem')}</span>
-              </div>
-              {filteredProcesses.map((p, i) => (
-                <div key={`${p.pid}-${i}`} className="dash-process-row" style={{ animationDelay: `${i * 0.02}s` }}>
-                  <span className="dash-pid">{p.pid}</span>
-                  <span className="dash-pname">
-                    <span className="dash-pname-dot" />
-                    {p.name}
-                  </span>
-                  <span className="dash-pmem">{p.memoryMB} MB</span>
+            {filteredProcesses.length > 0 ? (
+              <div className="dash-process-list">
+                <div className="dash-process-row header">
+                  <span className="dash-pid">PID</span>
+                  <span className="dash-pname">{t('processName')}</span>
+                  <span className="dash-ppath">{t('path')}</span>
+                  <span className="dash-pmem">{t('mem')}</span>
                 </div>
-              ))}
-            </div>
+                {filteredProcesses.map((p, i) => {
+                  return (
+                    <div key={`${p.pid}-${i}`} className="dash-process-row" style={{ animationDelay: `${i * 0.02}s` }}>
+                      <span className="dash-pid">{p.pid}</span>
+                      <span className="dash-pname">
+                        <span className="dash-pname-dot" />
+                        {p.name}
+                      </span>
+                      <span className="dash-ppath" title={p.path}>{p.path ? (p.path.length > 40 ? '...' + p.path.slice(-37) : p.path) : '—'}</span>
+                      <span className="dash-pmem">{p.memoryMB} MB</span>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="dash-search-empty">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" style={{ opacity: 0.3 }}>
+                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+                  <line x1="8" y1="11" x2="14" y2="11" strokeWidth="2" opacity="0.5" />
+                </svg>
+                <span>{t('searchNoResults')}</span>
+                <button className="dash-search-reset" onClick={() => setSearchQuery('')}>
+                  {lang === 'ru' ? 'Сбросить поиск' : 'Reset search'}
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}

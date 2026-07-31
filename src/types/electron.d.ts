@@ -106,6 +106,8 @@ export interface SystemProcess {
   name: string
   memoryMB: number
   cpuPercent: number
+  /** Full executable path (available on Windows) */
+  path?: string
 }
 
 export interface SystemInfoSnapshot {
