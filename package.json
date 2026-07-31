@@ -41,7 +41,7 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
@@ -67,7 +67,6 @@
       "installerHeader": "resources/installer-header.bmp",
       "uninstallerSidebar": "resources/installer-sidebar.bmp",
       "license": "LICENSE.txt",
-      "include": "resources/installer.nsh",
       "guid": "7A9F8B3C-5D6E-4F1A-8B2C-9D0E1F2A3B4C",
       "unicode": true
     },

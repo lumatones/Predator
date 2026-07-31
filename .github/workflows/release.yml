@@ -60,11 +60,17 @@ jobs:
           EXE_FILES=(release/Predator-*.exe)
           YML_FILES=(release/latest*.yml)
           ALL_FILES=("${EXE_FILES[@]}" "${YML_FILES[@]}")
-          if [ ${#ALL_FILES[@]} -gt 0 ]; then
-            gh release create "${{ github.ref_name }}" "${ALL_FILES[@]}" --generate-notes
-          else
+          if [ ${#ALL_FILES[@]} -eq 0 ]; then
             echo "No files to upload — build may have failed"
             exit 1
           fi
+          # gh release create fails with 422 if a release for this tag already
+          # exists (e.g. created manually on the web UI). Delete the stale
+          # release first — the tag stays, so we can safely re-create it.
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            echo "Existing release found — deleting it and re-creating"
+            gh release delete "${{ github.ref_name }}" --yes
+          fi
+          gh release create "${{ github.ref_name }}" "${ALL_FILES[@]}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

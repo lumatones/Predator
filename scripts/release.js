@@ -198,7 +198,7 @@ function uploadAsset(uploadUrl, filePath, fileName) {
       body: `## ${TAG} — UI-апгрейд + багфиксы + удалённый сервер\n\n` +
             `### 🚀 Новое\n` +
             `- Админ-панель: убран мок-API, все запросы идут на реальный сервер\n` +
-            `- API-сервер переведён на ${OWNER}/${REPO}` +
+            `- API-сервер переведён на ${OWNER}/${REPO}:3001\n` +
             `- WebSocket в админке подключается напрямую к серверу\n` +
             `- Дефолтный apiUrl в Electron-конфиге — ${OWNER}/${REPO}:3001\n\n` +
             `### 🐛 Исправления\n` +
@@ -223,10 +223,16 @@ function uploadAsset(uploadUrl, filePath, fileName) {
 
   // Step 5: Upload files
   console.log(`\n${c.cyan}[5/5]${c.reset} Upload assets...`)
+  const BLOCKMAP_PATH = `${EXE_PATH}.blockmap`
   const files = [
     { path: EXE_PATH, name: EXE_NAME },
     { path: YML_PATH, name: 'latest.yml' },
+    // Differential-update blockmap (NSIS) — electron-updater derives the
+    // blockmap URL by appending ".blockmap" to the file URL, so the asset
+    // must be named "<exe>.blockmap" and sit next to the exe.
+    ...(fs.existsSync(BLOCKMAP_PATH) ? [{ path: BLOCKMAP_PATH, name: `${EXE_NAME}.blockmap` }] : []),
   ]
+  const failedUploads = []
   for (const file of files) {
     const mb = (fs.statSync(file.path).size / 1024 / 1024).toFixed(1)
     log(`Uploading ${file.name} (${mb} MB)...`)
@@ -235,7 +241,13 @@ function uploadAsset(uploadUrl, filePath, fileName) {
       ok(`${file.name}`)
     } else {
       fail(`${file.name}: ${result.data?.message || result.status}`)
+      failedUploads.push(file.name)
     }
+  }
+
+  if (failedUploads.length > 0) {
+    fail(`Релиз ${TAG} НЕ завершён — не удалось загрузить: ${failedUploads.join(', ')}`)
+    process.exit(1)
   }
 
   console.log(`\n  ${c.green}${c.bold}✅ Релиз ${TAG} готов!${c.reset}`)
