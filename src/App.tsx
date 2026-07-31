@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import Checker from './pages/Checker'
 import Dashboard from './pages/Dashboard'
@@ -260,19 +260,29 @@ const renderCard = (children: React.ReactNode) => (
 )
 
 const phaseVariants = {
-  initial: { opacity: 0, filter: 'blur(10px)', scale: 0.95 },
-  animate: { opacity: 1, filter: 'blur(0px)', scale: 1 },
-  exit: { opacity: 0, filter: 'blur(10px)', scale: 0.95 },
+  initial: (dir: number) => ({ opacity: 0, filter: 'blur(10px)', scale: 0.95, x: dir > 0 ? 30 : -30 }),
+  animate: { opacity: 1, filter: 'blur(0px)', scale: 1, x: 0 },
+  exit: (dir: number) => ({ opacity: 0, filter: 'blur(10px)', scale: 0.95, x: dir > 0 ? -30 : 30 }),
 }
 
-const entryTransition = { duration: 0.55, ease: [0.16, 1, 0.3, 1] as const }
+const entryTransition = { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const }
 
-const PageWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const phaseOrder: Record<string, number> = {
+  'onboarding-welcome': 0, 'onboarding-lang': 1, 'onboarding-theme': 2,
+  'onboarding-auth': 3, 'onboarding-demo': 4,
+  'loading': 5, 'requesting-access': 6, 'main': 7, 'checker': 8, 'dashboard': 9,
+}
+
+const PageWrapper: React.FC<{ children: React.ReactNode; phase: string }> = ({ children, phase }) => {
   const reducedMotion = useReducedMotion()
   const isReduced = reducedMotion !== false
+  const prevRef = useRef(phase)
+  const dir = (phaseOrder[phase] ?? 0) >= (phaseOrder[prevRef.current] ?? 0) ? 1 : -1
+  useEffect(() => { prevRef.current = phase }, [phase])
   return (
     <motion.div
       className="phase-motion"
+      custom={dir}
       variants={phaseVariants}
       initial="initial"
       animate="animate"
@@ -352,7 +362,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  const t = React.useMemo(() => (key: string) => T[lang][key] || key, [lang])
+  const t = useMemo(() => (key: string) => T[lang][key] || key, [lang])
 
   const c = THEMES[theme]
   const subtitle = t('title')
@@ -368,7 +378,7 @@ const App: React.FC = () => {
       <div className="container">
         <Logo subtitle={subtitle} />
         {phase.startsWith('onboarding-') && (
-          <PageWrapper key="onboarding">
+          <PageWrapper key="onboarding" phase={phase}>
             <ErrorBoundary name="Onboarding">
             <OnboardingFlow
               phase={phase}
@@ -402,22 +412,22 @@ const App: React.FC = () => {
         )}
 
         <AnimatePresence mode="wait">
-          {phase === 'loading' && <PageWrapper key="loading">{renderCard(<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}><Skeleton width="64px" height="64px" radius="50%" /><Skeleton width="70%" height="16px" /><Skeleton width="50%" height="12px" /><Skeleton width="100%" height="6px" radius="3px" /></div>)}</PageWrapper>}
+          {phase === 'loading' && <PageWrapper key="loading" phase={phase}>{renderCard(<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, width: '100%' }}><Skeleton width="64px" height="64px" radius="50%" /><Skeleton width="70%" height="16px" /><Skeleton width="50%" height="12px" /><Skeleton width="100%" height="6px" radius="3px" /></div>)}</PageWrapper>}
 
-          {phase === 'requesting-access' && <PageWrapper key="requesting-access">{renderCard(<>
+          {phase === 'requesting-access' && <PageWrapper key="requesting-access" phase={phase}>{renderCard(<>
           {(!requestStatus || requestStatus === 'pending') && (<><p className="onb-label">{t('requestSent')}</p><div className="request-id-badge">{t('requestId')}: #{requestId || '...'}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', margin: '8px 0' }}><Skeleton width="100%" height="12px" /><Skeleton width="80%" height="12px" /><Skeleton width="60%" height="12px" /></div><Button className="skip-button" variant="ghost" onClick={() => { cancelRequest(); setPhase('onboarding-auth') }}>{t('cancel')}</Button></>)}
           {requestStatus === 'approved' && (<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('requestApproved')}</p><p className="status-text" style={{ animation: 'none' }}>Перенаправление...</p></>)}
           {requestStatus === 'rejected' && (<><div className="error-icon-dl"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#EF4444" strokeWidth="2" /><line x1="16" y1="16" x2="32" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /><line x1="32" y1="16" x2="16" y2="32" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" /></svg></div><p className="status-text" style={{ color: '#EF4444', animation: 'none' }}>{t('requestRejected')}</p><Button className="start-button" onClick={() => setPhase('onboarding-auth')}>{t('authBtn')}</Button></>)}
         </>)}</PageWrapper>}
 
-          {phase === 'main' && <PageWrapper key="main"><ErrorBoundary name="MainMenu">{renderCard(<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('ready')}</p>
+          {phase === 'main' && <PageWrapper key="main" phase={phase}><ErrorBoundary name="MainMenu">{renderCard(<><div className="ready-icon"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" stroke="#22c55e" strokeWidth="2" /><path d="M16 24L22 30L32 18" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></div><p className="ready-text">{t('ready')}</p>
           <div className="main-cards">
-            <Magnetic><button className="main-card" onClick={hStartChecker}><div className="main-card-icon"><IconShield size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('startCheck')}</span><span className="main-card-desc">Deep scan for files, processes, registry, network, and memory anomalies.</span></div><span className="main-card-arrow">→</span></button></Magnetic>
-            <Magnetic><button className="main-card" onClick={hStartDashboard}><div className="main-card-icon"><IconDashboard size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('dashboard')}</span><span className="main-card-desc">Live system overview with streaming snapshots and runtime telemetry.</span></div><span className="main-card-arrow">→</span></button>            </Magnetic>
+            <Magnetic><motion.button className="main-card" onClick={hStartChecker} whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}><div className="main-card-icon"><IconShield size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('startCheck')}</span><span className="main-card-desc">Deep scan for files, processes, registry, network, and memory anomalies.</span></div><span className="main-card-arrow">→</span></motion.button></Magnetic>
+            <Magnetic><motion.button className="main-card" onClick={hStartDashboard} whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.96 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}><div className="main-card-icon"><IconDashboard size={24} color="#fff" /></div><div className="main-card-body"><span className="main-card-title">{t('dashboard')}</span><span className="main-card-desc">Live system overview with streaming snapshots and runtime telemetry.</span></div><span className="main-card-arrow">→</span></motion.button></Magnetic>
           </div></>)}</ErrorBoundary></PageWrapper>}
 
-          {phase === 'checker' && <PageWrapper key="checker"><ErrorBoundary name="Checker"><Checker lang={lang} tokenId={tokenId} onBack={hBackToMain} accent={c.accent} light={c.light} dark={c.dark} /></ErrorBoundary></PageWrapper>}
-          {phase === 'dashboard' && <PageWrapper key="dashboard"><ErrorBoundary name="Dashboard"><Dashboard lang={lang} onBack={hBackToMain} /></ErrorBoundary></PageWrapper>}
+          {phase === 'checker' && <PageWrapper key="checker" phase={phase}><ErrorBoundary name="Checker"><Checker lang={lang} tokenId={tokenId} onBack={hBackToMain} accent={c.accent} light={c.light} dark={c.dark} /></ErrorBoundary></PageWrapper>}
+          {phase === 'dashboard' && <PageWrapper key="dashboard" phase={phase}><ErrorBoundary name="Dashboard"><Dashboard lang={lang} onBack={hBackToMain} /></ErrorBoundary></PageWrapper>}
         </AnimatePresence>
 
         {burnState && (
@@ -430,18 +440,18 @@ const App: React.FC = () => {
         )}
       {(phase === 'main' || phase === 'checker' || phase === 'dashboard') && (
         <div className="floating-buttons">
-          <button className="settings-trigger" onClick={() => setMusicOpen(true)} title="Music">
+          <motion.button className="settings-trigger" onClick={() => setMusicOpen(true)} title="Music" whileHover={{ scale: 1.08, y: -1 }} whileTap={{ scale: 0.93 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
             </svg>
             <span className="settings-trigger-label">{lang === 'ru' ? 'Музыка' : 'Music'}</span>
-          </button>
-          <button className="settings-trigger" onClick={() => setSettingsOpen(true)} title="Settings">
+          </motion.button>
+          <motion.button className="settings-trigger" onClick={() => setSettingsOpen(true)} title="Settings" whileHover={{ scale: 1.08, y: -1 }} whileTap={{ scale: 0.93 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
             <span className="settings-trigger-label">{lang === 'ru' ? 'Настройки' : 'Settings'}</span>
-          </button>
+          </motion.button>
         </div>
       )}        <SettingsPanel
         open={settingsOpen}

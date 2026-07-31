@@ -125,25 +125,31 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               <p className="onb-label">{t('langTitle')}</p>
               <p className="onb-desc">{t('langDesc')}</p>
               <div className="lang-grid">
-                <button
+                <motion.button
                   className={`lang-btn${lang === 'ru' ? ' active' : ''}`}
                   onClick={() => onSetLang('ru')}
+                  whileHover={{ scale: 1.04, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                 >
                   <span className="lang-flag">🇷🇺</span>
                   <span className="lang-name">{t('langRu')}</span>
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   className={`lang-btn${lang === 'en' ? ' active' : ''}`}
                   onClick={() => onSetLang('en')}
+                  whileHover={{ scale: 1.04, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                 >
                   <span className="lang-flag">🇬🇧</span>
                   <span className="lang-name">{t('langEn')}</span>
-                </button>
+                </motion.button>
               </div>
               <div className="onb-step-actions">
-                <button className="start-button" onClick={onNextLang}>
+                <motion.button className="start-button" onClick={onNextLang} whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.95 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
                   {t('next')}
-                </button>
+                </motion.button>
               </div>
             </>
           )}
@@ -198,13 +204,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 ))}
               </div>
               <div className="onb-step-actions">
-                <button
+                <motion.button
                   className="start-button adaptive-accent"
                   style={{ '--btn-accent': themes[theme].accent } as React.CSSProperties}
                   onClick={onNextTheme}
+                  whileHover={{ scale: 1.02, y: -1 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                 >
                   {t('next')}
-                </button>
+                </motion.button>
               </div>
             </>
           )}
@@ -239,16 +248,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 </div>
                 {(tokenError || authError) && <p className="token-error">{tokenError || authError}</p>}
               </div>
-              <button className="start-button" onClick={onNextAuth} disabled={authLoading} style={{ marginTop: 8 }}>
+              <motion.button className="start-button" onClick={onNextAuth} disabled={authLoading} style={{ marginTop: 8 }} whileHover={authLoading ? undefined : { scale: 1.02, y: -1 }} whileTap={authLoading ? undefined : { scale: 0.95 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
                 {authLoading ? (
                   <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, position: 'relative', display: 'inline-block' }}>
                     <span className="spinner-ring" style={{ position: 'absolute', inset: 0 }} />
                   </span> Проверка...</>
                 ) : t('authBtn')}
-              </button>
-              <button className="skip-button btn btn-ghost" onClick={onRequestAccess} disabled={authLoading}>
+              </motion.button>
+              <motion.button className="skip-button btn btn-ghost" onClick={onRequestAccess} disabled={authLoading} whileHover={authLoading ? undefined : { scale: 1.02 }} whileTap={authLoading ? undefined : { scale: 0.96 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
                 {t('authAlt')}
-              </button>
+              </motion.button>
             </>
           )}
 

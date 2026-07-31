@@ -123,27 +123,33 @@ export const CompactScanOverlay: React.FC<CompactScanOverlayProps> = memo(functi
             </div>
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
-            <button
+            <motion.button
               className="compact-btn"
               onClick={onExpand}
               title={t('expand')}
               style={{ padding: '4px 8px', fontSize: 12 }}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
                 <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
               </svg>
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               className="compact-btn"
               onClick={onClose}
               title={t('close')}
               style={{ padding: '4px 8px', fontSize: 12 }}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
-            </button>
+            </motion.button>
           </div>
         </div>
 
