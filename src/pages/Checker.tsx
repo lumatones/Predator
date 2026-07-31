@@ -20,6 +20,7 @@ import { FileDetailModal } from '../components/ui/FileDetailModal'
 import { ThreatMap } from '../components/ui/ThreatMap'
 import { ApcDashboard } from '../components/ui/ApcDashboard'
 import { CompactScanOverlay } from '../components/ui/CompactScanOverlay'
+import { Tooltip } from '../components/ui/Tooltip'
 import { ScanningDots } from '../components/ui/AnimatedIcons'
 import { useSound } from '../hooks/useSound'
 import {
@@ -733,10 +734,10 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <ScanningDots size={20} color={accent} />
-            <button
+            <Tooltip content={lang === 'ru' ? 'Компактный режим: скрывает терминал сканирования и показывает мини-окно с прогрессом. Удобно для фонового сканирования.' : 'Compact mode: hides the scan terminal and shows a mini progress window. Ideal for background scanning.'}>
+              <button
               className={`checker-compact-toggle${compactMode ? ' active' : ''}`}
               onClick={() => setCompactMode(c => !c)}
-              title="Компактный режим"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 {compactMode ? (
@@ -747,6 +748,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
               </svg>
               {compactMode ? (lang === 'ru' ? 'Развернуть' : 'Expand') : (lang === 'ru' ? 'Компактно' : 'Compact')}
             </button>
+            </Tooltip>
           </div>
           {!compactMode && (
             <ScanTerminal
