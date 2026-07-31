@@ -1,17 +1,18 @@
 # Predator — UI/UX Аудит
 
-> 2026-07-31 · 4 проверки: Refactoring UI, UX Heuristics, P2 Unification, Microinteractions
+> 2026-07-31 · 5 проверок: Refactoring UI, UX Heuristics, P2 Unification, Microinteractions v1, Microinteractions v2
 
 ---
 
-## Сводная оценка: 7.7/10
+## Сводная оценка: 8.2/10
 
 | Аудит | До | После | Коммит |
 |-------|----|-------|--------|
 | Refactoring UI (дизайн) | 6.0 | 7.5 | `5cf7261` |
 | UX Heuristics (usability) | 6.3 | 8.0 | `f6dcbd8` |
 | P2 Unification (цвета/ширина) | — | — | `502a86a` |
-| Microinteractions (фидбек) | 5.0 | 7.5 | `1775be2` |
+| Microinteractions v1 (фидбек) | 5.0 | 7.5 | `1775be2` |
+| Microinteractions v2 (кнопки/переходы) | 7.5 | 8.5 | `2a90a52` |
 
 ---
 
@@ -103,9 +104,9 @@
 
 ---
 
-## 4. Microinteractions — фидбек и анимации
+## 4. Microinteractions v1 — фидбек и анимации
 
-### Что добавлено
+### Что добавлено (v1)
 
 | Микровзаимодействие | Триггер | Фидбек |
 |---------------------|---------|--------|
@@ -114,18 +115,34 @@
 | Чистая система | phase=done + 0 угроз | 5 искр (подъём + fade) + зелёный pulse-rim |
 | Результаты найдены | phase=done + угрозы > 0 | shake на warning-иконке (уже было) |
 
+## 5. Microinteractions v2 — кнопки и переходы
+
+### Что добавлено (v2)
+
+| Компонент | Триггер | Фидбек |
+|-----------|---------|--------|
+| **main-card** (Checker/Dashboard) | Hover/Tap | scale 1.02→0.96, lift −2px |
+| **settings-trigger** (Музыка/Настройки) | Hover/Tap | scale 1.08→0.93, lift −1px |
+| **lang-btn** (выбор языка) | Hover/Tap | scale 1.04→0.95 |
+| **start-button** (3 шт в онбординге) | Hover/Tap | scale 1.02→0.95 |
+| **skip-button** (auth) | Hover/Tap | scale 1.02→0.96, disabled учтён |
+| **close-кнопки** (Settings + FileDetail) | Hover | rotate 90° + scale 1.1 (signature!) |
+| **expand/close** (CompactOverlay) | Hover/Tap | scale 1.1→0.9 |
+| **Фазовые переходы** | Навигация вперёд/назад | directional slide (±30px) + blur |
+| **Compact mode toggle** | Hover (400ms delay) | Tooltip с пояснением что скрывается |
+
 ### Quick Diagnostic (Saffer)
 
 | # | Проверка | Было | Стало |
 |---|----------|------|-------|
-| 1 | Обнаружимый триггер | 7 | 7 |
-| 2 | Состояние триггера | 6 | 7 |
+| 1 | Обнаружимый триггер | 7 | **8** |
+| 2 | Состояние триггера | 6 | **8** |
 | 3 | Правила предсказуемы | 7 | 7 |
-| 4 | Мгновенный фидбек | 4 | 7 |
-| 5 | Фидбек = значимость | 5 | 7 |
+| 4 | Мгновенный фидбек | 4 | **8** |
+| 5 | Фидбек = значимость | 5 | **8** |
 | 6 | Эволюция во времени | 4 | 4 |
 | 7 | Без лишних режимов | 5 | 5 |
-| 8 | Понятно новичку | 6 | 6 |
+| 8 | Понятно новичку | 6 | **7** |
 
 ---
 
@@ -140,6 +157,7 @@
 | P1 | Дублирование стилей | ✅ Кнопки + ProgressBar унифицированы |
 | P2 | Нет автоскролла в терминале | ✅ Исправлено (requestAnimationFrame) |
 | P2 | Skeleton-экраны | ✅ Добавлены в Checker при смене вкладок |
+| P2 | Tooltip для Compact mode | ✅ Добавлен с билингвальным текстом (`425807d`) |
 | P3 | Toast-система | ✅ Radix ToastProvider используется |
 
 ---
@@ -149,7 +167,6 @@
 | Приоритет | Задача |
 |-----------|--------|
 | P2 | Поиск на Dashboard |
-| P2 | Long-loop tooltip для Compact mode (исчезает после 3-го раза) |
 | P3 | Заменить хардкод-цвета в 3D-компонентах (PredatorLogo3D, ParticleBackground) |
 | P3 | Применить `.text-prose` к текстовым блокам |
 | P3 | Адаптивные брейкпоинты: унифицировать 480/768/1024 |
