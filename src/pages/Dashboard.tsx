@@ -254,7 +254,7 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
           </div>
 
           {/* ── Process List ── */}
-          <div className="dash-processes">
+          <div className="dash-processes card-section">
             <div className="dash-processes-header">
               <span className="dash-card-label">{t('processes')} ({snapshot.processes.length})</span>
               <input

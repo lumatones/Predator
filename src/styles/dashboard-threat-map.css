@@ -3,23 +3,14 @@
    ═══════════════════════════════════════════════════ */
 
 .threat-map {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5);
   margin-top: var(--space-4);
-  transition: border-color var(--duration-fast);
 }
 
-.threat-map:hover { border-color: var(--border-hover); }
-
 .threat-map-title {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-muted);
   font-weight: var(--fw-semibold);
-  margin-bottom: var(--space-3);
 }
 
 .threat-map-bars {

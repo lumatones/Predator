@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "high-perf-browser": {
+      "source": "wondelai/skills",
+      "sourceType": "github",
+      "skillPath": "high-perf-browser/SKILL.md",
+      "computedHash": "e4c44e2ae5aefb392933a37be1c0b14ae4d83f5c99a1d443d1616222b3c7b789"
+    },
+    "microinteractions": {
+      "source": "wondelai/skills",
+      "sourceType": "github",
+      "skillPath": "microinteractions/SKILL.md",
+      "computedHash": "ea3179480ecf165792629015f2faebbe8bc60c8b169c0860e4702e668e002324"
+    },
+    "refactoring-ui": {
+      "source": "wondelai/skills",
+      "sourceType": "github",
+      "skillPath": "refactoring-ui/SKILL.md",
+      "computedHash": "ae02c7c2b3685df24ca66836dff7a01efac1ed213b9d6963273c354cd9fe57b1"
+    },
+    "ux-heuristics": {
+      "source": "wondelai/skills",
+      "sourceType": "github",
+      "skillPath": "ux-heuristics/SKILL.md",
+      "computedHash": "25e39fa1e5d800ed9ac6a85bb65181eecb3248e5b8d2f77ba351d2621285fa89"
+    },
+    "working-with-legacy-code": {
+      "source": "wondelai/skills",
+      "sourceType": "github",
+      "skillPath": "working-with-legacy-code/SKILL.md",
+      "computedHash": "88decd4342ad273f3d79eac9981c86110f73f01805c77be82adb05a2cbc87f2e"
+    }
+  }
+}

@@ -766,7 +766,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       {phase === 'done' && (
         <div className="checker-results">
           {summary && (
-            <div className={`checker-summary${summary.suspiciousFiles > 0 ? ' warning-active' : ' safe'}`}>
+            <div className={`checker-summary card-section${summary.suspiciousFiles > 0 ? ' warning-active' : ' safe'}`}>
               <div className={`checker-summary-icon ${summary.suspiciousFiles > 0 ? 'warning' : 'safe'}`}>
                 {summary.suspiciousFiles > 0 ? (
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

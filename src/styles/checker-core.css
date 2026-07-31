@@ -523,8 +523,7 @@
   gap: var(--space-3);
   padding: var(--space-6);
   background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  /* border + radius via .card-section */
   animation: summaryPopIn 0.5s var(--ease-out) both;
   position: relative;
   overflow: hidden;

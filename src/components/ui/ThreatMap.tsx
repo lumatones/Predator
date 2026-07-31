@@ -106,8 +106,8 @@ export const ThreatMap: React.FC<ThreatMapProps> = ({ results }) => {
   if (regions.length === 0) return null
 
   return (
-    <div className="threat-map">
-      <h4 className="threat-map-title">Threat Distribution</h4>
+    <div className="threat-map card-section">
+      <h4 className="threat-map-title section-title">Threat Distribution</h4>
       <div className="threat-map-bars">
         {regions.map((region, i) => (
           <motion.div

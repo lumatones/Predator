@@ -1,9 +1,7 @@
 /* ── Process List ── */
 .dash-processes {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
   padding: var(--space-4);
+  /* background/border/radius via .card-section */
 }
 
 .dash-processes-header {

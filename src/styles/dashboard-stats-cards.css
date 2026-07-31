@@ -45,20 +45,12 @@
 
 /* ── Sections ── */
 .stats-section {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
   padding: var(--space-4);
   margin-bottom: var(--space-3);
 }
 
 .stats-section-title {
+  /* uses .section-title base */
   display: block;
-  font-size: var(--text-xs);
-  font-weight: var(--fw-bold);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: var(--space-3);
 }
 
