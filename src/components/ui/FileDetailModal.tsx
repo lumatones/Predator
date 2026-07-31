@@ -116,7 +116,7 @@ export const FileDetailModal: React.FC<FileDetailModalProps> = ({
             </div>
 
             <div className="filedetail-section">
-              <h4 className="filedetail-section-title">{lang === 'ru' ? 'Ключевые индикаторы' : 'Key indicators'}</h4>
+              <h4 className="filedetail-section-title section-title">{lang === 'ru' ? 'Ключевые индикаторы' : 'Key indicators'}</h4>
               <ul className="filedetail-indicators">
                 {summary.indicators.map((indicator, i) => (
                   <li key={i}>{indicator}</li>
@@ -125,7 +125,7 @@ export const FileDetailModal: React.FC<FileDetailModalProps> = ({
             </div>
 
             <div className="filedetail-section">
-              <h4 className="filedetail-section-title">{lang === 'ru' ? `Все совпадения детекта (${matches.length})` : `All detection matches (${matches.length})`}</h4>
+              <h4 className="filedetail-section-title section-title">{lang === 'ru' ? `Все совпадения детекта (${matches.length})` : `All detection matches (${matches.length})`}</h4>
               <div className="filedetail-tags">
                 {matches.map((m, i) => (
                   <span key={i} className="filedetail-tag">{m}</span>

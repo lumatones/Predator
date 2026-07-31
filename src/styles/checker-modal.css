@@ -142,11 +142,9 @@
 }
 
 .filedetail-section-title {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
+  /* font-size/text-transform/margin-bottom via .section-title */
   letter-spacing: 1px;
   color: var(--text-muted);
-  margin-bottom: var(--space-3);
   font-weight: var(--fw-semibold);
 }
 

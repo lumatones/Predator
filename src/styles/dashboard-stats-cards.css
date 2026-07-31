@@ -49,8 +49,5 @@
   margin-bottom: var(--space-3);
 }
 
-.stats-section-title {
-  /* uses .section-title base */
-  display: block;
-}
+/* .stats-section-title REMOVED — dead code (not used in any TSX) */
 
