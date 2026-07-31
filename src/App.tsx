@@ -250,7 +250,7 @@ const Footer = React.memo(function Footer({ version, updateAvailable }: {
     <div className="footer">
       <span className="version">v{version || '0.0.3'}{updateAvailable && <span className="update-indicator" title="Update Available" />}</span>
       <span className="dot">•</span>
-      <span className="secure">Secure Connection</span>
+      <span className="secure"><span className="status-dot status-dot--green" /> Secure Connection</span>
     </div>
   )
 })

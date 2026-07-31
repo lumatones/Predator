@@ -206,7 +206,7 @@ export default function Dashboard({ lang, onBack }: DashboardProps) {
         <div className="dash-header-right">
           <ServerStatus lang={lang} />
           {snapshot ? (
-            <span className="dash-online">{t('online')}</span>
+            <span className="dash-online"><span className="status-dot status-dot--green status-dot--pulse" /> {t('online')}</span>
           ) : (
             <span className="dash-loading">{t('loading')}</span>
           )}

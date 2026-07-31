@@ -639,7 +639,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
             <span>{t('backBtn')}</span>
           </Button>
           <h2 className="checker-title">{t('title')}</h2>
-          <div className="checker-status-dot" data-phase={phase} />
+          <div className="checker-status-dot status-dot" data-phase={phase} />
         </div>
       </div>
 

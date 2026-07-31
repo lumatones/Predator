@@ -969,21 +969,11 @@ body {
 .dot { opacity: 0.3; }
 
 .secure {
-  position: relative;
-  padding-left: 14px;
+  /* dot via .status-dot child in JSX; styling via components.css */
 }
 
 .secure::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 8px;
-  height: 8px;
-  background: var(--color-success);
-  border-radius: var(--radius-full);
-  box-shadow: 0 0 8px var(--color-success-dim);
+  /* REMOVED — replaced by <span class="status-dot status-dot--green"> child in JSX */
 }
 
 .update-indicator {
@@ -2534,20 +2524,8 @@ body {
 }
 
 .dash-status { margin-left: auto; }
-.dash-online { color: #22c55e; font-size: var(--text-sm); font-weight: var(--fw-medium); position: relative; padding-left: 14px; }
-.dash-online::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 8px;
-  height: 8px;
-  background: #22c55e;
-  border-radius: var(--radius-full);
-  box-shadow: 0 0 8px rgba(34,197,94,0.5);
-  animation: dotPulse 2s ease-in-out infinite;
-}
+.dash-online { /* styling via dashboard.css */ }
+.dash-online::before { /* REMOVED — replaced by <span class="status-dot status-dot--green status-dot--pulse"> child in JSX */ }
 .dash-loading { color: var(--text-muted); font-size: var(--text-sm); }
 
 .dash-header-right {

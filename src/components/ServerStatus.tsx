@@ -81,7 +81,7 @@ export default function ServerStatus({ lang }: { lang: 'ru' | 'en' }) {
     >
       <div className="server-status-header" onClick={handleStartEdit} title="Click to change server">
         <span className="server-status-dot">
-          <span className="server-status-dot-inner" />
+          <span className="server-status-dot-inner status-dot" />
         </span>
         <span className="server-status-label">{t(status)}</span>
         <span className="server-status-url" title={displayUrl}>{shortUrl}</span>
