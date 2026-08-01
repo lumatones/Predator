@@ -3,8 +3,8 @@
 # Logs:   docker compose logs -f
 # Stop:   docker compose down
 #
-# First run — initialize database tables:
-#   docker compose exec server npx drizzle-kit migrate
+# The db-migrate service runs drizzle-kit migrate automatically
+# on first start. No manual steps needed.
 
 services:
   # ── MySQL 8 ──
@@ -32,6 +32,22 @@ services:
     networks:
       - predator-net
 
+  # ── DB Migrations (drizzle-kit) ──
+  db-migrate:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    container_name: predator-db-migrate
+    restart: "no"
+    env_file:
+      - .env.docker
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["npx", "drizzle-kit", "migrate"]
+    networks:
+      - predator-net
+
   # ── Server (Express API) ──
   server:
     build:
@@ -44,6 +60,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:3001:3001"
     networks:
