@@ -17,6 +17,7 @@
     "lucide-react": "^0.400.0"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.4.0",

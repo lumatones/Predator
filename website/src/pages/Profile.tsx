@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
-import { User, Shield, Server, Link2, Bell, Settings, LogOut, Check, ExternalLink } from 'lucide-react'
+import { User, Shield, Server, Link2, Bell, Settings, Check } from 'lucide-react'
 
 const TABS = [
   { id: 'profile', label: 'Профиль', icon: User },

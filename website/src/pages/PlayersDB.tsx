@@ -46,8 +46,10 @@ const fadeUp = {
 export default function PlayersDB() {
   const [search, setSearch] = useState('')
   const [riskFilter, setRiskFilter] = useState<string>('all')
-  const [sortField, setSortField] = useState<'username' | 'lastScan' | 'scansCount'>('lastScan')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  // Сортировка таблицы фиксирована (по умолчанию — последняя проверка, desc);
+  // UI для смены порядка пока не добавлен, поэтому сеттеры не используются.
+  const [sortField] = useState<'username' | 'lastScan' | 'scansCount'>('lastScan')
+  const [sortDir] = useState<'asc' | 'desc'>('desc')
 
   const filtered = useMemo(() => {
     let list = [...MOCK_PLAYERS]
