@@ -329,6 +329,40 @@ describe('POST /api/auth/submit-scan', () => {
     expect(res.body.error).toBe('Token not used')
   })
 
+  it('persists inconclusive status and diagnostics', async () => {
+    mockQuery.mockResolvedValueOnce(
+      mockToken({ is_active: false, used_by: 'PlayerTest' }),
+    )
+    mockQuery.mockResolvedValueOnce(mockInsertResult(101))
+
+    const res = await request(app)
+      .post('/api/auth/submit-scan')
+      .send({
+        ...validScanBody,
+        status: 'inconclusive',
+        diagnostics: [{
+          detectorId: 'behavioral-process-scanner',
+          status: 'unsupported',
+          errorCode: 'PLATFORM_UNSUPPORTED',
+          errorMessage: 'Windows only',
+        }],
+      })
+
+    expect(res.status).toBe(200)
+    expect(mockQuery.mock.calls).toContainEqual([
+      expect.stringContaining('scan_status'),
+      expect.arrayContaining([
+        'inconclusive',
+        JSON.stringify([{
+          detectorId: 'behavioral-process-scanner',
+          status: 'unsupported',
+          errorCode: 'PLATFORM_UNSUPPORTED',
+          errorMessage: 'Windows only',
+        }]),
+      ]),
+    ])
+  })
+
   it('returns 200 on successful submission with used token', async () => {
     // Token lookup: used token
     mockQuery.mockResolvedValueOnce(

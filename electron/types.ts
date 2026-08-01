@@ -55,6 +55,22 @@ export interface ScanProgress {
   dirsDone: number
 }
 
+export type ScanStatus = 'complete' | 'inconclusive'
+
+export interface ScanDiagnostic {
+  detectorId: string
+  status: 'failed' | 'timeout' | 'unsupported'
+  errorCode?: string
+  errorMessage?: string
+}
+
+/** Internal result returned by a scan mode before the final IPC response. */
+export interface ScanRunResult {
+  results: ScanResult[]
+  filesScanned: number
+  diagnostics?: ScanDiagnostic[]
+}
+
 export interface ScanResponse {
   results: ScanResult[]
   summary: {
@@ -62,6 +78,9 @@ export interface ScanResponse {
     suspiciousFiles: number
     highRiskCount: number
     scanTimeMs: number
+    /** A missing value is treated as complete by older renderer clients. */
+    status?: ScanStatus
+    diagnostics?: ScanDiagnostic[]
   }
 }
 

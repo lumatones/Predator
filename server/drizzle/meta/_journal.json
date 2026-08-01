@@ -15,6 +15,13 @@
       "when": 1785571320000,
       "tag": "0001_client_hashes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1785609500000,
+      "tag": "0002_scan_trust_status",
+      "breakpoints": true
     }
   ]
 }

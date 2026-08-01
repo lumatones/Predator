@@ -449,7 +449,7 @@ router.get('/scan-stats', async (_req: Request, res: Response) => {
     `)
 
     const recent = await query<ScanResultRow[]>(`
-      SELECT id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, created_at
+      SELECT id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_status, created_at
       FROM scan_results
       ORDER BY created_at DESC
       LIMIT 20

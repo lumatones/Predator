@@ -9,6 +9,7 @@ import { execPowerShell, execWithTimeout } from '../../utils/exec'
 
 import { addFindingDedup, parsePsJson, type ScanResult } from '../../types'
 import { SUSPICIOUS_CATEGORIES, matchKnownCheat } from '../../heuristic'
+import { getCachedProcessInventory, type CachedProcessInventory } from '../../modules/behavior/process-observation-cache'
 
 // ═══════════════════════════════════════════════════
 // BASIC PROCESS SCAN (tasklist)
@@ -45,19 +46,43 @@ export function scanRunningProcesses(): ScanResult[] {
 // ADVANCED PROCESS SCAN (PowerShell + modules)
 // ═══════════════════════════════════════════════════
 
-/** v2: Advanced process scan — checks loaded DLLs and modules via PowerShell */
+function inventoryToBasicResults(inventory: readonly CachedProcessInventory[]): ScanResult[] {
+  const results: ScanResult[] = []
+  for (const process of inventory) {
+    const matches = matchKnownCheat(process.name.toLowerCase())
+    if (matches.length === 0) continue
+
+    results.push({
+      path: `process:${process.name} (PID: ${process.id})`,
+      fileName: process.name,
+      type: 'process',
+      risk: matches.length >= 2 ? 'high' : 'medium',
+      matches,
+      size: 0,
+      modifiedAt: new Date().toISOString(),
+    })
+  }
+  return results
+}
+
+/** v2: Advanced process scan — reuses the behavioral process inventory when available. */
 export function scanRunningProcessesV2(): ScanResult[] {
   const results: ScanResult[] = []
+  const cachedInventory = getCachedProcessInventory()
 
-  const basicResults = scanRunningProcesses()
+  const basicResults = cachedInventory ? inventoryToBasicResults(cachedInventory) : scanRunningProcesses()
   for (const r of basicResults) {
     if (addFindingDedup(`proc:${r.fileName}`)) results.push(r)
   }
 
-  let processes: { Name?: string; Id?: number; Mods?: string[] }[] = []
+  let processes: { Name?: string; Id?: number; Mods?: string[] }[] = cachedInventory
+    ? cachedInventory.map(process => ({ Name: process.name, Id: process.id, Mods: [...process.modules] }))
+    : []
   try {
-    const psOut = execPowerShell(`Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3`, { timeout: 10000 }) || ''
-    processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
+    if (!cachedInventory) {
+      const psOut = execPowerShell(`Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3`, { timeout: 10000 }) || ''
+      processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut)
+    }
   } catch (err) { console.warn('[enumeration] powershell failed:', (err as Error).message) }
 
   if (processes.length === 0) return results

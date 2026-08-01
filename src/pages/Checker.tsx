@@ -107,6 +107,8 @@ const T: Record<string, Record<string, string>> = {
     exportJson: 'JSON отчёт',
     scanError: 'Ошибка сканирования',
     scanErrorHint: 'Попробуйте другой режим или перезапустите приложение',
+    scanInconclusive: 'Проверка завершена не полностью',
+    scanInconclusiveHint: 'Некоторые модули не смогли получить данные. Результат нельзя считать подтверждённо чистым.',
     backBtn: 'Назад',
   },
   en: {
@@ -162,6 +164,8 @@ const T: Record<string, Record<string, string>> = {
     exportCopied: 'Copied!',
     scanError: 'Scan error',
     scanErrorHint: 'Try another scan mode or restart the app',
+    scanInconclusive: 'Scan completed with gaps',
+    scanInconclusiveHint: 'Some modules could not collect data. This result is not confirmed clean.',
     backBtn: 'Back',
   },
 }
@@ -387,6 +391,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
 
   const currentTab = TABS.find(t => t.id === activeTab)!
   const activeTabIndex = TABS.findIndex(t => t.id === activeTab)
+  const isInconclusive = summary?.status === 'inconclusive'
 
   const openFinding = useCallback((result: ScanResult, event: React.MouseEvent<HTMLElement>) => {
     findingTriggerRef.current = event.currentTarget
@@ -722,9 +727,9 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       {phase === 'done' && (
         <div className="checker-results">
           {summary && (
-            <div className={`checker-summary card-section${summary.suspiciousFiles > 0 ? ' warning-active' : ' safe'}`}>
-              <div className={`checker-summary-icon ${summary.suspiciousFiles > 0 ? 'warning' : 'safe'}`}>
-                {summary.suspiciousFiles > 0 ? (
+            <div className={`checker-summary card-section${summary.suspiciousFiles > 0 ? ' warning-active' : isInconclusive ? ' warning-active inconclusive' : ' safe'}`}>
+              <div className={`checker-summary-icon ${summary.suspiciousFiles > 0 || isInconclusive ? 'warning' : 'safe'}`}>
+                {summary.suspiciousFiles > 0 || isInconclusive ? (
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                     <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -736,11 +741,22 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                   </svg>
                 )}
               </div>
+              {isInconclusive && (
+                <div className="checker-empty-state checker-inconclusive-state" role="status" style={{ marginBottom: 12 }}>
+                  <div className="checker-empty-title">{t('scanInconclusive')}</div>
+                  <div className="checker-empty-desc">{t('scanInconclusiveHint')}</div>
+                  {summary.diagnostics && summary.diagnostics.length > 0 && (
+                    <div className="checker-inconclusive-details">
+                      {summary.diagnostics.map(diagnostic => diagnostic.errorMessage || diagnostic.errorCode || diagnostic.detectorId).join(' · ')}
+                    </div>
+                  )}
+                </div>
+              )}
               {summary.suspiciousFiles > 0 ? (
                 <div className="checker-summary-text" style={{ marginBottom: 8 }}>
                   {`${summary.suspiciousFiles} ${t('threatsFound')}`}
                 </div>
-              ) : (
+              ) : !isInconclusive ? (
                 <div className="checker-empty-state">
                   {/* Success sparkles — stable seed via useMemo */}
                   <SuccessSparkles />
@@ -766,7 +782,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                     <span className="checker-empty-module"><IconChart size={12} /> Энтропия файлов</span>
                   </div>
                 </div>
-              )}
+              ) : null}
               <div className="checker-summary-stats" style={{ animationDelay: '0.3s', animation: 'phaseFadeIn 0.5s 0.3s var(--ease-out) both' }}>
                 <span>{summary.totalScanned} {t('filesScanned')}</span>
                 <span className="checker-summary-dot">•</span><span>{t('time')}: {formatTime(summary.scanTimeMs, t('sec'))}</span>

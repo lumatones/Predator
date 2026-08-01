@@ -155,7 +155,7 @@ router.get('/status/:id', async (req: Request, res: Response) => {
 // ── POST /api/auth/submit-scan ─────────────────
 router.post('/submit-scan', validate(submitScanSchema), async (req: Request, res: Response) => {
   try {
-    const { token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, results } = req.body
+    const { token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, status, diagnostics, results } = req.body
 
     const tokRows = await query<TokenRow[]>(
       'SELECT id, code, is_active, used_by FROM tokens WHERE id = ?',
@@ -177,8 +177,8 @@ router.post('/submit-scan', validate(submitScanSchema), async (req: Request, res
     }
 
     const result = await query<{ insertId: number }>(
-      `INSERT INTO scan_results (token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, results_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO scan_results (token_id, pc_username, mode, total_scanned, suspicious_files, high_risk_count, scan_time_ms, scan_status, diagnostics_json, results_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         token_id,
         pc_username || 'unknown',
@@ -187,6 +187,8 @@ router.post('/submit-scan', validate(submitScanSchema), async (req: Request, res
         suspicious_files || 0,
         high_risk_count || 0,
         scan_time_ms || 0,
+        status || 'complete',
+        Array.isArray(diagnostics) ? JSON.stringify(diagnostics.slice(0, 20)) : null,
         Array.isArray(results) ? JSON.stringify(results.slice(0, 100)) : '[]',
       ]
     )

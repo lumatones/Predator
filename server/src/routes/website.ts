@@ -18,9 +18,38 @@
 
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
 import { query } from '../config/database'
 
 const router = Router()
+
+// ═══════════════════════════════════════════════
+// PUBLIC: Stats (home page hero)
+// ═══════════════════════════════════════════════
+
+router.get('/stats', async (_req, res) => {
+  try {
+    const [playerRow] = await query<any[]>(
+      'SELECT COUNT(*) as total, SUM(CASE WHEN risk_level = \'clean\' THEN 1 ELSE 0 END) as clean, SUM(CASE WHEN risk_level != \'clean\' THEN 1 ELSE 0 END) as flagged FROM player_profiles',
+    )
+    const [serverRow] = await query<any[]>(
+      'SELECT COUNT(DISTINCT server_name) as servers FROM player_profiles WHERE server_name IS NOT NULL AND server_name != \'\'',
+    )
+    const [scanRow] = await query<any[]>(
+      'SELECT COUNT(*) as total_scans FROM scan_results',
+    )
+    res.json({
+      totalPlayers: Number(playerRow?.total || 0),
+      cleanPlayers: Number(playerRow?.clean || 0),
+      flaggedPlayers: Number(playerRow?.flagged || 0),
+      totalServers: Number(serverRow?.servers || 0),
+      totalScans: Number(scanRow?.total_scans || 0),
+    })
+  } catch (err) {
+    console.error('[website:stats]', err)
+    res.status(500).json({ error: { code: 'INTERNAL', message: 'Failed to load stats' } })
+  }
+})
 
 // ═══════════════════════════════════════════════
 // PUBLIC: Players DB
@@ -109,9 +138,27 @@ router.get('/news/:id', async (req, res) => {
 
 router.post('/auth/register', async (req, res) => {
   try {
-    const { email, password, display_name } = req.body
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email : ''
+    const rawPassword = typeof req.body?.password === 'string' ? req.body.password : ''
+    const rawDisplayName = typeof req.body?.display_name === 'string' ? req.body.display_name : ''
+    const email = rawEmail.trim().toLowerCase()
+    const password = rawPassword
+    const display_name = rawDisplayName.trim()
+
     if (!email || !password || !display_name) {
       return res.status(400).json({ error: { code: 'VALIDATION', message: 'email, password, display_name required' } })
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: { code: 'VALIDATION', message: 'valid email required' } })
+    }
+    if (email.length > 255) {
+      return res.status(400).json({ error: { code: 'VALIDATION', message: 'email must be 255 characters or less' } })
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: { code: 'VALIDATION', message: 'password must be at least 8 characters' } })
+    }
+    if (display_name.length > 100) {
+      return res.status(400).json({ error: { code: 'VALIDATION', message: 'display_name must be 100 characters or less' } })
     }
 
     // Check existing
@@ -136,7 +183,8 @@ router.post('/auth/register', async (req, res) => {
 
 router.post('/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+    const password = typeof req.body?.password === 'string' ? req.body.password : ''
     if (!email || !password) {
       return res.status(400).json({ error: { code: 'VALIDATION', message: 'email and password required' } })
     }
@@ -149,13 +197,23 @@ router.post('/auth/login', async (req, res) => {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } })
     }
 
-    const valid = await bcrypt.compare(password, rows[0].password_hash)
+    const passwordHash = rows[0]?.password_hash
+    if (typeof passwordHash !== 'string' || passwordHash.length === 0) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } })
+    }
+
+    let valid = false
+    try {
+      valid = await bcrypt.compare(password, passwordHash)
+    } catch {
+      // Legacy or corrupted password hashes must not turn a bad login into HTTP 500.
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } })
+    }
     if (!valid) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } })
     }
 
     // Generate JWT (simplified)
-    const jwt = await import('jsonwebtoken')
     const token = jwt.sign(
       { userId: rows[0].id, email },
       process.env.JWT_SECRET || 'predator-website-secret',
@@ -187,7 +245,6 @@ async function requireWebsiteAuth(req: any, res: any, next: any) {
     return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Bearer token required' } })
   }
   try {
-    const jwt = await import('jsonwebtoken')
     const payload = jwt.verify(auth.slice(7), process.env.JWT_SECRET || 'predator-website-secret') as any
     req.user = payload
     next()

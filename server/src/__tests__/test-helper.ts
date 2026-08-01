@@ -94,6 +94,23 @@ export async function createTestApp(): Promise<express.Express> {
  * Create a test app with admin routes mounted.
  * verifyToken is mocked to auto-authenticate as testadmin.
  */
+export async function createWebsiteTestApp(): Promise<express.Express> {
+  mockQuery.mockReset()
+
+  const websiteRoutes = (await import('../routes/website')).default
+
+  const app = express()
+  app.use(express.json())
+  app.use('/api/website', websiteRoutes)
+
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('Unhandled error:', err)
+    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } })
+  })
+
+  return app
+}
+
 export async function createAdminTestApp(): Promise<express.Express> {
   mockQuery.mockReset()
 

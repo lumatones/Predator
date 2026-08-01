@@ -20,7 +20,7 @@ import { handleCancelScan } from './ipc-handlers-scan'
 import { runDmaScan } from './modes/dma'
 import { loadSafeFilesDb, syncSafeFilesFromServer, getSafeFilesCount } from './safe-files-db'
 import { getEscalationBonus, getProfileSummary } from './persistent-profile'
-import { type ScanResult, ScanMode, ScanResponse, sendProgress, ctx } from './types'
+import { type ScanDiagnostic, type ScanResponse, type ScanRunResult, ScanMode, sendProgress, ctx } from './types'
 
 // ── Scan mode imports (extracted modules) ──
 import { runFullScan } from './scanner/full-scan'
@@ -86,7 +86,7 @@ export function registerScanHandlers() {
 
     try {
       const startTime = Date.now()
-      let result: { results: ScanResult[]; filesScanned: number }
+      let result: ScanRunResult
 
       switch (mode) {
         case 'full': result = await runFullScan(win); break
@@ -105,11 +105,14 @@ export function registerScanHandlers() {
       // would make the displayed list disagree with the weighted result state.
       const scoredResults = rescoreResults(result.results)
       const filteredResults = filterNoiseFindings(scoredResults)
+      const diagnostics = result.diagnostics ?? []
       const summary = {
         totalScanned: result.filesScanned,
         suspiciousFiles: filteredResults.length,
         highRiskCount: filteredResults.filter(r => r.risk === 'critical' || r.risk === 'high').length,
         scanTimeMs: Date.now() - startTime,
+        status: diagnostics.length > 0 ? 'inconclusive' as const : 'complete' as const,
+        diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
       }
       const filteredCount = scoredResults.length - filteredResults.length
       if (filteredCount > 0) {
@@ -120,7 +123,23 @@ export function registerScanHandlers() {
       return { results: filteredResults, summary } satisfies ScanResponse
     } catch (err) {
       console.error(`Scan error (${mode}):`, err)
-      return { results: [], summary: { totalScanned: 0, suspiciousFiles: 0, highRiskCount: 0, scanTimeMs: 0 } } satisfies ScanResponse
+      const diagnostic: ScanDiagnostic = {
+        detectorId: `scan:${mode}`,
+        status: 'failed',
+        errorCode: 'SCAN_RUNNER_ERROR',
+        errorMessage: err instanceof Error ? err.message : 'Scan failed',
+      }
+      return {
+        results: [],
+        summary: {
+          totalScanned: 0,
+          suspiciousFiles: 0,
+          highRiskCount: 0,
+          scanTimeMs: 0,
+          status: 'inconclusive',
+          diagnostics: [diagnostic],
+        },
+      } satisfies ScanResponse
     } finally {
       ctx.finishScan(scanController)
     }

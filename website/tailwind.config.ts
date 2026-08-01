@@ -7,42 +7,28 @@ const config: Config = {
     extend: {
       colors: {
         predator: {
-          bg: '#0a0a0f',
-          card: '#12121a',
-          border: '#1e1e2e',
-          accent: '#22c55e',
-          danger: '#ef4444',
-          warning: '#f59e0b',
-          muted: '#6b7280',
-          text: '#e5e7eb',
-          glow: 'rgba(34, 197, 94, 0.15)',
+          bg: '#0d1014',
+          card: '#151a21',
+          border: '#2b3440',
+          accent: '#8eafff',
+          danger: '#ee858d',
+          warning: '#e0b875',
+          muted: '#8f99a7',
+          text: '#f2f4f7',
+          glow: 'rgba(142, 175, 255, 0.12)',
         },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
-      },
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'hero-glow': 'radial-gradient(ellipse at 50% 0%, rgba(34, 197, 94, 0.08) 0%, transparent 60%)',
+        mono: ['JetBrains Mono', 'IBM Plex Mono', 'monospace'],
       },
       animation: {
-        'glow-pulse': 'glow-pulse 3s ease-in-out infinite',
-        'float': 'float 6s ease-in-out infinite',
-        'scan-line': 'scan-line 4s linear infinite',
+        'blink-soft': 'blink-soft 2.4s steps(2, end) infinite',
       },
       keyframes: {
-        'glow-pulse': {
-          '0%, 100%': { opacity: '0.4' },
-          '50%': { opacity: '1' },
-        },
-        'float': {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-10px)' },
-        },
-        'scan-line': {
-          '0%': { transform: 'translateY(-100%)' },
-          '100%': { transform: 'translateY(100vh)' },
+        'blink-soft': {
+          '0%, 48%': { opacity: '1' },
+          '49%, 100%': { opacity: '0.3' },
         },
       },
     },

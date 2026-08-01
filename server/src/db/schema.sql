@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS scan_results (
   suspicious_files INT DEFAULT 0,
   high_risk_count INT DEFAULT 0,
   scan_time_ms    INT DEFAULT 0,
+  scan_status     ENUM('complete', 'inconclusive') DEFAULT 'complete',
+  diagnostics_json MEDIUMTEXT,
   results_json    MEDIUMTEXT,
   -- Auto-classification columns
   auto_safe_count   INT DEFAULT 0,

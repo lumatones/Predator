@@ -58,10 +58,25 @@ async function init(): Promise<void> {
       suspicious_files INT DEFAULT 0,
       high_risk_count INT DEFAULT 0,
       scan_time_ms INT DEFAULT 0,
+      scan_status ENUM('complete', 'inconclusive') DEFAULT 'complete',
+      diagnostics_json MEDIUMTEXT,
       results_json MEDIUMTEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB
   `)
+
+  // Preserve trust-state columns for databases created before inconclusive scans.
+  try {
+    await query("ALTER TABLE scan_results ADD COLUMN scan_status ENUM('complete', 'inconclusive') DEFAULT 'complete' AFTER scan_time_ms")
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
+  }
+
+  try {
+    await query('ALTER TABLE scan_results ADD COLUMN diagnostics_json MEDIUMTEXT DEFAULT NULL AFTER scan_status')
+  } catch (err: any) {
+    if (err.code !== 'ER_DUP_FIELDNAME' && !err.message.includes('Duplicate column')) throw err
+  }
 
   await query(`
     CREATE TABLE IF NOT EXISTS suspicious_hashes (
@@ -213,6 +228,179 @@ async function init(): Promise<void> {
     await query('CREATE INDEX idx_sf_sha256 ON shadow_findings(sha256)')
   } catch (err: any) {
     if (err.code !== 'ER_DUP_KEYNAME' && !err.message.includes('Duplicate key name')) throw err
+  }
+
+  // ═══════════════════════════════════════════════
+  // Website tables (public site: players DB, news, users)
+  // ═══════════════════════════════════════════════
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS website_users (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      email         VARCHAR(255) UNIQUE,
+      password_hash VARCHAR(255),
+      display_name  VARCHAR(100) NOT NULL,
+      avatar_url    VARCHAR(1024),
+      subscription  ENUM('free', 'pro') DEFAULT 'free' NOT NULL,
+      subscription_expires DATETIME,
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS linked_socials (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      user_id       INT NOT NULL,
+      provider      ENUM('discord', 'telegram') NOT NULL,
+      provider_id   VARCHAR(100) NOT NULL,
+      provider_name VARCHAR(100),
+      avatar_url    VARCHAR(1024),
+      access_token  VARCHAR(1024),
+      refresh_token VARCHAR(1024),
+      token_expires DATETIME,
+      notify_checks BOOLEAN DEFAULT TRUE,
+      notify_results BOOLEAN DEFAULT TRUE,
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_provider_user (provider, provider_id),
+      INDEX idx_ls_user (user_id)
+    ) ENGINE=InnoDB
+  `)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS linked_servers (
+      id              INT AUTO_INCREMENT PRIMARY KEY,
+      user_id         INT NOT NULL,
+      discord_guild_id VARCHAR(64) NOT NULL,
+      guild_name      VARCHAR(100) NOT NULL,
+      guild_icon      VARCHAR(1024),
+      is_active       BOOLEAN DEFAULT TRUE,
+      checks_this_week INT DEFAULT 0,
+      week_reset_at   DATETIME,
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_guild (discord_guild_id),
+      INDEX idx_ls_user2 (user_id)
+    ) ENGINE=InnoDB
+  `)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS check_requests (
+      id              INT AUTO_INCREMENT PRIMARY KEY,
+      server_id       INT,
+      requester_name  VARCHAR(100) NOT NULL,
+      player_name     VARCHAR(100) NOT NULL,
+      player_steam_id VARCHAR(64),
+      status          ENUM('pending', 'scanning', 'completed', 'cancelled') DEFAULT 'pending',
+      scan_token_id   INT,
+      result_summary  JSON,
+      risk_level      ENUM('clean', 'low', 'medium', 'high'),
+      discord_message_id VARCHAR(64),
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at    DATETIME,
+      INDEX idx_cr_server (server_id),
+      INDEX idx_cr_status (status)
+    ) ENGINE=InnoDB
+  `)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS player_profiles (
+      id              INT AUTO_INCREMENT PRIMARY KEY,
+      display_name    VARCHAR(100) NOT NULL,
+      server_name     VARCHAR(100),
+      risk_level      ENUM('clean', 'low', 'medium', 'high') DEFAULT 'clean',
+      total_scans     INT DEFAULT 0,
+      cheat_traces    INT DEFAULT 0,
+      last_scan_at    DATETIME,
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_pp_risk (risk_level),
+      INDEX idx_pp_server (server_name),
+      INDEX idx_pp_name (display_name)
+    ) ENGINE=InnoDB
+  `)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS news_articles (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      title         VARCHAR(255) NOT NULL,
+      excerpt       TEXT,
+      content       MEDIUMTEXT,
+      tag           VARCHAR(50),
+      tag_color     VARCHAR(20) DEFAULT '#22c55e',
+      author_id     INT,
+      is_published  BOOLEAN DEFAULT TRUE,
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_na_published (is_published)
+    ) ENGINE=InnoDB
+  `)
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      user_id       INT NOT NULL,
+      type          VARCHAR(50) NOT NULL,
+      title         VARCHAR(255) NOT NULL,
+      body          TEXT,
+      is_read       BOOLEAN DEFAULT FALSE,
+      link          VARCHAR(1024),
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_n_user (user_id),
+      INDEX idx_n_unread (user_id, is_read)
+    ) ENGINE=InnoDB
+  `)
+
+  // Seed real release notes so the news page isn't empty
+  const [newsCount] = await query<{ cnt: number }[]>('SELECT COUNT(*) as cnt FROM news_articles')
+  if (!(newsCount as any)?.cnt) {
+    const RELEASE_NOTES = [
+      {
+        title: 'Predator v0.5.1 — язык/токен, без демо-скана',
+        excerpt: 'Выбор языка и токен сохраняются в конфиге, демо-проверка убрана, риск-скоринг переработан.',
+        content: 'Релиз v0.5.1: сохранение выбранного языка и активированного токена между запусками, удаление демо-шага из онбординга, анти-фолс-позитив матчинг сигналов (word boundaries), средний вес категории вместо суммарного, riskScore согласован с уровнем риска.',
+        tag: 'Релиз',
+        tagColor: '#22c55e',
+        daysAgo: 1,
+      },
+      {
+        title: 'Predator v0.5.0 — Аудит безопасности + серверные хеши',
+        excerpt: 'Server-verified integrity baseline, детект подмены exe, evidence model с объяснимым риском.',
+        content: 'Релиз v0.5.0 включает: таблицу client_hashes с admin-эндпоинтом регистрации sha256, различение легальных автообновлений от подмены, подключение criticalTamperResponse, проверку целостности во всех режимах скана и structured evidence model.',
+        tag: 'Релиз',
+        tagColor: '#22c55e',
+        daysAgo: 2,
+      },
+      {
+        title: 'Улучшен UI Dashboard — Glass Morphism v2',
+        excerpt: 'Новая визуальная палитра, компактный режим сканирования, тултипы и микроанимации.',
+        content: 'Обновлён весь фронтенд: компактный режим для фонового сканирования, улучшенные карточки угроз, модальные окна с деталями файлов, интерактивная карта угроз.',
+        tag: 'Обновление',
+        tagColor: '#8b5cf6',
+        daysAgo: 5,
+      },
+      {
+        title: 'Новые DMA-детекты — Xilinx FPGA + PCIe',
+        excerpt: 'Обнаружение DMA-карт, FPGA-устройств и vulnerable драйверов (BYOVD).',
+        content: 'Добавлены: сканирование PCIe config space, обнаружение Xilinx/Altera FPGA, проверка vulnerable драйверов (rtcore, gdrv, iqvw64e), BYOVD-детект через KDMapper/DrvMap.',
+        tag: 'Безопасность',
+        tagColor: '#ef4444',
+        daysAgo: 8,
+      },
+      {
+        title: 'Cloud-классификатор v2 — Correlation Engine',
+        excerpt: 'Мульти-сигнальная классификация с crowdsource-верификацией и adaptive thresholds.',
+        content: 'Новый классификатор: 11 сигналов, correlation bonus для слабых индикаторов, crowdsource safe/malicious через уникальные PC, TLSH fuzzy matching, adaptive thresholds для DMA и cleaner нахождений.',
+        tag: 'Команда',
+        tagColor: '#f59e0b',
+        daysAgo: 11,
+      },
+    ]
+    for (const n of RELEASE_NOTES) {
+      await query(
+        'INSERT INTO news_articles (title, excerpt, content, tag, tag_color, created_at) VALUES (?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? DAY))',
+        [n.title, n.excerpt, n.content, n.tag, n.tagColor, n.daysAgo],
+      )
+    }
+    console.log('  Seeded ' + RELEASE_NOTES.length + ' news articles\n')
   }
 
   console.log('  Tables created\n')

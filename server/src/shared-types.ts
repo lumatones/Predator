@@ -60,6 +60,13 @@ const evidenceRecordSchema = z.object({
   relatedFindingIds: z.array(z.string().max(255)).max(20).optional(),
 })
 
+const scanDiagnosticSchema = z.object({
+  detectorId: z.string().max(100),
+  status: z.enum(['failed', 'timeout', 'unsupported']),
+  errorCode: z.string().max(100).optional(),
+  errorMessage: z.string().max(500).optional(),
+})
+
 export const submitScanSchema = z.object({
   token_id: z.number().int().positive('token_id must be a positive integer'),
   pc_username: z.string().max(100).optional(),
@@ -69,6 +76,8 @@ export const submitScanSchema = z.object({
   suspicious_files: z.number().int().min(0).optional(),
   high_risk_count: z.number().int().min(0).optional(),
   scan_time_ms: z.number().int().min(0).optional(),
+  status: z.enum(['complete', 'inconclusive']).optional().default('complete'),
+  diagnostics: z.array(scanDiagnosticSchema).max(20).optional(),
   results: z.array(z.object({
     path: z.string(),
     fileName: z.string(),
@@ -276,6 +285,8 @@ export interface ScanResultRow {
   suspicious_files: number
   high_risk_count: number
   scan_time_ms: number
+  scan_status: 'complete' | 'inconclusive'
+  diagnostics_json: string | null
   results_json: string | null
   created_at: string
 }

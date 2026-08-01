@@ -19,7 +19,7 @@
 
 import fs from 'fs'
 
-import type { ScanResult } from './types'
+import type { ScanDiagnostic, ScanResult, ScanStatus } from './types'
 import { ctx } from './types'
 import { recordSession, getProfileSummary, updateThreatActors } from './persistent-profile'
 import { loadSafeFilesDb, markFilesSafe, saveSafeFilesDb, uploadSafeFiles, refreshSafeFilesDb } from './safe-files-db'
@@ -45,6 +45,8 @@ export interface ScanSummary {
   suspiciousFiles: number
   highRiskCount: number
   scanTimeMs: number
+  status?: ScanStatus
+  diagnostics?: ScanDiagnostic[]
 }
 
 export type PipelineStep = (
@@ -241,7 +243,7 @@ export async function uploadScanResults(
   pctx: PipelineContext,
 ): Promise<void> {
   try {
-    if (pctx.tokenId <= 0 || results.length === 0) return
+    if (pctx.tokenId <= 0) return
 
     // Results arrive pre-noise-filter (pipeline input = all scored findings), so
     // the server classifier sees a broader signal set than the filtered
@@ -256,6 +258,8 @@ export async function uploadScanResults(
       suspicious_files: summary.suspiciousFiles,
       high_risk_count: summary.highRiskCount,
       scan_time_ms: summary.scanTimeMs,
+      status: summary.status ?? 'complete',
+      diagnostics: summary.diagnostics?.slice(0, 20),
       results: results.slice(0, 200).map(r => ({
         path: r.path,
         fileName: r.fileName,

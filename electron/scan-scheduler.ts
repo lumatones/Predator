@@ -110,6 +110,8 @@ async function runBackgroundScan(win: BrowserWindow | null, reason: string): Pro
         suspiciousFiles: filtered.length,
         highRiskCount: filtered.filter(r => r.risk === 'critical' || r.risk === 'high').length,
         scanTimeMs: Date.now() - now,
+        status: result.diagnostics && result.diagnostics.length > 0 ? 'inconclusive' : 'complete',
+        diagnostics: result.diagnostics && result.diagnostics.length > 0 ? result.diagnostics : undefined,
       },
       { tokenId, pcUsername: '__scheduler__', mode: 'quick', startTime: now, clientVersion: app.getVersion() },
     )

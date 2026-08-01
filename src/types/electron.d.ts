@@ -108,6 +108,15 @@ export interface ScanProgress {
   dirsDone: number
 }
 
+export type ScanStatus = 'complete' | 'inconclusive'
+
+export interface ScanDiagnostic {
+  detectorId: string
+  status: 'failed' | 'timeout' | 'unsupported'
+  errorCode?: string
+  errorMessage?: string
+}
+
 export interface ScanResponse {
   results: ScanResult[]
   summary: {
@@ -115,6 +124,9 @@ export interface ScanResponse {
     suspiciousFiles: number
     highRiskCount: number
     scanTimeMs: number
+    /** Older clients may omit this field; omission means complete. */
+    status?: ScanStatus
+    diagnostics?: ScanDiagnostic[]
   }
 }
 

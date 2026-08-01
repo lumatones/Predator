@@ -86,6 +86,8 @@ export const scanResults = mysqlTable('scan_results', {
   suspicious_files: int('suspicious_files').default(0).notNull(),
   high_risk_count: int('high_risk_count').default(0).notNull(),
   scan_time_ms: int('scan_time_ms').default(0).notNull(),
+  scan_status: mysqlEnum('scan_status', ['complete', 'inconclusive']).default('complete').notNull(),
+  diagnostics_json: mediumtext('diagnostics_json'),
   results_json: mediumtext('results_json'),
   auto_safe_count: int('auto_safe_count').default(0),
   auto_malicious_count: int('auto_malicious_count').default(0),

@@ -42,11 +42,13 @@ import { analyzeBehavior, behaviorReportToScanResults } from '../behavior-engine
 import { buildBehaviorProfile, profileToScanResult } from '../behavior-profile'
 import { scanRwxAndThreads, rwxResultToScanResult } from '../rwx-scanner'
 import { scanDiskVsMemory, dvmResultToScanResult } from '../disk-vs-memory'
-import { type ScanResult, sendProgress, clearFindingDedup, parsePsJson, ctx, hasFileChanged, markFileScanned } from '../types'
+import { type ScanDiagnostic, type ScanResult, type ScanRunResult, sendProgress, clearFindingDedup, parsePsJson, ctx, hasFileChanged, markFileScanned } from '../types'
+import { getCachedProcessInventory, runBehavioralProcessScan } from '../modules/behavior'
 
-export async function runFullScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+export async function runFullScan(win: BrowserWindow | null): Promise<ScanRunResult> {
   const results: ScanResult[] = []
   let filesScanned = 0
+  const diagnostics: ScanDiagnostic[] = []
   const signal = ctx.abortController?.signal
   const aborted = () => signal?.aborted ?? false
 
@@ -60,23 +62,46 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
     results.push(...await runSelfIntegrityScan())
   } catch (err) { console.error('[full-scan] runSelfIntegrityScan crashed:', (err as Error).message) }
   results.push(...safeCall('runSelfProtectCheck', () => runSelfProtectCheck()))
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Advanced process scanning...', filesFound: results.length, filesScanned, totalDirs: 9, dirsDone: 1 })
+  // Populate the shared inventory before legacy process detectors run.
+  try {
+    const behavioral = await runBehavioralProcessScan({
+      signal,
+      sessionId: `full-behavior-${Date.now()}`,
+      timeoutMs: 10_000,
+    })
+    results.push(...behavioral.results)
+    diagnostics.push(...behavioral.engineReport.failures.map(failure => ({
+      detectorId: failure.detectorId,
+      status: failure.status,
+      errorCode: failure.errorCode,
+      errorMessage: failure.errorMessage,
+    })))
+    if (behavioral.engineReport.failures.length > 0) {
+      console.warn('[full-scan] behavioral process scan incomplete:', behavioral.engineReport.failures)
+    }
+  } catch (err) {
+    if (aborted()) return { results, filesScanned, diagnostics }
+    const message = err instanceof Error ? err.message : 'Behavioral process scan failed'
+    diagnostics.push({ detectorId: 'behavioral-process-scanner', status: 'failed', errorCode: 'RUNNER_ERROR', errorMessage: message })
+    console.warn('[full-scan] behavioral process scan failed:', message)
+  }
   results.push(...safeCall('scanRunningProcessesV2', () => scanRunningProcessesV2()))
   results.push(...safeCall('scanBehavioralMasquerading', () => scanBehavioralMasquerading()))
   results.push(...safeCall('scanAntiDebug', () => scanAntiDebug()))
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   // Phase 1b: USB/PCI device inventory scan
   await sendProgress(win, { phase: 'scanning', currentDir: 'USB & PCI device inventory...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 2 })
   try {
     results.push(...await runFullUsbDeviceScan(signal))
   } catch (err) {
-    if (aborted()) return { results, filesScanned }
+    if (aborted()) return { results, filesScanned, diagnostics }
     console.warn('[scanner] USB device scan failed:', (err as Error).message)
   }
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   // Phase 2: heuristic file scan
   await sendProgress(win, { phase: 'scanning', currentDir: `Heuristic file scan (${EXTENDED_SCAN_PATHS.length} directories)...`, filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 3 })
@@ -104,7 +129,7 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
             console.log(`  🔐 Batch signature check: ${sigChecked}/${sigTotal} valid (${(sigChecked/sigTotal*100).toFixed(0)}%)`)
           }
         } catch (err) {
-          if (aborted()) return { results, filesScanned }
+          if (aborted()) return { results, filesScanned, diagnostics }
           console.warn('[scanner] batch signature check failed:', (err as Error).message)
         }
       }
@@ -196,7 +221,7 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
       }
     } catch (err) { console.warn('[scanner] file walk failed:', (err as Error).message) }
   }
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   // Phase 3-5: registry + prefetch + network
   await sendProgress(win, { phase: 'scanning', currentDir: 'Registry + prefetch + network...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 4 })
@@ -205,12 +230,12 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
   results.push(...safeCall('scanNetstatV2', () => scanNetstatV2()))
   await sendProgress(win, { phase: 'scanning', currentDir: 'Parallel: exec + memory + behavior...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 6 })
   results.push(...safeCall('scanMasqueradingProcesses', () => scanMasqueradingProcesses()))
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   // Phase 5a: network intel — proxy/VPN/C2 detection (E15)
   await sendProgress(win, { phase: 'scanning', currentDir: 'Network threat intel...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 6 })
   results.push(...safeCall('runNetworkIntel', () => runNetworkIntel()))
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   // Phase 5b: game integrity + modules + handles
   await sendProgress(win, { phase: 'scanning', currentDir: 'Game integrity...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 6 })
@@ -218,7 +243,7 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
     results.push(...await scanGameIntegrity(signal))
     results.push(...await scanGameModules(signal))
   } catch (err) {
-    if (aborted()) return { results, filesScanned }
+    if (aborted()) return { results, filesScanned, diagnostics }
     console.warn('[scanner] game signature scan failed:', (err as Error).message)
   }
   results.push(...safeCall('scanOpenHandles', () => scanOpenHandles()))
@@ -226,7 +251,7 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
   await sendProgress(win, { phase: 'scanning', currentDir: 'Game memory analysis...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 6 })
   results.push(...safeCall('scanGameMemory', () => scanGameMemory()))
   results.push(...safeCall('detectCefDebugPorts', () => detectCefDebugPorts()))
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   // Phase 5c: named pipes + WMI + AMSI/ETW + BYOVD
   await sendProgress(win, { phase: 'scanning', currentDir: 'IPC & persistence...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 6 })
@@ -236,17 +261,19 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
   try {
     results.push(...await scanByovd(signal))
   } catch (err) {
-    if (aborted()) return { results, filesScanned }
+    if (aborted()) return { results, filesScanned, diagnostics }
     console.warn('[scanner] BYOVD scan failed:', (err as Error).message)
   }
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   try {
-    const psOut = await execPowerShellAsync(
-      `Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3`,
-      { timeout: 10000, signal },
-    )
-    const processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut || '')
+    const cachedProcesses = getCachedProcessInventory()
+    const processes = cachedProcesses
+      ? cachedProcesses.map(process => ({ Name: process.name, Id: process.id, Mods: [...process.modules] }))
+      : parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(await execPowerShellAsync(
+        `Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3`,
+        { timeout: 10000, signal },
+      ) || '')
     for (const proc of processes) {
       if (aborted()) break
       const mods: string[] = proc.Mods || []
@@ -274,49 +301,49 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
       } catch (err) { console.warn('[scanner] disk-vs-memory failed:', (err as Error).message) }
     }
   } catch (err) { console.warn('[scanner] PowerShell AMSI/ETW scan failed:', (err as Error).message) }
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   // Phase 6: DMA + scheduled tasks + IOMMU
   await sendProgress(win, { phase: 'scanning', currentDir: 'DMA devices + IOMMU...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 8 })
   try {
     results.push(...await scanDmaDevices(signal))
   } catch (err) {
-    if (aborted()) return { results, filesScanned }
+    if (aborted()) return { results, filesScanned, diagnostics }
     console.warn('[scanner] DMA device scan failed:', (err as Error).message)
   }
   try {
     results.push(...await checkIommuStatus(signal))
   } catch (err) {
-    if (aborted()) return { results, filesScanned }
+    if (aborted()) return { results, filesScanned, diagnostics }
     console.warn('[scanner] IOMMU scan failed:', (err as Error).message)
   }
   await sendProgress(win, { phase: 'scanning', currentDir: 'Scheduled tasks...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 8 })
   try {
     results.push(...await scanScheduledTasks(signal))
   } catch (err) {
-    if (aborted()) return { results, filesScanned }
+    if (aborted()) return { results, filesScanned, diagnostics }
     console.warn('[scanner] scheduled task scan failed:', (err as Error).message)
   }
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Registry cheat scan...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 9 })
   results.push(...safeCall('scanRegistryForCheats', () => scanRegistryForCheats()))
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   await sendProgress(win, { phase: 'analyzing', currentDir: 'Browser history...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 10 })
   try {
     const bh = await scanBrowserHistory(ALL_CHEAT_KEYWORDS)
     results.push(...safeSpread('scanBrowserHistory', bh))
   } catch (err) { console.error('[scan] scanBrowserHistory crashed:', (err as Error).message || err) }
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Forensic artifact scan...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 11 })
   results.push(...safeCall('runForensicScan', () => runForensicScan()))
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Anti-forensic integrity check...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 12 })
   results.push(...safeCall('runAntiForensicScan', () => runAntiForensicScan()))
-  if (aborted()) return { results, filesScanned }
+  if (aborted()) return { results, filesScanned, diagnostics }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'PC cleaning detection...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 13 })
   results.push(...safeCall('runPcCleanerScan', () => runPcCleanerScan()))
@@ -327,5 +354,5 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
   results.push(...behaviorReportToScanResults(behaviorReport))
 
   await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 13 })
-  return { results, filesScanned }
+  return { results, filesScanned, diagnostics }
 }
