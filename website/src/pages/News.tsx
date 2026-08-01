@@ -7,9 +7,9 @@ const NEWS = [
     date: '2026-07-31',
     tag: 'Релиз',
     tagColor: '#22c55e',
-    title: 'Predator v0.4.5 — NSIS Installer + Автообновление',
-    excerpt: 'Полноценная установка через NSIS, дифференциальные обновления через .blockmap, исправленный релизный пайплайн.',
-    content: 'Релиз v0.4.5 включает: NSIS-установщик (вместо portable exe), electron-updater для автообновлений, загрузку .blockmap для дифференциальных обновлений, исправленный GitHub Actions workflow.',
+    title: 'Predator v0.5.0 — Аудит безопасности + серверные хеши',
+    excerpt: 'Server-verified integrity baseline, детект подмены exe, evidence model с объяснимым риском, 19 новых тестов безопасности.',
+    content: 'Релиз v0.5.0 включает: таблицу client_hashes с admin-эндпоинтом регистрации sha256, различение легальных автообновлений от подмены (version-rebase против сервера), подключение criticalTamperResponse, проверку целостности во всех режимах скана, async I/O в main-процессе и structured evidence model.',
   },
   {
     id: 2,
@@ -54,7 +54,7 @@ const fadeUp = {
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.08, duration: 0.5, ease: [0.16, 1, 0.3, 1] },
+    transition: { delay: i * 0.08, duration: 0.5, ease: [0.16, 1, 0.3, 1] as const },
   }),
 }
 

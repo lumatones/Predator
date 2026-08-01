@@ -42,6 +42,7 @@
   "devDependencies": {
     "@types/supertest": "^7.2.1",
     "drizzle-kit": "^0.31.10",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "vitest": "^4.1.10"
   }
 }

@@ -41,7 +41,7 @@ const fadeUp = {
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] },
+    transition: { delay: i * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] as const },
   }),
 }
 
@@ -56,7 +56,7 @@ export default function Hero() {
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] as const }}
           className="text-center max-w-4xl mx-auto"
         >
           {/* Badge */}
@@ -67,7 +67,7 @@ export default function Hero() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-predator-accent/10 border border-predator-accent/20 text-predator-accent text-xs font-medium mb-8"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-predator-accent animate-pulse" />
-            v0.4.5 · NSIS Installer · Автообновление
+            v0.5.0 · Аудит безопасности · Автообновление
           </motion.div>
 
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-[1.05] mb-6">
