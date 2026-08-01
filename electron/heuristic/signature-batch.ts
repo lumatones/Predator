@@ -10,6 +10,8 @@ import { execPowerShellAsync } from '../utils/exec'
 import { ctx } from '../types'
 
 export const BINARY_SIG_EXTS = new Set(['.exe', '.dll', '.sys', '.drv'])
+export type DigitalSignatureStatus = 'valid' | 'unsigned' | 'unknown'
+
 const AUTHENTICODE_FAILURE_STATUSES = new Set([
   'NotSigned',
   'UnknownError',
@@ -118,15 +120,13 @@ export async function batchCheckSignatures(
 }
 
 /**
- * Check a single file, first using ctx.sigCache and then an async PowerShell
- * fallback. Timeout, missing PowerShell, and malformed output are not cached.
+ * Return a tri-state Authenticode verdict. Unknown means the operating system
+ * could not produce a trustworthy status; it must not be presented as unsigned.
  */
-export async function checkDigitalSignature(
+export async function checkDigitalSignatureStatus(
   filepath: string,
   signal?: AbortSignal,
-): Promise<boolean> {
-  const cached = ctx.sigCache.get(filepath)
-  if (cached !== undefined) return cached
+): Promise<DigitalSignatureStatus> {
   if (signal?.aborted) throw new Error('Digital signature check aborted')
 
   const escapedPath = filepath.replace(/'/g, "''")
@@ -135,18 +135,31 @@ export async function checkDigitalSignature(
     { timeout: 2000, signal },
   )
   if (signal?.aborted) throw new Error('Digital signature check aborted')
-  if (!out) return false
+  if (!out) return 'unknown'
 
   const status = out.trim()
   if (status === 'Valid') {
     ctx.sigCache.set(filepath, true)
-    return true
+    return 'valid'
   }
-  if (AUTHENTICODE_FAILURE_STATUSES.has(status)) {
+  if (status === 'NotSigned') {
     ctx.sigCache.set(filepath, false)
-    return false
+    return 'unsigned'
   }
+  if (AUTHENTICODE_FAILURE_STATUSES.has(status)) return 'unknown'
+  return 'unknown'
+}
 
-  // Unexpected output is not a trustworthy verdict and must be retried.
-  return false
+/**
+ * Backward-compatible boolean API used by existing scanner modules.
+ * Unknown remains false for legacy risk scoring; new consumers should use
+ * checkDigitalSignatureStatus() when they need to distinguish uncertainty.
+ */
+export async function checkDigitalSignature(
+  filepath: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const cached = ctx.sigCache.get(filepath)
+  if (cached !== undefined) return cached
+  return (await checkDigitalSignatureStatus(filepath, signal)) === 'valid'
 }

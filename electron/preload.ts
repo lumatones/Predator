@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Scanner
   startScan: (mode?: string, tokenId?: number) => ipcRenderer.invoke('start-scan', mode || 'quick', { token_id: tokenId }),
+  triageBinary: () => ipcRenderer.invoke('triage-binary'),
   onScanProgress: (callback: (data: import('./types').ScanProgress) => void) => {
     return makeListener('scan-progress', callback)
   },

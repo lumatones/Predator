@@ -10,6 +10,7 @@ import { registerSystemInfoHandlers } from './system-info'
 import { startSignatureWatcher, stopSignatureWatcher } from './signature-watcher'
 import { startScanScheduler, stopScanScheduler } from './scan-scheduler'
 import { flushTelemetryQueue } from './telemetry-queue'
+import { registerBinaryTriageHandler } from './binary-triage'
 import {
   handleGetPcName,
   handleGetConfig,
@@ -166,6 +167,7 @@ app.whenReady().then(async () => {
   setupTray()
 
   registerScanHandlers()
+  registerBinaryTriageHandler()
   startCloudSync()
   registerSystemInfoHandlers()
   startSignatureWatcher(mainWindow!)

@@ -1,0 +1,77 @@
+.binary-triage-launch {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  color: var(--text-primary);
+  text-align: left;
+  font-family: inherit;
+  background: linear-gradient(135deg, rgba(168, 85, 247, .12), rgba(255,255,255,.025));
+  border: 1px solid rgba(168, 85, 247, .34);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: transform var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
+}
+.binary-triage-launch:hover:not(:disabled) { transform: translateY(-2px); border-color: #c084fc; background: rgba(168, 85, 247, .18); }
+.binary-triage-launch:disabled { opacity: .62; cursor: wait; }
+.binary-triage-launch-mark { color: #c084fc; font-size: 24px; line-height: 1; }
+.binary-triage-launch strong, .binary-triage-launch small { display: block; }
+.binary-triage-launch strong { font-size: 13px; }
+.binary-triage-launch small { margin-top: 3px; color: var(--text-muted); font-size: 11px; }
+
+.binary-triage-panel {
+  position: fixed;
+  z-index: 1100;
+  inset: 5vh max(16px, calc((100vw - 980px) / 2)) 5vh;
+  overflow: auto;
+  padding: 24px;
+  color: var(--text-primary);
+  background: linear-gradient(145deg, rgba(18, 12, 29, .98), rgba(9, 10, 16, .99));
+  border: 1px solid rgba(192, 132, 252, .32);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 30px 100px rgba(0,0,0,.72), 0 0 80px rgba(168,85,247,.12);
+}
+.binary-triage-header, .binary-triage-section-title, .binary-triage-indicator-head, .binary-triage-disclosure { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.binary-triage-header { align-items: flex-start; padding-bottom: 18px; border-bottom: 1px solid var(--border-color); }
+.binary-triage-header h3 { margin: 4px 0; font-family: var(--font-heading); font-size: 22px; }
+.binary-triage-header p { margin: 0; color: var(--text-muted); font: 11px var(--font-code); overflow-wrap: anywhere; }
+.binary-triage-kicker, .binary-triage-label { color: #c084fc; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.binary-triage-verdict { display: flex; align-items: center; justify-content: space-between; margin: 18px 0; padding: 16px 18px; border-radius: var(--radius-lg); background: rgba(255,255,255,.035); border: 1px solid var(--border-color); }
+.binary-triage-verdict[data-verdict="high-risk"] { border-color: rgba(255,68,68,.5); background: rgba(255,68,68,.1); }
+.binary-triage-verdict[data-verdict="suspicious"] { border-color: rgba(245,158,11,.45); background: rgba(245,158,11,.08); }
+.binary-triage-verdict strong { display: block; margin-top: 4px; font-size: 17px; }
+.binary-triage-score span { font-size: 34px; font-weight: 800; color: #c084fc; }
+.binary-triage-score small { color: var(--text-muted); }
+.binary-triage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.binary-triage-grid > div { min-width: 0; padding: 11px 12px; background: rgba(255,255,255,.035); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+.binary-triage-grid span, .binary-triage-grid strong { display: block; }
+.binary-triage-grid span { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+.binary-triage-grid strong { margin-top: 5px; font-size: 12px; overflow-wrap: anywhere; }
+.binary-triage-mono { font-family: var(--font-code); overflow-wrap: anywhere; }
+.is-safe { color: var(--color-success); } .is-danger { color: var(--accent-red); } .is-warning { color: var(--color-warning); }
+.binary-triage-subsection { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+.binary-triage-section-title h4, .binary-triage-limitations h4 { margin: 0; font-size: 13px; }
+.binary-triage-section-title h4 span, .binary-triage-section-title > span { color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.binary-triage-static-badge { padding: 4px 8px; color: #c084fc !important; border: 1px solid rgba(192,132,252,.3); border-radius: 999px; }
+.binary-triage-indicators { display: grid; gap: 8px; margin-top: 10px; }
+.binary-triage-indicator { padding: 11px 13px; background: rgba(255,255,255,.03); border: 1px solid var(--border-color); border-left: 3px solid; border-radius: var(--radius-sm); }
+.binary-triage-indicator strong { font-size: 12px; }
+.binary-triage-indicator-head span { font-size: 10px; white-space: nowrap; }
+.binary-triage-indicator p { margin: 5px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.binary-triage-muted { color: var(--text-muted); font-size: 12px; }
+.binary-triage-table-wrap { margin-top: 10px; overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+.binary-triage-table { width: 100%; min-width: 700px; border-collapse: collapse; font-size: 11px; }
+.binary-triage-table th, .binary-triage-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+.binary-triage-table th { color: var(--text-muted); font-size: 10px; text-transform: uppercase; }
+.binary-triage-table tr:last-child td { border-bottom: 0; }
+.binary-triage-disclosure { width: 100%; padding: 0; color: var(--text-primary); font: inherit; text-align: left; background: none; border: 0; cursor: pointer; }
+.binary-triage-disclosure span:last-child { color: #c084fc; font-size: 20px; }
+.binary-triage-imports { display: grid; gap: 5px; margin-top: 10px; }
+.binary-triage-import { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) auto; gap: 8px; align-items: center; padding: 7px 9px; background: rgba(255,255,255,.025); border-radius: 4px; font: 11px var(--font-code); }
+.binary-triage-import span { color: var(--text-muted); overflow-wrap: anywhere; } .binary-triage-import strong { overflow-wrap: anywhere; }
+.binary-triage-import em { font-style: normal; font-size: 10px; } .binary-triage-import small { grid-column: 2 / -1; color: var(--text-muted); font-family: inherit; }
+.binary-triage-manifest { max-height: 220px; margin: 12px 0 0; padding: 12px; overflow: auto; color: #d8b4fe; font: 11px/1.5 var(--font-code); background: rgba(0,0,0,.24); border-radius: var(--radius-sm); white-space: pre-wrap; }
+.binary-triage-limitations li { margin: 5px 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+@media (max-width: 640px) { .binary-triage-panel { inset: 0; padding: 16px; border-radius: 0; } .binary-triage-grid { grid-template-columns: repeat(2, 1fr); } .binary-triage-import { grid-template-columns: 1fr auto; } .binary-triage-import strong { grid-column: 1 / -1; grid-row: 2; } .binary-triage-import small { grid-column: 1 / -1; } }

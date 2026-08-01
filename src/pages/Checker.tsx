@@ -16,6 +16,8 @@ import PredatorLogo3D from '../components/ui/PredatorLogo3D'
 import { ScanTerminal } from '../components/ui/ScanTerminal'
 import { Skeleton } from '../components/ui/Skeleton'
 import { FileDetailModal } from '../components/ui/FileDetailModal'
+import { BinaryTriagePanel } from '../components/ui/BinaryTriagePanel'
+import type { BinaryTriageReport } from '../../types/binary-triage'
 import { ThreatMap } from '../components/ui/ThreatMap'
 import { ApcDashboard } from '../components/ui/ApcDashboard'
 import { CompactScanOverlay } from '../components/ui/CompactScanOverlay'
@@ -110,6 +112,9 @@ const T: Record<string, Record<string, string>> = {
     scanInconclusive: 'Проверка завершена не полностью',
     scanInconclusiveHint: 'Некоторые модули не смогли получить данные. Результат нельзя считать подтверждённо чистым.',
     backBtn: 'Назад',
+    binaryTriage: 'Хардкор-разбор бинарника',
+    binaryTriageHint: 'PE / TLS / API / packing — без запуска файла',
+    binaryTriageError: 'Не удалось выполнить статический разбор',
   },
   en: {
     title: 'System Scan',
@@ -167,6 +172,9 @@ const T: Record<string, Record<string, string>> = {
     scanInconclusive: 'Scan completed with gaps',
     scanInconclusiveHint: 'Some modules could not collect data. This result is not confirmed clean.',
     backBtn: 'Back',
+    binaryTriage: 'Hardcore binary triage',
+    binaryTriageHint: 'PE / TLS / API / packing — file is not executed',
+    binaryTriageError: 'Static triage failed',
   },
 }
 
@@ -350,6 +358,9 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [compactMode, setCompactMode] = useState(false)
   const [telegramSending, setTelegramSending] = useState(false)
+  const [triageReport, setTriageReport] = useState<BinaryTriageReport | null>(null)
+  const [triageLoading, setTriageLoading] = useState(false)
+  const [triageError, setTriageError] = useState('')
   const { play: playSound } = useSound()
   const scanRef = useRef<boolean>(false)
   const isMounted = useRef(true)
@@ -473,6 +484,20 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       if (typeof unsubscribeProgress === 'function') unsubscribeProgress()
     }
   }, [activeTab, currentTab, t, tokenId, playSound])
+
+  const handleBinaryTriage = useCallback(async () => {
+    if (!window.electronAPI?.triageBinary || triageLoading) return
+    setTriageLoading(true)
+    setTriageError('')
+    try {
+      const report = await window.electronAPI.triageBinary()
+      if (report) setTriageReport(report)
+    } catch (err) {
+      setTriageError(err instanceof Error ? err.message : t('binaryTriageError'))
+    } finally {
+      setTriageLoading(false)
+    }
+  }, [t, triageLoading])
 
   const handleClear = useCallback(() => {
     tabCache.clear()
@@ -685,6 +710,20 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
             </svg>
             {t('startBtn')}
           </motion.button>
+          <button
+            type="button"
+            className="binary-triage-launch"
+            data-testid="checker-binary-triage"
+            onClick={handleBinaryTriage}
+            disabled={triageLoading}
+          >
+            <span className="binary-triage-launch-mark">{triageLoading ? '…' : '⌁'}</span>
+            <span>
+              <strong>{triageLoading ? t('analyzing') : t('binaryTriage')}</strong>
+              <small>{t('binaryTriageHint')}</small>
+            </span>
+          </button>
+          {triageError && <div className="checker-error" role="alert">{triageError}</div>}
         </div>
       )}
 
@@ -1214,6 +1253,14 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
         </div>
       )}
       </div>{/* /tab-content */}
+
+      {triageReport && (
+        <BinaryTriagePanel
+          report={triageReport}
+          lang={lang}
+          onClose={() => setTriageReport(null)}
+        />
+      )}
 
       {/* File Detail Modal */}
       {selectedResult && (

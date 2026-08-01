@@ -1,3 +1,5 @@
+import type { BinaryTriageReport } from '../../types/binary-triage'
+
 export type ScanMode = 'full' | 'quick' | 'dma' | 'cleaner'
 
 export interface EvidenceRecord {
@@ -63,6 +65,7 @@ export interface ElectronAPI {
 
   // Scanner
   startScan: (mode?: ScanMode, tokenId?: number) => Promise<ScanResponse>
+  triageBinary: () => Promise<BinaryTriageReport | null>
   onScanProgress: (callback: (data: ScanProgress) => void) => (() => void)
   offScanProgress?: (unsubscribe?: () => void) => void
 
