@@ -1,0 +1,878 @@
+{
+  "version": "5",
+  "dialect": "mysql",
+  "id": "3bdc11ce-1680-4232-bd62-ce8ed397dca5",
+  "prevId": "c75f1d4b-25d3-492e-9964-93dde8ea4002",
+  "tables": {
+    "admins": {
+      "name": "admins",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "username": {
+          "name": "username",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "enum('admin','superadmin')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'admin'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "admins_id": {
+          "name": "admins_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "admins_username_unique": {
+          "name": "admins_username_unique",
+          "columns": [
+            "username"
+          ]
+        }
+      },
+      "checkConstraint": {}
+    },
+    "requests": {
+      "name": "requests",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "pc_username": {
+          "name": "pc_username",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('pending','approved','rejected')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "requests_approved_by_admins_id_fk": {
+          "name": "requests_approved_by_admins_id_fk",
+          "tableFrom": "requests",
+          "tableTo": "admins",
+          "columnsFrom": [
+            "approved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "requests_id": {
+          "name": "requests_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "safe_files": {
+      "name": "safe_files",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "partial_hash": {
+          "name": "partial_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_size": {
+          "name": "file_size",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "confirm_count": {
+          "name": "confirm_count",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "first_seen": {
+          "name": "first_seen",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "last_seen": {
+          "name": "last_seen",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "uk_partial_hash_size": {
+          "name": "uk_partial_hash_size",
+          "columns": [
+            "partial_hash",
+            "file_size"
+          ],
+          "isUnique": true
+        },
+        "idx_sf_last_seen": {
+          "name": "idx_sf_last_seen",
+          "columns": [
+            "last_seen"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "safe_files_id": {
+          "name": "safe_files_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "scan_results": {
+      "name": "scan_results",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "token_id": {
+          "name": "token_id",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pc_username": {
+          "name": "pc_username",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "total_scanned": {
+          "name": "total_scanned",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "suspicious_files": {
+          "name": "suspicious_files",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "high_risk_count": {
+          "name": "high_risk_count",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "scan_time_ms": {
+          "name": "scan_time_ms",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "scan_status": {
+          "name": "scan_status",
+          "type": "enum('complete','inconclusive')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'complete'"
+        },
+        "diagnostics_json": {
+          "name": "diagnostics_json",
+          "type": "mediumtext",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "results_json": {
+          "name": "results_json",
+          "type": "mediumtext",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_safe_count": {
+          "name": "auto_safe_count",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 0
+        },
+        "auto_malicious_count": {
+          "name": "auto_malicious_count",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 0
+        },
+        "pending_count": {
+          "name": "pending_count",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 0
+        },
+        "classified_at": {
+          "name": "classified_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "scan_results_token_id_tokens_id_fk": {
+          "name": "scan_results_token_id_tokens_id_fk",
+          "tableFrom": "scan_results",
+          "tableTo": "tokens",
+          "columnsFrom": [
+            "token_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "scan_results_id": {
+          "name": "scan_results_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "shadow_findings": {
+      "name": "shadow_findings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "token_id": {
+          "name": "token_id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pc_username": {
+          "name": "pc_username",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scan_mode": {
+          "name": "scan_mode",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_path": {
+          "name": "file_path",
+          "type": "varchar(1024)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_type": {
+          "name": "file_type",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'file'"
+        },
+        "rule_name": {
+          "name": "rule_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "matches": {
+          "name": "matches",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tlsh": {
+          "name": "tlsh",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "occurrence_count": {
+          "name": "occurrence_count",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "unique_pcs": {
+          "name": "unique_pcs",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('shadow','promoted','rejected')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'shadow'"
+        },
+        "promoted_by": {
+          "name": "promoted_by",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "promoted_at": {
+          "name": "promoted_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "idx_sf_status": {
+          "name": "idx_sf_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_sf_rule": {
+          "name": "idx_sf_rule",
+          "columns": [
+            "rule_name"
+          ],
+          "isUnique": false
+        },
+        "idx_sf_sha256": {
+          "name": "idx_sf_sha256",
+          "columns": [
+            "sha256"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "shadow_findings_promoted_by_admins_id_fk": {
+          "name": "shadow_findings_promoted_by_admins_id_fk",
+          "tableFrom": "shadow_findings",
+          "tableTo": "admins",
+          "columnsFrom": [
+            "promoted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "shadow_findings_id": {
+          "name": "shadow_findings_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "suspicious_hashes": {
+      "name": "suspicious_hashes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "partial_hash": {
+          "name": "partial_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tlsh": {
+          "name": "tlsh",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_name": {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_path": {
+          "name": "file_path",
+          "type": "varchar(1024)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pc_username": {
+          "name": "pc_username",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "token_id": {
+          "name": "token_id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "file_size": {
+          "name": "file_size",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "risk_score": {
+          "name": "risk_score",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "risk": {
+          "name": "risk",
+          "type": "enum('high','medium','low')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'high'"
+        },
+        "matches": {
+          "name": "matches",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "has_valid_signature": {
+          "name": "has_valid_signature",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "enum('pending','confirmed','false_positive')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_classified": {
+          "name": "auto_classified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": false
+        },
+        "auto_reason": {
+          "name": "auto_reason",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "uk_sha256": {
+          "name": "uk_sha256",
+          "columns": [
+            "sha256"
+          ],
+          "isUnique": true
+        },
+        "idx_tlsh": {
+          "name": "idx_tlsh",
+          "columns": [
+            "tlsh"
+          ],
+          "isUnique": false
+        },
+        "idx_partial_hash": {
+          "name": "idx_partial_hash",
+          "columns": [
+            "partial_hash"
+          ],
+          "isUnique": false
+        },
+        "idx_sh_status": {
+          "name": "idx_sh_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_sh_created": {
+          "name": "idx_sh_created",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "suspicious_hashes_reviewed_by_admins_id_fk": {
+          "name": "suspicious_hashes_reviewed_by_admins_id_fk",
+          "tableFrom": "suspicious_hashes",
+          "tableTo": "admins",
+          "columnsFrom": [
+            "reviewed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "suspicious_hashes_id": {
+          "name": "suspicious_hashes_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "tokens": {
+      "name": "tokens",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "code": {
+          "name": "code",
+          "type": "char(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "used_by": {
+          "name": "used_by",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "tokens_created_by_admins_id_fk": {
+          "name": "tokens_created_by_admins_id_fk",
+          "tableFrom": "tokens",
+          "tableTo": "admins",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "tokens_id": {
+          "name": "tokens_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "tokens_code_unique": {
+          "name": "tokens_code_unique",
+          "columns": [
+            "code"
+          ]
+        }
+      },
+      "checkConstraint": {}
+    }
+  },
+  "views": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "tables": {},
+    "indexes": {}
+  }
+}
