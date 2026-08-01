@@ -211,14 +211,14 @@ export function stripHandles(): { success: boolean; detail: string } {
     const hProcess = GetCurrentProcess()
     if (!hProcess) return { success: false, detail: 'GetCurrentProcess failed' }
 
-    // Mark our process handle as PROTECT_FROM_CLOSE and non-inheritable
-    const _result = SetHandleInformation(
+    // Mark our process handle as non-inheritable (clear PROTECT_FROM_CLOSE + INHERIT)
+    SetHandleInformation(
       hProcess,
       HANDLE_FLAG_PROTECT_FROM_CLOSE | HANDLE_FLAG_INHERIT,
-      0, // Clear both flags — not protect-from-close (we need to close on exit) but non-inheritable
+      0,
     )
-    // Actually, we want PROTECT_FROM_CLOSE to prevent handle closure attacks
-    const _result2 = SetHandleInformation(
+    // Then set PROTECT_FROM_CLOSE to prevent handle closure attacks
+    SetHandleInformation(
       hProcess,
       HANDLE_FLAG_PROTECT_FROM_CLOSE,
       HANDLE_FLAG_PROTECT_FROM_CLOSE,

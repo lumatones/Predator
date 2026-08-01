@@ -33,10 +33,6 @@ export interface EtwImageLoadEvent {
 // ── ETW Provider session ──
 
 let _etwSessionActive = false
-let _capturedEvents: { processes: EtwProcessEvent[]; images: EtwImageLoadEvent[] } = {
-  processes: [],
-  images: [],
-}
 
 /**
  * Start ETW session for process creation monitoring.
@@ -46,7 +42,6 @@ let _capturedEvents: { processes: EtwProcessEvent[]; images: EtwImageLoadEvent[]
 export function startEtwSession(): boolean {
   if (_etwSessionActive) return true
   _etwSessionActive = true
-  _capturedEvents = { processes: [], images: [] }
 
   console.log('  🔍 ETW session started — monitoring process/thread creation')
 
@@ -59,7 +54,6 @@ export function startEtwSession(): boolean {
  */
 export function stopEtwSession(): void {
   _etwSessionActive = false
-  _capturedEvents = { processes: [], images: [] }
   console.log('  🔍 ETW session stopped')
 }
 
