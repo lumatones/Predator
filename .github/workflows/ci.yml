@@ -90,6 +90,19 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
 
+  check-subprojects:
+    name: Check subproject self-containment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Guards against root node_modules hoisting: each subproject must ship its
+      # own tsconfig.json and declare every bare-module import in its own
+      # package.json (CI installs each subproject in isolation via `npm ci`).
+      - run: node scripts/check-subprojects.js
+
   lint:
     name: Lint (Formatting)
     runs-on: ubuntu-latest
