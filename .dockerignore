@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Git
+.git/
+.gitattributes
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env (use .env.docker)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Tests
+__tests__/
+*.test.ts
+*.test.tsx
+coverage/
+.nyc_output/
+
+# Electron (not containerized)
+electron/
+src/
+types/
+
+# Docs
+docs/
+*.md
+
+# CI
+.github/
+.husky/
+
+# Misc
+scripts/_write_checker.py
+skills-lock.json
+eslint.config.js
+.prettierrc
+.editorconfig

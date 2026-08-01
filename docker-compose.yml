@@ -1,0 +1,74 @@
+# ── Predator Docker Compose ──
+# Start:  docker compose up -d
+# Logs:   docker compose logs -f
+# Stop:   docker compose down
+#
+# First run — initialize database tables:
+#   docker compose exec server npx drizzle-kit migrate
+
+services:
+  # ── MySQL 8 ──
+  mysql:
+    image: mysql:8.0
+    container_name: predator-mysql
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root-change-me}
+      MYSQL_DATABASE: ${DB_NAME:-predator}
+      MYSQL_USER: ${DB_USER:-predator}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-change-me-in-production}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - predator-net
+
+  # ── Server (Express API) ──
+  server:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    container_name: predator-server
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks:
+      - predator-net
+
+  # ── Nginx (Admin + Website + API proxy) ──
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx.Dockerfile
+    container_name: predator-nginx
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    networks:
+      - predator-net
+
+volumes:
+  mysql-data:
+    name: predator-mysql-data
+
+networks:
+  predator-net:
+    name: predator-net
+    driver: bridge
