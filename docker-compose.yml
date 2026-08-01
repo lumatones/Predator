@@ -69,7 +69,7 @@ services:
     networks:
       - predator-net
 
-  # ── Nginx (Admin + Website + API proxy) ──
+  # ── Nginx (Admin + Website + API proxy + HTTPS) ──
   nginx:
     build:
       context: .
@@ -80,13 +80,62 @@ services:
       server:
         condition: service_healthy
     ports:
-      - "8080:80"  # 8080 externally — avoid conflict with host Apache
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - certbot-data:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    networks:
+      - predator-net
+
+  # ── Certbot (Let's Encrypt) ──
+  certbot:
+    image: certbot/certbot
+    container_name: predator-certbot
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    depends_on:
+      nginx:
+        condition: service_started
+    volumes:
+      - certbot-data:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        DOMAIN="${DOMAIN:-localhost}"
+        if [ ! -d "/etc/letsencrypt/live/${DOMAIN}" ]; then
+          echo "[certbot] Obtaining SSL certificate for ${DOMAIN}..."
+          certbot certonly --webroot \
+            --webroot-path=/var/www/certbot \
+            -d "${DOMAIN}" \
+            --non-interactive --agree-tos \
+            -m "${SSL_EMAIL:-admin@example.com}" || {
+              echo "[certbot] FAILED to obtain certificate. Check DOMAIN and DNS."
+              echo "[certbot] Nginx will serve a self-signed cert until fixed."
+            }
+        else
+          echo "[certbot] Certificate already exists for ${DOMAIN}"
+        fi
+        # Renewal loop: check every 12 hours.
+        # After renewal, restart nginx to pick up new cert:
+        #   docker compose restart nginx
+        while :; do
+          certbot renew --quiet || true
+          sleep 12h
+        done
     networks:
       - predator-net
 
 volumes:
   mysql-data:
     name: predator-mysql-data
+  certbot-data:
+    name: predator-certbot-data
+  certbot-webroot:
+    name: predator-certbot-webroot
 
 networks:
   predator-net:
