@@ -12,6 +12,7 @@
     "test:electron": "vitest run electron",
     "test:renderer": "vitest run --config src/vitest.renderer.config.ts",
     "test:renderer:smoke": "node scripts/renderer-smoke.mjs",
+    "test:e2e": "npx playwright test --config e2e/playwright.config.ts",
     "electron:dev": "vite & sleep 2 && electron .",
     "electron:build": "npm run build && electron-builder",
     "electron:build:win": "npm run build && electron-builder --win",
@@ -125,6 +126,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.62.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.185.1",

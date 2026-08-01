@@ -43,6 +43,10 @@ promo/
 # ── Temp dirs ──
 .remotion-skill-temp/
 
+# ── Playwright e2e artifacts ──
+playwright-report/
+test-results/
+
 # ── Environment ──
 .env
 .env.local
