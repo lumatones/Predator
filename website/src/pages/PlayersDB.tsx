@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Shield, AlertTriangle, CheckCircle, Filter, ChevronDown } from 'lucide-react'
+import { Search, Shield, AlertTriangle, CheckCircle, Filter, ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react'
 
 interface PlayerEntry {
   id: number
@@ -43,13 +43,60 @@ const fadeUp = {
   }),
 }
 
+type SortField = 'username' | 'lastScan' | 'scansCount'
+
+function SortableTh({
+  label,
+  field,
+  sortField,
+  sortDir,
+  onSort,
+}: {
+  label: string
+  field: SortField
+  sortField: SortField
+  sortDir: 'asc' | 'desc'
+  onSort: (field: SortField) => void
+}) {
+  const active = sortField === field
+  return (
+    <th
+      className="text-left px-5 py-3.5 text-xs font-semibold uppercase tracking-wider"
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        title={`Сортировать по: ${label}`}
+        className={`inline-flex items-center gap-1.5 select-none cursor-pointer transition-colors group ${
+          active ? 'text-predator-accent' : 'text-predator-muted hover:text-predator-text'
+        }`}
+      >
+        {label}
+        {active ? (
+          sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+        ) : (
+          <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-60 transition-opacity" />
+        )}
+      </button>
+    </th>
+  )
+}
+
 export default function PlayersDB() {
   const [search, setSearch] = useState('')
   const [riskFilter, setRiskFilter] = useState<string>('all')
-  // Сортировка таблицы фиксирована (по умолчанию — последняя проверка, desc);
-  // UI для смены порядка пока не добавлен, поэтому сеттеры не используются.
-  const [sortField] = useState<'username' | 'lastScan' | 'scansCount'>('lastScan')
-  const [sortDir] = useState<'asc' | 'desc'>('desc')
+  const [sortField, setSortField] = useState<SortField>('lastScan')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortDir(dir => (dir === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDir('desc')
+    }
+  }
 
   const filtered = useMemo(() => {
     let list = [...MOCK_PLAYERS]
@@ -131,12 +178,12 @@ export default function PlayersDB() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-predator-border">
-                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-predator-muted uppercase tracking-wider">Игрок</th>
+                  <SortableTh label="Игрок" field="username" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <th className="text-left px-5 py-3.5 text-xs font-semibold text-predator-muted uppercase tracking-wider">Сервер</th>
                   <th className="text-left px-5 py-3.5 text-xs font-semibold text-predator-muted uppercase tracking-wider">Статус</th>
-                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-predator-muted uppercase tracking-wider">Проверок</th>
+                  <SortableTh label="Проверок" field="scansCount" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                   <th className="text-left px-5 py-3.5 text-xs font-semibold text-predator-muted uppercase tracking-wider">Следы</th>
-                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-predator-muted uppercase tracking-wider">Последняя</th>
+                  <SortableTh label="Последняя" field="lastScan" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                 </tr>
               </thead>
               <tbody>
