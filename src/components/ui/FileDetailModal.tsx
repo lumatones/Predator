@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { buildFindingExplanation, TYPE_LABELS } from '../../utils/finding-explainer'
@@ -54,6 +54,7 @@ export const FileDetailModal: React.FC<FileDetailModalProps> = ({
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const modalRef = useRef<HTMLDivElement>(null)
   const wasOpenRef = useRef(false)
+  const [copied, setCopied] = useState(false)
 
   const onCloseRef = useRef(onClose)
 
@@ -106,7 +107,7 @@ export const FileDetailModal: React.FC<FileDetailModalProps> = ({
     }
   }, [open, returnFocusRef])
 
-  const riskColor = risk === 'critical' || risk === 'high' ? 'var(--accent-red)' : risk === 'medium' ? 'var(--color-warning)' : '#6B7280'
+  const riskColor = risk === 'critical' ? 'var(--accent-red)' : risk === 'high' ? 'var(--accent-orange)' : risk === 'medium' ? 'var(--color-warning)' : '#6B7280'
   const typeLabel = TYPE_LABELS[lang][fileType] || fileType
   const riskLabel = lang === 'ru'
     ? risk === 'critical' ? 'Критический' : risk === 'high' ? 'Высокий' : risk === 'medium' ? 'Средний' : 'Низкий'
@@ -125,22 +126,22 @@ export const FileDetailModal: React.FC<FileDetailModalProps> = ({
             onClick={onClose}
           />
           <div className="filedetail-layer">
-          <motion.div
-            ref={modalRef}
-            className="filedetail-modal"
-            data-testid="file-detail-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="filedetail-title"
-            aria-describedby="filedetail-description"
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          >
+            <motion.div
+              ref={modalRef}
+              className="filedetail-modal"
+              data-testid="file-detail-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="filedetail-title"
+              aria-describedby="filedetail-description"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            >
             <div className="filedetail-header">
               <div className="filedetail-header-left">
-                <span className="filedetail-risk-dot" style={{ background: riskColor }} />
+                <span className="filedetail-risk-dot" style={{ background: riskColor, color: riskColor }} />
                 <div>
                   <h3 id="filedetail-title" className="filedetail-filename">{fileName}</h3>
                   <span className="filedetail-path">{filePath}</span>
@@ -169,7 +170,30 @@ export const FileDetailModal: React.FC<FileDetailModalProps> = ({
               {sha256 && (
                 <div className="filedetail-stat filedetail-stat-wide">
                   <span className="filedetail-stat-label">SHA256</span>
-                  <span className="filedetail-stat-value filedetail-hash">{sha256}</span>
+                  <div className="filedetail-hash-row">
+                    <span className="filedetail-stat-value filedetail-hash">{sha256}</span>
+                    <button
+                      type="button"
+                      className={`filedetail-copy-btn${copied ? ' copied' : ''}`}
+                      aria-label={lang === 'ru' ? 'Скопировать хеш' : 'Copy hash'}
+                      onClick={() => {
+                        navigator.clipboard.writeText(sha256).catch(() => {})
+                        setCopied(true)
+                        window.setTimeout(() => setCopied(false), 1600)
+                      }}
+                    >
+                      {copied ? (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -224,11 +248,17 @@ export const FileDetailModal: React.FC<FileDetailModalProps> = ({
 
             <div className="filedetail-section">
               <h4 className="filedetail-section-title section-title">{lang === 'ru' ? `Все совпадения детекта (${matches.length})` : `All detection matches (${matches.length})`}</h4>
-              <div className="filedetail-tags">
-                {matches.map((m, i) => (
-                  <span key={i} className="filedetail-tag">{m}</span>
-                ))}
-              </div>
+              {matches.length > 0 ? (
+                <div className="filedetail-tags">
+                  {matches.map((m, i) => (
+                    <span key={i} className="filedetail-tag">{m}</span>
+                  ))}
+                </div>
+              ) : (
+                <p className="filedetail-matches-empty">
+                  {lang === 'ru' ? 'Совпадений детекта не зафиксировано.' : 'No detection matches were recorded.'}
+                </p>
+              )}
             </div>
           </motion.div>
           </div>

@@ -1,9 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AppPhase, ThemeId, Lang, ThemeColors } from '../../types'
-import { DEMO_FINDINGS } from '../../types'
 import { WelcomeStep } from './WelcomeStep'
-import { DemoScanStep } from './DemoScanStep'
 
 // ── Step definitions ──
 const STEPS: AppPhase[] = [
@@ -11,11 +9,10 @@ const STEPS: AppPhase[] = [
   'onboarding-lang',
   'onboarding-theme',
   'onboarding-auth',
-  'onboarding-demo',
 ]
 
-const STEP_LABELS_RU = ['Приветствие', 'Язык', 'Тема', 'Токен', 'Демо']
-const STEP_LABELS_EN = ['Welcome', 'Language', 'Theme', 'Token', 'Demo']
+const STEP_LABELS_RU = ['Приветствие', 'Язык', 'Тема', 'Токен']
+const STEP_LABELS_EN = ['Welcome', 'Language', 'Theme', 'Token']
 
 // ── Step content transition variants ──
 const stepVariants = {
@@ -55,14 +52,13 @@ interface OnboardingFlowProps {
   onNextTheme: () => void
   onNextAuth: () => Promise<void>
   onRequestAccess: () => Promise<void>
-  onDemoComplete: () => void
 }
 
 export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   phase, lang, theme, themes, token, tokenError, authError, authLoading,
   accent, light, t,
   onSetLang, onSetTheme, onSetToken, onSetTokenError, onSetAuthError,
-  onNextWelcome, onNextLang, onNextTheme, onNextAuth, onRequestAccess, onDemoComplete,
+  onNextWelcome, onNextLang, onNextTheme, onNextAuth, onRequestAccess,
 }) => {
   const currentStepIndex = STEPS.indexOf(phase)
   const stepLabels = useMemo(() => lang === 'ru' ? STEP_LABELS_RU : STEP_LABELS_EN, [lang])
@@ -261,22 +257,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             </>
           )}
 
-          {/* Step 4: Demo Scan */}
-          {phase === 'onboarding-demo' && (
-            <DemoScanStep
-              demoTitle={t('demoTitle')}
-              demoDesc={t('demoDesc')}
-              demoStart={t('demoStart')}
-              demoScanning={t('demoScanning')}
-              demoDone={t('demoDone')}
-              demoDoneDesc={t('demoDoneDesc')}
-              demoEnterApp={t('demoEnterApp')}
-              demoFindings={DEMO_FINDINGS[lang]}
-              accent={accent}
-              light={light}
-              onComplete={onDemoComplete}
-            />
-          )}
             </motion.div>
           </AnimatePresence>
         </div>

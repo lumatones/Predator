@@ -9,6 +9,7 @@ interface SettingsPanelProps {
   currentTheme: ThemeId
   currentLang: Lang
   onThemeChange: (id: ThemeId) => void
+  onLangChange: (l: Lang) => void
   lang: Lang
 }
 
@@ -16,17 +17,19 @@ const LABELS: Record<Lang, Record<string, string>> = {
   ru: {
     title: 'Настройки',
     themeLabel: 'Тема оформления',
+    langLabel: 'Язык интерфейса',
     close: 'Закрыть',
   },
   en: {
     title: 'Settings',
     themeLabel: 'Theme',
+    langLabel: 'Interface language',
     close: 'Close',
   },
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
-  open, onClose, currentTheme, onThemeChange, lang,
+  open, onClose, currentTheme, currentLang, onThemeChange, onLangChange, lang,
 }) => {
   const t = LABELS[lang]
 
@@ -60,6 +63,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </motion.button>
+            </div>
+
+            <div className="settings-section">
+              <p className="settings-section-label">{t.langLabel}</p>
+              <div className="settings-lang-grid">
+                <motion.button
+                  className={`settings-lang-btn${currentLang === 'ru' ? ' active' : ''}`}
+                  onClick={() => onLangChange('ru')}
+                  whileHover={{ scale: 1.03, y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <span className="settings-lang-flag">🇷🇺</span>
+                  <span className="settings-lang-name">Русский</span>
+                </motion.button>
+                <motion.button
+                  className={`settings-lang-btn${currentLang === 'en' ? ' active' : ''}`}
+                  onClick={() => onLangChange('en')}
+                  whileHover={{ scale: 1.03, y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <span className="settings-lang-flag">🇬🇧</span>
+                  <span className="settings-lang-name">English</span>
+                </motion.button>
+              </div>
             </div>
 
             <div className="settings-section">

@@ -60,8 +60,9 @@ export const SIGNAL_WEIGHTS: Record<string, number> = {
 export function classifySignal(match: string): string {
   const lower = match.toLowerCase()
 
+  // Long unique keywords — substring matching is safe.
   if (lower.includes('memory') || lower.includes('byte pattern') || lower.includes('aimbot') ||
-    lower.includes('esp') || lower.includes('overlay')) return 'memory_pattern'
+    /\besp\b/.test(lower) || lower.includes('overlay')) return 'memory_pattern'
 
   if (lower.includes('dma') || lower.includes('fpga') || lower.includes('pcie') ||
     lower.includes('xilinx') || lower.includes('altera')) return 'dma_fpga'
@@ -72,20 +73,23 @@ export function classifySignal(match: string): string {
   if (lower.includes('inject') || lower.includes('handle')) return 'injection_detected'
   if (lower.includes('debug') || lower.includes('cef') || lower.includes('devtools'))
     return 'debug_port'
-  if (lower.includes('apc') || lower.includes('atom')) return 'apc_injection'
+
+  // Short keywords need word boundaries — 'response' contains 'esp',
+  // 'support'/'important' contain 'port', 'atomic' contains 'atom'.
+  if (/\bapc\b/.test(lower) || /\batom\b/.test(lower)) return 'apc_injection'
   if (lower.includes('hollow')) return 'process_hollowing'
-  if (lower.includes('yara')) return 'yara_match'
-  if (lower.includes('tlsh') || lower.includes('fuzzy')) return 'tlsh_match'
-  if (lower.includes('entropy')) return 'entropy_high'
+  if (/\byara\b/.test(lower)) return 'yara_match'
+  if (/\btlsh\b/.test(lower) || /\bfuzzy\b/.test(lower)) return 'tlsh_match'
+  if (/\bentropy\b/.test(lower)) return 'entropy_high'
   if (lower.includes('unsigned') || lower.includes('signature')) return 'unsigned_binary'
-  if (lower.includes('extension')) return 'suspicious_extension'
-  if (lower.includes('port')) return 'network_port'
-  if (lower.includes('c2') || lower.includes('bulletproof')) return 'network_c2'
-  if (lower.includes('proxy')) return 'network_proxy'
-  if (lower.includes('vpn') || lower.includes('tap-') || lower.includes('wireguard'))
+  if (/\bextension\b/.test(lower)) return 'suspicious_extension'
+  if (/\bport\b/.test(lower)) return 'network_port'
+  if (/\bc2\b/.test(lower) || lower.includes('bulletproof')) return 'network_c2'
+  if (/\bproxy\b/.test(lower)) return 'network_proxy'
+  if (/\bvpn\b/.test(lower) || lower.includes('wireguard') || lower.includes('tap-'))
     return 'network_vpn'
-  if (lower.includes('firewall')) return 'firewall_rule'
-  if (lower.includes('dns')) return 'dns_cache'
+  if (/\bfirewall\b/.test(lower)) return 'firewall_rule'
+  if (/\bdns\b/.test(lower)) return 'dns_cache'
 
   return 'default'
 }
@@ -119,6 +123,22 @@ const SIGNAL_EXPLANATIONS: Record<string, string> = {
 
 function baseConfidence(risk: ScanResult['risk']): number {
   return risk === 'critical' ? 90 : risk === 'high' ? 78 : risk === 'medium' ? 58 : 35
+}
+
+/** Lowest riskScore consistent with each risk label (mirrors scoreToLevel thresholds). */
+const RISK_SCORE_FLOORS: Record<ScanResult['risk'], number> = {
+  critical: 85,
+  high: 65,
+  medium: 35,
+  low: 15,
+}
+
+/** Lower the classification threshold as evidence accumulates. */
+function adaptiveThreshold(evidenceCount: number): number {
+  if (evidenceCount > 20) return 20
+  if (evidenceCount > 10) return 25
+  if (evidenceCount > 5) return 30
+  return 35
 }
 
 const GENERATED_DUPLICATE_SUFFIX = /#duplicate:\d+$/
@@ -286,7 +306,7 @@ export function calculateRisk(
       level: 'clean',
       totalEvidence: 0,
       escalated: false,
-      threshold: 30,
+      threshold: adaptiveThreshold(0),
       explanation: 'Структурированные сигналы отсутствуют.',
     }
   }
@@ -305,49 +325,45 @@ export function calculateRisk(
     )
   }
 
-  // Calculate per-category scores with diminishing returns
+  // Calculate per-category scores with diminishing returns.
+  // Uses the *average* signal weight per category — previously the summed
+  // weight was applied twice (inside catScore and again as the normalization
+  // weight), letting many weak signals outscore one strong signal.
   const categoryScores: Record<string, { score: number; count: number }> = {}
   const contributions: RiskContribution[] = []
   let rawScore = 0
 
   for (const [cat, data] of Object.entries(categories)) {
-    // Use log scale: score = weight_sum * max_risk * log2(1 + count) * 25
+    const avgWeight = data.totalWeight / data.count
+    // Log scale: score = avg_weight * max_risk * log2(1 + count) * 25
     const diversityBonus = Math.log2(1 + data.count)
-    const catScore = Math.min(data.totalWeight * data.maxRisk * diversityBonus * 25, 100)
+    const catScore = Math.min(avgWeight * data.maxRisk * diversityBonus * 25, 100)
     const score = Math.round(catScore)
     categoryScores[cat] = { score, count: data.count }
     contributions.push({
       category: cat,
       score,
       count: data.count,
-      weight: Number((data.totalWeight / data.count).toFixed(2)),
+      weight: Number(avgWeight.toFixed(2)),
       confidence: Math.min(100, Math.round((data.maxRisk / 4) * 100)),
       explanation: SIGNAL_EXPLANATIONS[cat] || SIGNAL_EXPLANATIONS.default,
     })
-    rawScore += catScore * data.totalWeight
+    rawScore += catScore
   }
 
-  // Normalize: divide by total weight to prevent inflation
-  const totalWeight = Object.values(categories).reduce((s, c) => s + c.totalWeight, 0)
-  const normalizedScore = totalWeight > 0 ? Math.round(rawScore / totalWeight) : 0
+  // Normalize: plain average of capped per-category scores (each 0-100)
+  const normalizedScore = contributions.length > 0 ? Math.round(rawScore / contributions.length) : 0
 
   // Escalation bonus
   const escalated = escalationBonus > 0
   const finalScore = Math.min(normalizedScore + escalationBonus, 100)
 
   // Adaptive threshold: lower threshold when lots of evidence
-  const adaptiveThreshold = evidence.length > 20 ? 20
-    : evidence.length > 10 ? 25
-    : evidence.length > 5 ? 30
-    : 35
+  const threshold = adaptiveThreshold(evidence.length)
 
-  // Level classification
-  let level: RiskScore['level']
-  if (finalScore >= 85) level = 'critical'
-  else if (finalScore >= 65) level = 'high'
-  else if (finalScore >= 35) level = 'medium'
-  else if (finalScore >= adaptiveThreshold) level = 'low'
-  else level = 'clean'
+  // Level classification — single source of truth via scoreToLevel,
+  // gated by the adaptive threshold for the low/clean boundary.
+  const level: RiskScore['level'] = finalScore >= threshold ? scoreToLevel(finalScore) : 'clean'
 
   return {
     overall: finalScore,
@@ -356,7 +372,7 @@ export function calculateRisk(
     totalEvidence: evidence.length,
     contributions: contributions.sort((a, b) => b.score - a.score),
     escalated,
-    threshold: adaptiveThreshold,
+    threshold,
     explanation: `${evidence.length} сигналов из ${contributions.length} категорий сформировали оценку ${finalScore}/100.`,
   }
 }
@@ -402,7 +418,7 @@ export function scoreToLevel(score: number): 'critical' | 'high' | 'medium' | 'l
 
 /**
  * Re-score existing scan results using weighted engine.
- * Adds a `weightedRisk` score to each result's matches for downstream use.
+ * Adds a `riskScore` to each result for downstream use.
  */
 export function rescoreResults(results: ScanResult[]): ScanResult[] {
   const enriched = addCorrelations(results)
@@ -411,12 +427,14 @@ export function rescoreResults(results: ScanResult[]): ScanResult[] {
     const maxWeight = evidence.reduce((max, item) => Math.max(max, item.weight), 0)
     const totalWeight = evidence.reduce((sum, item) => sum + item.weight, 0)
     const avgWeight = evidence.length > 0 ? totalWeight / evidence.length : 0
-    const riskScore = Math.round(Math.min(100, (maxWeight * 0.7 + avgWeight * 0.3) * 100))
     const escalationMatch = `↑ Escalated: weighted signal (${(avgWeight * 100).toFixed(0)}%)`
-    const hasEscalation = r.matches.some(match => match === escalationMatch)
+    const hasEscalation = r.matches.some(match => match.startsWith('↑ Escalated'))
     const shouldEscalateHigh = r.risk === 'medium' && maxWeight >= 0.8
     const shouldEscalateMedium = r.risk === 'low' && maxWeight >= 0.6
     const nextRisk: ScanResult['risk'] = shouldEscalateHigh ? 'high' : shouldEscalateMedium ? 'medium' : r.risk
+    // Keep riskScore consistent with the risk label: 'critical' must never show 15/100.
+    const computedScore = Math.round(Math.min(100, (maxWeight * 0.7 + avgWeight * 0.3) * 100))
+    const riskScore = evidence.length > 0 ? Math.max(computedScore, RISK_SCORE_FLOORS[nextRisk]) : 0
     const nextMatches = (shouldEscalateHigh || shouldEscalateMedium) && !hasEscalation
       ? [...r.matches, escalationMatch]
       : r.matches

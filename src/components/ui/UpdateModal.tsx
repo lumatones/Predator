@@ -67,12 +67,12 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ state: modal, theme, lang, on
             {modal.state === 'downloading' && (
               <>
                 <div className="update-modal-icon">
-                  <div className="spinner" style={{ width: 36, height: 36 }}>
-                    <div className="spinner-ring" style={{ borderWidth: 2 }} />
+                  <div className="spinner">
+                    <div className="spinner-ring" />
                   </div>
                 </div>
                 <p className="update-modal-title">{t('downloading')}</p>
-                <div className="update-modal-actions" style={{ flexDirection: 'column', gap: 8 }}>
+                <div className="update-modal-actions column">
                   <div className="progress-bar">
                     <div className="progress-fill" style={{ width: `${modal.percent}%` }} />
                   </div>
@@ -80,7 +80,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ state: modal, theme, lang, on
                     <span>{modal.speed}</span>
                     <span>{modal.percent}%</span>
                   </div>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{modal.size}</span>
+                  <span className="update-modal-size">{modal.size}</span>
                 </div>
               </>
             )}
@@ -113,8 +113,8 @@ const UpdateModal: React.FC<UpdateModalProps> = ({ state: modal, theme, lang, on
                     <line x1="32" y1="16" x2="16" y2="32" stroke="var(--color-error)" strokeWidth="3" strokeLinecap="round" />
                   </svg>
                 </div>
-                <p className="update-modal-title" style={{ color: 'var(--color-error)' }}>{t('updateAvailable')}</p>
-                <p className="update-modal-version" style={{ color: 'var(--color-error-dim)' }}>{modal.errorMsg}</p>
+                <p className="update-modal-title error">{t('updateError')}</p>
+                <p className="update-modal-version error">{modal.errorMsg}</p>
                 <div className="update-modal-actions">
                   <button className="update-modal-btn secondary" onClick={onClose}>{t('close')}</button>
                   <button className="update-modal-btn primary" onClick={onDownload}>{t('download')}</button>

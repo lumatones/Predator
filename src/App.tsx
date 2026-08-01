@@ -269,8 +269,8 @@ const entryTransition = { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const }
 
 const phaseOrder: Record<string, number> = {
   'onboarding-welcome': 0, 'onboarding-lang': 1, 'onboarding-theme': 2,
-  'onboarding-auth': 3, 'onboarding-demo': 4,
-  'loading': 5, 'requesting-access': 6, 'main': 7, 'checker': 8, 'dashboard': 9,
+  'onboarding-auth': 3,
+  'loading': 4, 'requesting-access': 5, 'main': 6, 'checker': 7, 'dashboard': 8,
 }
 
 const PageWrapper: React.FC<{ children: React.ReactNode; phase: string }> = ({ children, phase }) => {
@@ -300,6 +300,8 @@ const App: React.FC = () => {
   const [lang, setLang] = useState<Lang>('ru')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [musicOpen, setMusicOpen] = useState(false)
+  const [onboardingComplete, setOnboardingComplete] = useState(false)
+  const [configLoaded, setConfigLoaded] = useState(false)
 
   const musicPlayer = useMusicPlayer()
 
@@ -324,6 +326,43 @@ const App: React.FC = () => {
     handleBurnComplete,
   } = useThemeEngine('predator')
 
+  // ── Load persisted preferences (lang, theme, onboarding) from Electron config ──
+  useEffect(() => {
+    const api = window.electronAPI
+    if (!api?.getConfig) {
+      setConfigLoaded(true)
+      return
+    }
+    api.getConfig()
+      .then(cfg => {
+        setLang(cfg.lang)
+        setTheme(cfg.theme)
+        setOnboardingComplete(!!cfg.onboardingComplete || cfg.tokenId != null)
+      })
+      .catch(() => { /* defaults apply */ })
+      .finally(() => setConfigLoaded(true))
+  }, [setTheme])
+
+  // Persist language + theme changes to config so they survive restarts
+  const handleSetLang = useCallback((l: Lang) => {
+    setLang(l)
+    window.electronAPI?.saveConfig?.({ lang: l }).catch(() => {})
+  }, [])
+
+  const persistTheme = useCallback((id: ThemeId) => {
+    window.electronAPI?.saveConfig?.({ theme: id }).catch(() => {})
+  }, [])
+
+  const handleSetTheme = useCallback((id: ThemeId) => {
+    setTheme(id)
+    persistTheme(id)
+  }, [setTheme, persistTheme])
+
+  const handleCompleteOnboarding = useCallback(() => {
+    setOnboardingComplete(true)
+    window.electronAPI?.saveConfig?.({ onboardingComplete: true }).catch(() => {})
+  }, [])
+
   const {
     version,
     updateAvailable,
@@ -340,7 +379,6 @@ const App: React.FC = () => {
     hNextLang,
     hNextTheme,
     hNextAuth,
-    hDemoComplete,
     hStartChecker,
     hStartDashboard,
     hBackToMain,
@@ -351,6 +389,8 @@ const App: React.FC = () => {
     cancelRequest,
     requestStatus,
     lang,
+    onboardingComplete: configLoaded ? onboardingComplete : null,
+    onCompleteOnboarding: handleCompleteOnboarding,
   })
 
   useEffect(() => {
@@ -395,8 +435,8 @@ const App: React.FC = () => {
               light={c.light}
               dark={c.dark}
               t={t}
-            onSetLang={setLang}
-            onSetTheme={setTheme}
+            onSetLang={handleSetLang}
+            onSetTheme={handleSetTheme}
               onSetToken={setToken}
               onSetTokenError={setTokenError}
               onSetAuthError={setAuthError}
@@ -405,7 +445,6 @@ const App: React.FC = () => {
               onNextTheme={hNextTheme}
               onNextAuth={hNextAuth}
               onRequestAccess={hRequestAccess}
-              onDemoComplete={hDemoComplete}
             />
             </ErrorBoundary>
           </PageWrapper>
@@ -458,7 +497,11 @@ const App: React.FC = () => {
         onClose={() => setSettingsOpen(false)}
         currentTheme={theme}
         currentLang={lang}
-        onThemeChange={(id: ThemeId) => handleThemeSelect(id, phase)}
+        onThemeChange={(id: ThemeId) => {
+          handleThemeSelect(id, phase)
+          persistTheme(id)
+        }}
+        onLangChange={handleSetLang}
         lang={lang}
       />
       <MusicPlayerContext.Provider value={musicPlayer}>

@@ -1,7 +1,7 @@
 export type AppPhase =
   | 'loading'
   | 'onboarding-welcome' | 'onboarding-lang'
-  | 'onboarding-theme' | 'onboarding-auth' | 'onboarding-demo'
+  | 'onboarding-theme' | 'onboarding-auth'
   | 'requesting-access'
   | 'main' | 'checker' | 'dashboard'
 
@@ -31,17 +31,12 @@ export const THEMES: Record<ThemeId, ThemeColors> = {
   nebula:   { accent: '#c084fc', light: '#f0abfc', dark: '#7c3aed', bg: '#060210', card: '#0f0a1a', name: 'Nebula Purple' },
 }
 
-// Demo scan findings — separate from T to avoid string|string[] type widening
-export const DEMO_FINDINGS: Record<Lang, string[]> = {
-  ru: ['Nightfall.dll — Чит-меню (CRITICAL)', 'kdmapper.exe — Загрузчик драйвера (HIGH)', 'injector.dll — DLL-инжектор (HIGH)', 'suspicious_registry — Автозагрузка (MEDIUM)', 'dma_fpga — DMA-устройство (CRITICAL)'],
-  en: ['Nightfall.dll — Cheat menu (CRITICAL)', 'kdmapper.exe — Driver loader (HIGH)', 'injector.dll — DLL injector (HIGH)', 'suspicious_registry — Auto-run (MEDIUM)', 'dma_fpga — DMA device (CRITICAL)'],
-}
-
 export const T: Record<Lang, Record<string, string>> = {
   ru: {
     title: 'Система проверки безопасности',
     close: 'Закрыть', updateAvailable: 'Доступно обновление', download: 'Скачать',
     downloading: 'Загрузка обновления...', downloaded: 'Обновление готово!',
+    updateError: 'Ошибка обновления',
     installRestart: 'Установить и перезапустить',
     ready: 'Система готова', startCheck: 'Начать проверку', dashboard: 'Мониторинг', continue: 'Продолжить',
     // Onboarding v2
@@ -59,16 +54,12 @@ export const T: Record<Lang, Record<string, string>> = {
     requestSent: 'Запрос отправлен!', requestPending: 'Ожидание подтверждения администратором...',
     requestApproved: 'Запрос одобрен!', requestRejected: 'Запрос отклонён',
     requestId: 'ID запроса', requesting: 'Отправка запроса...', cancel: 'Отмена',
-    // Demo scan
-    demoTitle: 'Демо-сканирование', demoDesc: 'Посмотрите, как Predator находит угрозы на примере симуляции',
-    demoStart: 'Запустить демо-скан', demoScanning: 'Сканирование...',
-    demoDone: 'Демо завершено!', demoDoneDesc: 'Predator обнаружил бы эти угрозы при реальном сканировании. Это демонстрация — ваш ПК не проверялся.',
-    demoEnterApp: 'Войти в приложение',
   },
   en: {
     title: 'Security Check System',
     close: 'Close', updateAvailable: 'Update Available', download: 'Download',
     downloading: 'Downloading update...', downloaded: 'Update Ready!',
+    updateError: 'Update Error',
     installRestart: 'Install & Restart',
     ready: 'System Ready', startCheck: 'Start Check', dashboard: 'Dashboard', continue: 'Continue',
     // Onboarding v2
@@ -86,10 +77,5 @@ export const T: Record<Lang, Record<string, string>> = {
     requestSent: 'Request sent!', requestPending: 'Waiting for admin approval...',
     requestApproved: 'Request approved!', requestRejected: 'Request rejected',
     requestId: 'Request ID', requesting: 'Sending request...', cancel: 'Cancel',
-    // Demo scan
-    demoTitle: 'Demo Scan', demoDesc: 'See how Predator detects threats with a simulated scan',
-    demoStart: 'Start Demo Scan', demoScanning: 'Scanning...',
-    demoDone: 'Demo Complete!', demoDoneDesc: 'Predator would have detected these threats in a real scan. This is a demonstration — your PC was not scanned.',
-    demoEnterApp: 'Enter Application',
   },
 }

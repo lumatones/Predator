@@ -161,6 +161,50 @@
   gap: 4px;
 }
 
+/* Language switcher */
+.settings-lang-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.settings-lang-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.settings-lang-btn:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.04);
+}
+
+.settings-lang-btn.active {
+  border-color: var(--accent-red);
+  background: color-mix(in srgb, var(--accent-red) 8%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 0 16px var(--accent-red)15;
+}
+
+.settings-lang-flag {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.settings-lang-name {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-semibold);
+}
+
 /* Settings trigger button */
 .floating-buttons {
   position: fixed;

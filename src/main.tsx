@@ -12,6 +12,7 @@ import './styles/tokens.css'
 import './styles/layout.css'
 import './styles/onboarding.css'
 import './styles/onboarding-welcome.css'
+// Holds the shared step-indicator styles (.onb-step*) used by OnboardingFlow
 import './styles/onboarding-demo.css'
 import './styles/onboarding-steps.css'
 import './styles/onboarding-auth.css'

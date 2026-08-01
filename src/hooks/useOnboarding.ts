@@ -12,11 +12,18 @@ export interface UseOnboardingDeps {
   cancelRequest: () => void
   requestStatus: string | null
   lang: Lang
+  /**
+   * True when onboarding was completed in a previous session — skip straight to main.
+   * `null` while the persisted config is still loading (keep showing the loading screen).
+   */
+  onboardingComplete: boolean | null
+  /** Persist the completed flag once the user passes the auth step. */
+  onCompleteOnboarding: () => void
 }
 
 /**
- * Onboarding phase state machine — manages the full 5-step onboarding flow
- * (welcome → lang → theme → auth → demo) plus main navigation callbacks.
+ * Onboarding phase state machine — manages the 4-step onboarding flow
+ * (welcome → lang → theme → auth) plus main navigation callbacks.
  *
  * Extracted from App.tsx (~70 lines) to keep the App component lean.
  */
@@ -26,6 +33,8 @@ export function useOnboarding(deps: UseOnboardingDeps) {
     handleRequestAccess,
     cancelRequest,
     requestStatus,
+    onboardingComplete,
+    onCompleteOnboarding,
   } = deps
 
   const [phase, setPhase] = useState<AppPhase>('loading')
@@ -39,26 +48,18 @@ export function useOnboarding(deps: UseOnboardingDeps) {
         : null
 
   // ── Enter onboarding on mount ──
-  // Browser fallback (no Electron API)
+  // Wait for persisted config so a completed onboarding never flashes the welcome screen.
   useEffect(() => {
     if (smokePhase) {
       setPhase(smokePhase)
       return
     }
+    if (onboardingComplete === null) return
     const api = window.electronAPI
-    if (api) return
-    const t = setTimeout(() => setPhase('onboarding-welcome'), 1200)
+    const delay = api ? 1500 : 1200
+    const t = setTimeout(() => setPhase(onboardingComplete ? 'main' : 'onboarding-welcome'), delay)
     return () => clearTimeout(t)
-  }, [smokePhase])
-
-  // Electron: brief loading screen then welcome
-  useEffect(() => {
-    if (smokePhase) return
-    const api = window.electronAPI
-    if (!api) return
-    const enterTimer = setTimeout(() => setPhase('onboarding-welcome'), 1500)
-    return () => clearTimeout(enterTimer)
-  }, [smokePhase])
+  }, [smokePhase, onboardingComplete])
 
   // ── Phase transitions (150ms delay for smooth Framer Motion exit→enter) ──
   const goToPhase = useCallback(
@@ -71,7 +72,6 @@ export function useOnboarding(deps: UseOnboardingDeps) {
   const hNextWelcome = useCallback(() => goToPhase('onboarding-lang'), [goToPhase])
   const hNextLang = useCallback(() => goToPhase('onboarding-theme'), [goToPhase])
   const hNextTheme = useCallback(() => goToPhase('onboarding-auth'), [goToPhase])
-  const hDemoComplete = useCallback(() => goToPhase('main'), [goToPhase])
   const hBackToMain = useCallback(() => setPhase('main'), [])
 
   // ── Navigation to main sections (instant, no delay) ──
@@ -81,8 +81,11 @@ export function useOnboarding(deps: UseOnboardingDeps) {
   // ── Auth flow ──
   const hNextAuth = useCallback(async () => {
     const success = await handleAuth()
-    if (success) setPhase('onboarding-demo')
-  }, [handleAuth])
+    if (success) {
+      onCompleteOnboarding()
+      setPhase('main')
+    }
+  }, [handleAuth, onCompleteOnboarding])
 
   const hRequestAccess = useCallback(async () => {
     const ok = await handleRequestAccess()
@@ -108,13 +111,14 @@ export function useOnboarding(deps: UseOnboardingDeps) {
     return () => window.removeEventListener('keydown', handler)
   }, [phase])
 
-  // ── Auto-transition to demo when access request is approved ──
+  // ── Auto-transition to main when access request is approved ──
   useEffect(() => {
     if (requestStatus === 'approved') {
-      const timer = setTimeout(() => setPhase('onboarding-demo'), 1500)
+      onCompleteOnboarding()
+      const timer = setTimeout(() => setPhase('main'), 1500)
       return () => clearTimeout(timer)
     }
-  }, [requestStatus])
+  }, [requestStatus, onCompleteOnboarding])
 
   return {
     phase,
@@ -123,7 +127,6 @@ export function useOnboarding(deps: UseOnboardingDeps) {
     hNextLang,
     hNextTheme,
     hNextAuth,
-    hDemoComplete,
     hStartChecker,
     hStartDashboard,
     hBackToMain,

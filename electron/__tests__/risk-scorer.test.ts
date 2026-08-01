@@ -112,6 +112,16 @@ describe('classifySignal', () => {
     expect(lower).toBe(upper)
     expect(lower).not.toBe('default')
   })
+
+  it('does not false-positive on substring matches', () => {
+    // 'response' contains 'esp', 'support'/'important' contain 'port', 'atomic' contains 'atom'
+    expect(classifySignal('DNS response cache')).toBe('dns_cache')
+    expect(classifySignal('suspicious support file')).toBe('default')
+    expect(classifySignal('important registry key')).toBe('default')
+    expect(classifySignal('atomic operation')).toBe('default')
+    // ...but standalone 'esp' is still a memory-pattern signal
+    expect(classifySignal('ESP hack found')).toBe('memory_pattern')
+  })
 })
 
 // ═══════════════════════════════════════════════════
@@ -236,6 +246,52 @@ describe('calculateRisk', () => {
       expect(data.count).toBeGreaterThan(0)
     }
   })
+
+  it('does not let many weak signals outscore one strong signal', () => {
+    const weak: ScanResult[] = Array.from({ length: 20 }, (_, i) => ({
+      ...baseResult,
+      path: `C:\\test\\weak${i}.exe`,
+      fileName: `weak${i}.exe`,
+      matches: ['proxy setting'],
+      risk: 'low' as const,
+    }))
+    const strong: ScanResult[] = [{
+      ...baseResult,
+      matches: ['byte pattern in memory'],
+      risk: 'critical',
+    }]
+    const weakScore = calculateRisk(weak)
+    const strongScore = calculateRisk(strong)
+    // One memory pattern (weight 1.0, critical risk) must outweigh 20 proxy signals (0.3 each)
+    expect(strongScore.overall).toBeGreaterThan(weakScore.overall)
+    expect(weakScore.overall).toBeLessThan(50)
+    expect(strongScore.overall).toBe(100)
+  })
+
+  it('classifies the same thresholds as scoreToLevel', () => {
+    const r: ScanResult = {
+      ...baseResult,
+      risk: 'critical',
+      matches: ['byte pattern in memory'],
+    }
+    const score = calculateRisk([r])
+    // maxRisk=4 (critical) × weight 1.0 × log2(2) × 25 = 100
+    expect(score.overall).toBe(100)
+    expect(score.level).toBe(scoreToLevel(score.overall))
+  })
+
+  it('keeps weak findings clean below the adaptive threshold', () => {
+    const r: ScanResult = {
+      ...baseResult,
+      risk: 'medium',
+      matches: ['proxy setting'],
+    }
+    const score = calculateRisk([r])
+    expect(score.overall).toBeLessThan(score.threshold)
+    expect(score.level).toBe('clean')
+    // scoreToLevel alone would say 'low' — the adaptive gate keeps it 'clean'
+    expect(scoreToLevel(score.overall)).toBe('low')
+  })
 })
 
 // ═══════════════════════════════════════════════════
@@ -327,6 +383,32 @@ describe('rescoreResults', () => {
     expect(twice[0].risk).toBe('critical')
     expect(twice[0].findingId).toBe(once[0].findingId)
     expect(twice[0].evidence?.map(item => item.id)).toEqual(once[0].evidence?.map(item => item.id))
+  })
+
+  it('keeps riskScore consistent with the risk label', () => {
+    // Critical label must never be paired with a weak evidence score
+    const r: ScanResult = {
+      path: 'C:\\weak-critical.exe', fileName: 'weak-critical.exe', type: 'file',
+      risk: 'critical',
+      matches: ['proxy setting'],
+      size: 4096, modifiedAt: new Date().toISOString(),
+    }
+    const rescored = rescoreResults([r])[0]
+    expect(rescored.risk).toBe('critical')
+    expect(rescored.riskScore).toBeGreaterThanOrEqual(85)
+  })
+
+  it('does not duplicate escalation markers across repeated rescoring', () => {
+    const r: ScanResult = {
+      path: 'C:\\escalate.dll', fileName: 'escalate.dll', type: 'file',
+      risk: 'medium',
+      matches: ['byte pattern in memory'],
+      size: 4096, modifiedAt: new Date().toISOString(),
+    }
+    const once = rescoreResults([r])[0]
+    const twice = rescoreResults([once])[0]
+    const escalated = twice.matches.filter(m => m.startsWith('↑ Escalated'))
+    expect(escalated).toHaveLength(1)
   })
 
   it('assigns stable unique IDs to duplicate findings', () => {

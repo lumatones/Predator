@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "models": {
+    "glm-5.2": {
+      "name": "GLM 5.2",
+      "provider": "Z.ai / DeepInfra",
+      "inputPerMTokens": 1.0,
+      "outputPerMTokens": 3.0,
+      "contextWindow": 1000000,
+      "scores": {
+        "general": 60,
+        "refactor": 95,
+        "debug": 92,
+        "generate": 80,
+        "long-context": 95,
+        "security": 97,
+        "triage": 78,
+        "boilerplate": 70
+      },
+      "strengths": [
+        "Multi-file рефакторинг: SWE-bench Pro 62.1 (лучший open-weights)",
+        "#1 в Design Arena (кодинг-категории)",
+        "Удержание 1M контекста: FrontierSWE 74.4",
+        "Не угадывает — отказывается на неизвестном (Semgrep F1 39%)"
+      ],
+      "runner": "Claude Code / Cline: ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic ANTHROPIC_MODEL=glm-5.2"
+    },
+    "deepseek-v4-pro": {
+      "name": "DeepSeek V4 Pro",
+      "provider": "DeepSeek / OpenRouter",
+      "inputPerMTokens": 0.44,
+      "outputPerMTokens": 0.87,
+      "contextWindow": 1048576,
+      "scores": {
+        "general": 60,
+        "refactor": 78,
+        "debug": 88,
+        "generate": 98,
+        "long-context": 88,
+        "security": 70,
+        "triage": 70,
+        "boilerplate": 75
+      },
+      "strengths": [
+        "Генерация алгоритмов: LiveCodeBench 93.5 (#1 в мире)",
+        "Codeforces 3206, SWE-bench Verified 80.6",
+        "Дебаг по трейсбеку в одном файле",
+        "Дёшево на 1M контексте (KV-cache ~10%)"
+      ],
+      "weaknesses": [
+        "Склонен угадывать вместо «не знаю» (AA-Omniscience ~94%)",
+        "Галлюцинации API в «грязных» репозиториях"
+      ],
+      "runner": "OpenRouter: openrouter/deepseek/deepseek-v4-pro или api.deepseek.com"
+    },
+    "deepseek-v4-flash": {
+      "name": "DeepSeek V4 Flash",
+      "provider": "DeepSeek / DeepInfra",
+      "inputPerMTokens": 0.14,
+      "outputPerMTokens": 0.28,
+      "contextWindow": 1048576,
+      "scores": {
+        "general": 60,
+        "refactor": 70,
+        "debug": 78,
+        "generate": 88,
+        "long-context": 85,
+        "security": 60,
+        "triage": 75,
+        "boilerplate": 88
+      },
+      "strengths": [
+        "~83% качества Pro при цене в 3 раза ниже",
+        "Самый дешёвый 1M-контекст ($0.14/$0.28)",
+        "Высоконагруженные агентские пайплайны"
+      ],
+      "runner": "DeepInfra: deepinfra/deepseek-v4-flash или OpenRouter"
+    },
+    "gpt-5.6-luna": {
+      "name": "GPT 5.6 Luna",
+      "provider": "OpenAI",
+      "inputPerMTokens": 1.0,
+      "outputPerMTokens": 6.0,
+      "contextWindow": 1050000,
+      "scores": {
+        "general": 60,
+        "refactor": 75,
+        "debug": 80,
+        "generate": 78,
+        "long-context": 80,
+        "security": 72,
+        "triage": 92,
+        "boilerplate": 90
+      },
+      "strengths": [
+        "Быстрый баг-триаж, PR-саммари, первичный ревью",
+        "Boilerplate по чёткому ТЗ, генерация тестов",
+        "Terminal-Bench 84.3, SWE-bench Pro 62.7",
+        "Дешёвый prompt-caching на 1.05M контексте"
+      ],
+      "weaknesses": [
+        "Застревает на глубокой multi-file навигации",
+        "Нужно чёткое ТЗ и короткий горизонт задачи"
+      ],
+      "runner": "OpenAI Responses API: model=gpt-5.6-luna"
+    }
+  },
+  "taskTypes": {
+    "security": {
+      "description": "Безопасность: самозащита, анти-тампер, привилегии, аудит",
+      "keywords": [
+        "безопасн", "security", "self-protect", "self-protection", "anti-tamper",
+        "аудит", "audit", "уязвим", "vulnerab", "acl", "privilege", "привилег",
+        "integrity", "целостност", "self-protection", "sedebug"
+      ]
+    },
+    "long-context": {
+      "description": "Весь монorepo / большой контекст / миграция",
+      "keywords": [
+        "монorepo", "monorepo", "весь проект", "whole repo", "весь репо",
+        "весь код", "контекст", "context", "миграци", "migration",
+        "миллион токенов", "1m", "по всему проекту", "across"
+      ]
+    },
+    "refactor": {
+      "description": "Рефакторинг: декомпозиция, выделение, чистка",
+      "keywords": [
+        "рефактор", "refactor", "выдели", "extract", "декомпоз", "decompose",
+        "barrel", "упрости", "simplify", "разбей", "split", "чистк", "cleanup",
+        "длинн", "long function", "убери дубл", "dedup", "переимен", "rename"
+      ]
+    },
+    "debug": {
+      "description": "Дебаг: ошибки, краши, зависания, фиксы",
+      "keywords": [
+        "дебаг", "debug", "баг", "bug", "ошибк", "error", "исправ", "fix",
+        "почин", "crash", "пада", "trace", "трейс", "не работ", "broken",
+        "hang", "виснет", "исключ", "exception", "отладить", "stack"
+      ]
+    },
+    "generate": {
+      "description": "Генерация с нуля: алгоритмы, модули, логика",
+      "keywords": [
+        "генерац", "generate", "напиши", "создай", "create", "новый модуль",
+        "new module", "с нуля", "from scratch", "реализуй", "implement",
+        "алгоритм", "algorithm", "детект", "detect", "эвристик", "heuristic",
+        "yara", "сигнатур", "signature", "паттерн", "pattern"
+      ]
+    },
+    "boilerplate": {
+      "description": "Рутина: роуты, IPC, тесты, формы, UI-каркасы",
+      "keywords": [
+        "роут", "route", "ipc", "тест", "test", "форма", "form", "компонент",
+        "component", "шаблон", "boilerplate", "scaffold", "интерфейс",
+        "стил", "style", "анимац", "animation", "верстк", "layout"
+      ]
+    },
+    "triage": {
+      "description": "Триаж и анализ: саммари, ревью, классификация, обзоры",
+      "keywords": [
+        "триаж", "triage", "суммар", "summar", "обзор", "review", "классифик",
+        "classif", "разбор", "перечисл", "список", "сравн", "роутинг",
+        "первичн", "предложи"
+      ]
+    }
+  },
+  "pathRules": [
+    { "glob": "electron/self-protect.ts", "model": "glm-5.2", "reason": "Security: самозащита процесса, ACL Deny ACE" },
+    { "glob": "electron/self-integrity.ts", "model": "glm-5.2", "reason": "Security: контроль целостности" },
+    { "glob": "electron/anti-tamper.ts", "model": "glm-5.2", "reason": "Security: анти-тампер, VM-детект" },
+    { "glob": "electron/anti-forensic.ts", "model": "glm-5.2", "reason": "Security: анти-форензика" },
+    { "glob": "electron/api-hashing.ts", "model": "glm-5.2", "reason": "Security: хеширование API" },
+    { "glob": "electron/etw-amsi-patch.ts", "model": "glm-5.2", "reason": "Security: ETW/AMSI патч" },
+    { "glob": "electron/etw-provider.ts", "model": "glm-5.2", "reason": "Security: ETW-провайдер" },
+    { "glob": "electron/modes/etw-amsi.ts", "model": "glm-5.2", "reason": "Security: режим ETW/AMSI" },
+    { "glob": "electron/native-hv-detect.ts", "model": "glm-5.2", "reason": "Security: детект гипервизора" },
+    { "glob": "electron/fuzzy-hash.ts", "model": "deepseek-v4-pro", "reason": "Алгоритм: TLSH fuzzy matching" },
+    { "glob": "electron/auto-yara.ts", "model": "deepseek-v4-pro", "reason": "Алгоритм: авто-YARA" },
+    { "glob": "electron/cheat-rules.ts", "model": "deepseek-v4-pro", "reason": "Алгоритм: YARA-правила" },
+    { "glob": "electron/heuristic*", "model": "deepseek-v4-pro", "reason": "Алгоритм: эвристический движок" },
+    { "glob": "electron/modes/apc/**", "model": "deepseek-v4-pro", "reason": "Алгоритм: APC-детекция" },
+    { "glob": "electron/rwx-scanner.ts", "model": "deepseek-v4-pro", "reason": "Алгоритм: RWX-сканер памяти" },
+    { "glob": "electron/disk-vs-memory.ts", "model": "deepseek-v4-pro", "reason": "Алгоритм: сравнение диск/память" },
+    { "glob": "electron/memory-dump.ts", "model": "deepseek-v4-pro", "reason": "Алгоритм: дамп памяти" },
+    { "glob": "server/src/services/classifier.ts", "model": "deepseek-v4-pro", "reason": "Алгоритм: rule engine" },
+    { "glob": "server/src/services/tlsh-matcher.ts", "model": "deepseek-v4-pro", "reason": "Алгоритм: TLSH-матчер" },
+    { "glob": "src/components/**", "model": "glm-5.2", "reason": "Фронтенд: сложные React-компоненты" },
+    { "glob": "src/pages/**", "model": "glm-5.2", "reason": "Фронтенд: страницы (Three.js, framer-motion)" },
+    { "glob": "src/hooks/**", "model": "glm-5.2", "reason": "Фронтенд: хуки" },
+    { "glob": "server/src/routes/**", "model": "gpt-5.6-luna", "reason": "Boilerplate: Express-роуты" },
+    { "glob": "admin/src/pages/**", "model": "gpt-5.6-luna", "reason": "Boilerplate: CRUD-страницы" },
+    { "glob": "electron/ipc-handlers*", "model": "gpt-5.6-luna", "reason": "Boilerplate: IPC-хендлеры" },
+    { "glob": "electron/preload.ts", "model": "gpt-5.6-luna", "reason": "Boilerplate: preload-мост" }
+  ],
+  "thresholds": {
+    "multiFileCount": 3,
+    "longContextTokens": 200000
+  }
+}

@@ -41,6 +41,18 @@ export function useAuth(lang: Lang): UseAuthReturn {
     }
   }, [])
 
+  // Restore a previously activated token so the app skips onboarding
+  // on the next launch (server tokens are single-use).
+  useEffect(() => {
+    const api = window.electronAPI
+    if (!api?.getConfig) return
+    api.getConfig()
+      .then(cfg => {
+        if (cfg.tokenId != null) setTokenId(cfg.tokenId)
+      })
+      .catch(() => { /* no config yet */ })
+  }, [])
+
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
@@ -60,7 +72,12 @@ export function useAuth(lang: Lang): UseAuthReturn {
       if (!vr.valid) { setAuthError(vr.error || 'Токен недействителен'); return false }
       const ur = await useToken(token, pcName || 'unknown')
       if (!ur.valid) { setAuthError(ur.error || 'Не удалось активировать токен'); return false }
-      if (ur.token_id) setTokenId(ur.token_id)
+      if (ur.token_id) {
+        setTokenId(ur.token_id)
+        // Persist activation — server tokens are single-use, so the client
+        // must remember the assigned token_id across restarts.
+        window.electronAPI?.saveConfig?.({ tokenId: ur.token_id }).catch(() => {})
+      }
       return true
     } catch (err) { setAuthError(err instanceof Error ? err.message : 'Ошибка подключения к серверу'); return false }
     finally { setAuthLoading(false) }

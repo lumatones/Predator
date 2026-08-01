@@ -20,11 +20,32 @@ interface CompactScanOverlayProps {
   lang: 'ru' | 'en'
 }
 
-const modeIcons: Record<ScanMode, string> = {
-  full: '🛡️',
-  quick: '⚡',
-  dma: '🔌',
-  cleaner: '🧹',
+const modeIcons: Record<ScanMode, React.ReactNode> = {
+  full: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l8 3v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11V5l8-3z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  ),
+  quick: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  ),
+  dma: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="2" width="6" height="8" rx="1" />
+      <path d="M7 10h10v3a5 5 0 0 1-10 0v-3z" />
+      <path d="M12 18v4" />
+    </svg>
+  ),
+  cleaner: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3l7 7-8 3-2-2 3-8z" />
+      <path d="M4 20l3-3" />
+      <path d="M8 16l3 3" />
+    </svg>
+  ),
 }
 
 const COMPACT_LANG: Record<string, Record<string, string>> = {
@@ -91,43 +112,27 @@ export const CompactScanOverlay: React.FC<CompactScanOverlayProps> = memo(functi
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        style={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          width: 400,
-          maxHeight: 300,
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--border-color)',
-          borderRadius: 16,
-          padding: 20,
-          zIndex: 200,
-          boxShadow: `0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px ${accent}15`,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-        }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 18 }}>{modeIcons[mode] || '🔍'}</span>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{modeLabel}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+        <div className="compact-header">
+          <div className="compact-header-left">
+            <span className="compact-mode-icon" style={{ color: accent }}>
+              {modeIcons[mode]}
+            </span>
+            <div className="compact-title-block">
+              <div className="compact-title">{modeLabel}</div>
+              <div className="compact-subtitle">
                 {progress?.phase === 'scanning' ? t('scanning') :
                  progress?.phase === 'analyzing' ? t('analyzing') :
                  progress?.phase === 'done' ? t('done') : t('preparing')}
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div className="compact-btn-group">
             <motion.button
               className="compact-btn"
               onClick={onExpand}
               title={t('expand')}
-              style={{ padding: '4px 8px', fontSize: 12 }}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
@@ -141,7 +146,6 @@ export const CompactScanOverlay: React.FC<CompactScanOverlayProps> = memo(functi
               className="compact-btn"
               onClick={onClose}
               title={t('close')}
-              style={{ padding: '4px 8px', fontSize: 12 }}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
@@ -154,69 +158,50 @@ export const CompactScanOverlay: React.FC<CompactScanOverlayProps> = memo(functi
         </div>
 
         {/* Progress bar */}
-        <div style={{ position: 'relative', height: 6, borderRadius: 3, background: 'var(--bg-raised)', overflow: 'hidden' }}>
+        <div className="compact-progress-track">
           <motion.div
-            style={{
-              height: '100%',
-              borderRadius: 3,
-              background: `linear-gradient(90deg, ${accent}, ${light})`,
-            }}
+            className="compact-progress-fill"
+            style={{ background: `linear-gradient(90deg, ${accent}, ${light})` }}
             animate={{ width: `${pct}%` }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
           />
           {/* Shimmer */}
           <motion.div
-            style={{
-              position: 'absolute', top: 0, left: 0, height: '100%', width: '30%',
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)',
-            }}
+            className="compact-shimmer"
             animate={{ x: ['-100%', '400%'] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
           />
         </div>
 
         {/* Stats row */}
-        <div style={{ display: 'flex', gap: 16, fontSize: 11 }}>
+        <div className="compact-stats">
           <div>
-            <span style={{ color: 'var(--text-secondary)' }}>{t('progress')}</span>
-            <span style={{ marginLeft: 6, color: 'var(--text-primary)', fontWeight: 600 }}>{pct}%</span>
+            <span className="compact-stat-label">{t('progress')}</span>
+            <span className="compact-stat-value">{pct}%</span>
           </div>
           <div>
-            <span style={{ color: 'var(--text-secondary)' }}>{t('time')}</span>
-            <span style={{ marginLeft: 6, color: 'var(--text-primary)', fontWeight: 600 }}>
+            <span className="compact-stat-label">{t('time')}</span>
+            <span className="compact-stat-value">
               {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, '0')}
             </span>
           </div>
           {progress && (
             <div>
-              <span style={{ color: 'var(--text-secondary)' }}>{t('files')}</span>
-              <span style={{ marginLeft: 6, color: 'var(--text-primary)', fontWeight: 600 }}>{progress.filesFound}</span>
+              <span className="compact-stat-label">{t('files')}</span>
+              <span className="compact-stat-value">{progress.filesFound}</span>
             </div>
           )}
         </div>
 
         {/* Current directory */}
         {progress?.currentDir && (
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--text-secondary)',
-              fontFamily: '"Cascadia Code", "Fira Code", monospace',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              padding: '6px 10px',
-              background: 'var(--bg-raised)',
-              borderRadius: 6,
-              flexShrink: 0,
-            }}
-          >
+          <div className="compact-dir">
             {progress.currentDir}
           </div>
         )}
 
         {/* Spinner */}
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, minHeight: 40 }}>
+        <div className="compact-spinner">
           <SpinnerRing size={28} color={accent} />
         </div>
       </motion.div>

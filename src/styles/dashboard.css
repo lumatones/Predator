@@ -16,7 +16,16 @@
 
 
 .update-modal {
+  /* Content is a sibling of the overlay in the Radix portal, so it must
+     center itself (overlay flex centering does not reach it). */
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  margin: auto;
   width: 360px;
+  height: fit-content;
+  max-height: min(90vh, 620px);
+  overflow-y: auto;
   padding: var(--space-8);
   background: rgba(18, 18, 26, 0.96);
   border: 1px solid var(--border-color);
@@ -28,13 +37,30 @@
   gap: var(--space-4);
 }
 
+.update-modal::-webkit-scrollbar { width: 4px; }
+.update-modal::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
 
 .update-modal-icon { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; }
 .update-modal-icon svg { display: block; }
+.update-modal-icon .spinner { width: 36px; height: 36px; }
+.update-modal-icon .spinner-ring { border-width: 2px; }
 .update-modal-title { font-size: 17px; font-weight: var(--fw-bold); color: var(--text-primary); text-align: center; }
 .update-modal-version { font-size: var(--text-sm); color: var(--text-secondary); text-align: center; }
 
+.update-modal-title.error { color: var(--color-error); }
+.update-modal-version.error { color: var(--color-error-dim); }
+
 .update-modal-actions { display: flex; gap: var(--space-2); width: 100%; }
+.update-modal-actions.column {
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.update-modal-size {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: var(--fw-medium);
+}
 
 .update-modal-btn {
   flex: 1;

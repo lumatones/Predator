@@ -1,6 +1,6 @@
 {
   "name": "predator",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Predator — Cheat checker for GTA 5 RP (Majestic)",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -17,6 +17,7 @@
     "electron:build:win": "npm run build && electron-builder --win",
     "postinstall": "electron-builder install-app-deps",
     "generate:resources": "node scripts/generate-resources.js",
+    "ai:route": "node scripts/ai-router/router.mjs",
     "typecheck:renderer": "tsc --noEmit --project tsconfig.json",
     "typecheck:electron": "tsc --noEmit --project tsconfig.electron.json",
     "typecheck": "npm run typecheck:renderer && npm run typecheck:electron && cd admin && npx tsc --noEmit",
