@@ -12,7 +12,7 @@ CREATE TABLE `requests` (
 	`id` serial AUTO_INCREMENT NOT NULL,
 	`pc_username` varchar(100) NOT NULL,
 	`status` enum('pending','approved','rejected') NOT NULL DEFAULT 'pending',
-	`approved_by` int,
+	`approved_by` bigint unsigned,
 	`approved_at` datetime,
 	`expires_at` datetime,
 	`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -33,7 +33,7 @@ CREATE TABLE `safe_files` (
 --> statement-breakpoint
 CREATE TABLE `scan_results` (
 	`id` serial AUTO_INCREMENT NOT NULL,
-	`token_id` int,
+	`token_id` bigint unsigned,
 	`pc_username` varchar(100) NOT NULL,
 	`mode` varchar(20) NOT NULL,
 	`total_scanned` int NOT NULL DEFAULT 0,
@@ -51,7 +51,7 @@ CREATE TABLE `scan_results` (
 --> statement-breakpoint
 CREATE TABLE `shadow_findings` (
 	`id` serial AUTO_INCREMENT NOT NULL,
-	`token_id` int,
+	`token_id` bigint unsigned,
 	`pc_username` varchar(100) NOT NULL,
 	`scan_mode` varchar(20),
 	`file_path` varchar(1024),
@@ -64,7 +64,7 @@ CREATE TABLE `shadow_findings` (
 	`occurrence_count` int NOT NULL DEFAULT 1,
 	`unique_pcs` int NOT NULL DEFAULT 1,
 	`status` enum('shadow','promoted','rejected') NOT NULL DEFAULT 'shadow',
-	`promoted_by` int,
+	`promoted_by` bigint unsigned,
 	`promoted_at` datetime,
 	`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	CONSTRAINT `shadow_findings_id` PRIMARY KEY(`id`)
@@ -78,14 +78,14 @@ CREATE TABLE `suspicious_hashes` (
 	`file_name` varchar(255),
 	`file_path` varchar(1024),
 	`pc_username` varchar(100),
-	`token_id` int,
+	`token_id` bigint unsigned,
 	`file_size` int NOT NULL DEFAULT 0,
 	`risk_score` int NOT NULL DEFAULT 0,
 	`risk` enum('high','medium','low') NOT NULL DEFAULT 'high',
 	`matches` json,
 	`has_valid_signature` boolean,
 	`status` enum('pending','confirmed','false_positive') NOT NULL DEFAULT 'pending',
-	`reviewed_by` int,
+	`reviewed_by` bigint unsigned,
 	`reviewed_at` datetime,
 	`auto_classified` boolean DEFAULT false,
 	`auto_reason` varchar(255),
@@ -97,7 +97,7 @@ CREATE TABLE `suspicious_hashes` (
 CREATE TABLE `tokens` (
 	`id` serial AUTO_INCREMENT NOT NULL,
 	`code` char(32) NOT NULL,
-	`created_by` int,
+	`created_by` bigint unsigned,
 	`used_by` varchar(100),
 	`used_at` datetime,
 	`is_active` boolean NOT NULL DEFAULT true,

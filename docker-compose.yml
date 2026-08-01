@@ -21,8 +21,8 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-change-me-in-production}
     volumes:
       - mysql-data:/var/lib/mysql
-    ports:
-      - "127.0.0.1:3306:3306"
+    # No external port — mysql communicates internally via Docker network.
+    # To connect from host: use docker compose exec mysql mysql -u root -p
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 10s
@@ -32,7 +32,9 @@ services:
     networks:
       - predator-net
 
-  # ── DB Migrations (drizzle-kit) ──
+  # ── DB Migrations (programmatic, via drizzle-orm) ──
+  # One-shot container — applies SQL migrations and exits.
+  # Uses drizzle-orm's migrate() — no drizzle-kit CLI needed.
   db-migrate:
     build:
       context: .
@@ -44,7 +46,7 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    command: ["npx", "drizzle-kit", "migrate"]
+    command: ["node", "dist/db/migrate.js"]
     networks:
       - predator-net
 
@@ -62,8 +64,8 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
-    ports:
-      - "127.0.0.1:3001:3001"
+    # No external port — server communicates internally via Docker network.
+    # Access through nginx at http://localhost/api/
     networks:
       - predator-net
 
@@ -78,7 +80,7 @@ services:
       server:
         condition: service_healthy
     ports:
-      - "80:80"
+      - "8080:80"  # 8080 externally — avoid conflict with host Apache
     networks:
       - predator-net
 

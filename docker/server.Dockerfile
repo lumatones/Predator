@@ -12,9 +12,8 @@ WORKDIR /app
 COPY server/package.json server/package-lock.json* ./
 RUN npm install --ignore-scripts
 
-# Copy source + tsconfig + drizzle config
+# Copy source + tsconfig
 COPY server/tsconfig.json ./
-COPY server/drizzle.config.ts ./
 COPY server/src/ ./src/
 
 # Compile TypeScript → dist/
@@ -29,10 +28,9 @@ RUN addgroup -g 1001 -S predator && \
 
 WORKDIR /app
 
-# Copy compiled output + drizzle files
+# Copy compiled output
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
-COPY --from=builder /app/drizzle.config.ts ./
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy drizzle migrations (needed for db:init)
