@@ -4,7 +4,7 @@ import {
   X, Copy, Check, Terminal, Calendar, User, HardDrive,
   FileCode, Shield, ShieldCheck, ShieldAlert, Hash,
   Activity, Clock, AlertTriangle, Fingerprint, FileWarning,
-  ExternalLink, ChevronDown, ChevronUp
+  ChevronDown, ChevronUp
 } from 'lucide-react'
 import type { SuspiciousHash, ScanResultHash } from '../api'
 

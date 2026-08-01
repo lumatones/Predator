@@ -1,7 +1,7 @@
 import express from 'express'
 import type { Request, Response } from 'express'
 import { query } from '../config/database'
-import { paginate, countTotal, setPaginationHeaders } from '../helpers/pagination'
+import { paginate, setPaginationHeaders } from '../helpers/pagination'
 import {
   checkTokenSchema,
   useTokenSchema,
@@ -12,7 +12,7 @@ import {
   submitShadowSchema,
   validate,
 } from '../shared-types'
-import type { TokenRow, RequestRow, SuspiciousHashRow, ShadowFindingRow } from '../shared-types'
+import type { TokenRow, RequestRow, SuspiciousHashRow } from '../shared-types'
 import { classifyBatch, autoPromoteShadowRules } from '../services/classifier'
 
 const router = express.Router()

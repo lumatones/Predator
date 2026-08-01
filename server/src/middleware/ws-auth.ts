@@ -87,21 +87,6 @@ function getJwtSecret(): string {
   return secret
 }
 
-/**
- * Decode JWT payload without verification (for extracting exp claim).
- * Returns null on any failure.
- */
-function decodeJwtPayload(token: string): { exp?: number } | null {
-  try {
-    if (token.split('.').length < 2) return null
-    // JWT uses base64url (RFC 7519), Node understands base64 with padding
-    const payloadB64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    return JSON.parse(Buffer.from(payloadB64, 'base64').toString('utf8'))
-  } catch {
-    return null
-  }
-}
-
 // ═══════════════════════════════════════════════════
 // MIDDLEWARE
 // ═══════════════════════════════════════════════════

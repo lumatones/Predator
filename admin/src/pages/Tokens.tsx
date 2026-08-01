@@ -131,7 +131,6 @@ export default memo(function Tokens() {
 
   const activeTokens = tokens.filter(t => t.is_active)
   const usedTokens = tokens.filter(t => !t.is_active && t.used_by)
-  const revokedTokens = tokens.filter(t => !t.is_active && !t.used_by)
 
   const cardVariants = {
     hidden: { opacity: 0, y: 16 },

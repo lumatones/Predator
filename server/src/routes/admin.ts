@@ -427,7 +427,7 @@ router.post('/client-hash', requireRole('superadmin'), validate(clientHashRegist
 })
 
 // ── GET /api/admin/scan-stats ──────────────────
-router.get('/scan-stats', async (req: Request, res: Response) => {
+router.get('/scan-stats', async (_req: Request, res: Response) => {
   try {
     const totalScans = await query<{ cnt: number }[]>('SELECT COUNT(*) AS cnt FROM scan_results')
     const totalScanned = await query<{ cnt: number }[]>('SELECT SUM(total_scanned) AS cnt FROM scan_results')
@@ -707,7 +707,7 @@ router.post('/hashes/confirm-from-scan', requireRole('admin'), validate(hashConf
 })
 
 // ── GET /api/admin/safe-files-stats ──────────────
-router.get('/safe-files-stats', async (req: Request, res: Response) => {
+router.get('/safe-files-stats', async (_req: Request, res: Response) => {
   try {
     const total = await query<{ cnt: number }[]>('SELECT COUNT(*) AS cnt FROM safe_files')
     const totalConfirm50 = await query<{ cnt: number }[]>('SELECT COUNT(*) AS cnt FROM safe_files WHERE confirm_count >= 50')

@@ -14,7 +14,6 @@ import {
   mockInsertResult,
   mockUpdateResult,
   mockSuspiciousHash,
-  VALID_TOKEN_CLEAN,
   VALID_SHA256,
 } from './test-helper'
 

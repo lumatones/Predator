@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import { useState, useEffect, useMemo, memo } from 'react'
 import { useAuth } from '../App'
 import { getDashboardStats, getScanStats, type DashboardStats, type ScanStats } from '../api'
 import { io, Socket } from 'socket.io-client'
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import AnimatedNumber from '../components/AnimatedNumber'
 import { SkeletonStatCard, SkeletonTable } from '../components/Skeleton'
-import { useToasts, ToastContainer, type ToastType } from '../components/Toast'
+import { useToasts, ToastContainer } from '../components/Toast'
 import { springEase } from '../constants'
 
 const DEV = import.meta.env.DEV
@@ -247,7 +247,7 @@ export default memo(function Dashboard() {
         initial="hidden"
         animate="show"
       >
-        {statCards.map((card, idx) => {
+        {statCards.map((card) => {
           const Icon = card.icon
           return (
             <motion.div

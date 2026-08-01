@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useState, useEffect, createContext, useContext, useCallback } from 'react'
+import { useState, createContext, useContext, useCallback } from 'react'
 import Layout from './components/Layout'
 import ParticleBackground from './components/ParticleBackground'
 import Login from './pages/Login'

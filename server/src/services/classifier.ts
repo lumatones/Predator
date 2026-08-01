@@ -389,7 +389,6 @@ async function signalTlshMatch(
  */
 function signalCorrelation(signals: SignalEntry[]): SignalEntry | null {
   const positiveSignals = signals.filter(s => s.score > 0)
-  const distinctCategories = new Set(positiveSignals.map(s => s.name))
 
   // Remove auto-triggering signals from count (they already decide)
   const autoSignals = new Set(['hash_match', 'safe_file_db'])
@@ -552,8 +551,8 @@ export async function classifyFinding(input: ClassifierInput): Promise<Classifie
 async function checkCrowdsource(
   sha256: string,
   risk: string,
-  pcUsername: string,
-  currentScore: number,
+  _pcUsername: string,
+  _currentScore: number,
 ): Promise<ClassifierResult | null> {
   try {
     const rows = await query<{ unique_pcs: number; avg_risk_score: number }[]>(
@@ -614,7 +613,7 @@ export async function classifyBatch(
     if (result.classification === 'safe') {
       stats.autoSafe++
       autoClassified.push({ input: finding, result })
-      await autoAddToSafeFiles(finding, result)
+      await autoAddToSafeFiles(finding)
     } else if (result.classification === 'malicious') {
       stats.autoMalicious++
       autoClassified.push({ input: finding, result })
@@ -632,7 +631,7 @@ export async function classifyBatch(
 // AUTO-ACTIONS
 // ═══════════════════════════════════════════════════
 
-async function autoAddToSafeFiles(finding: ClassifierInput, result: ClassifierResult): Promise<void> {
+async function autoAddToSafeFiles(finding: ClassifierInput): Promise<void> {
   try {
     const hashForSafeDb = finding.partialHash || finding.sha256
     if (!hashForSafeDb) return

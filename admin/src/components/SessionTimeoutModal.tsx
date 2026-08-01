@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, ShieldAlert, LogOut, RefreshCw } from 'lucide-react'
+import { ShieldAlert, LogOut, RefreshCw } from 'lucide-react'
 
 interface SessionTimeoutModalProps {
   show: boolean
