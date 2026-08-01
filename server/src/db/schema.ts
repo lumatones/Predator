@@ -21,6 +21,7 @@ import {
   mysqlTable,
   mysqlEnum,
   int,
+  bigint,
   varchar,
   char,
   mediumtext,
@@ -51,7 +52,7 @@ export const admins = mysqlTable('admins', {
 export const tokens = mysqlTable('tokens', {
   id: serial('id').primaryKey().autoincrement(),
   code: char('code', { length: 32 }).notNull().unique(),
-  created_by: int('created_by').references(() => admins.id, { onDelete: 'set null' }),
+  created_by: bigint('created_by', { mode: 'number', unsigned: true }).references(() => admins.id, { onDelete: 'set null' }),
   used_by: varchar('used_by', { length: 100 }),
   used_at: datetime('used_at', { mode: 'string' }),
   is_active: boolean('is_active').default(true).notNull(),
@@ -67,7 +68,7 @@ export const requests = mysqlTable('requests', {
   id: serial('id').primaryKey().autoincrement(),
   pc_username: varchar('pc_username', { length: 100 }).notNull(),
   status: mysqlEnum('status', ['pending', 'approved', 'rejected']).default('pending').notNull(),
-  approved_by: int('approved_by').references(() => admins.id, { onDelete: 'set null' }),
+  approved_by: bigint('approved_by', { mode: 'number', unsigned: true }).references(() => admins.id, { onDelete: 'set null' }),
   approved_at: datetime('approved_at', { mode: 'string' }),
   expires_at: datetime('expires_at', { mode: 'string' }),
   created_at: datetime('created_at', { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -79,7 +80,7 @@ export const requests = mysqlTable('requests', {
 
 export const scanResults = mysqlTable('scan_results', {
   id: serial('id').primaryKey().autoincrement(),
-  token_id: int('token_id').references(() => tokens.id, { onDelete: 'set null' }),
+  token_id: bigint('token_id', { mode: 'number', unsigned: true }).references(() => tokens.id, { onDelete: 'set null' }),
   pc_username: varchar('pc_username', { length: 100 }).notNull(),
   mode: varchar('mode', { length: 20 }).notNull(),
   total_scanned: int('total_scanned').default(0).notNull(),
@@ -115,7 +116,7 @@ export const suspiciousHashes = mysqlTable('suspicious_hashes', {
   matches: json('matches'),
   has_valid_signature: boolean('has_valid_signature'),
   status: mysqlEnum('status', ['pending', 'confirmed', 'false_positive']).default('pending').notNull(),
-  reviewed_by: int('reviewed_by').references(() => admins.id, { onDelete: 'set null' }),
+  reviewed_by: bigint('reviewed_by', { mode: 'number', unsigned: true }).references(() => admins.id, { onDelete: 'set null' }),
   reviewed_at: datetime('reviewed_at', { mode: 'string' }),
   auto_classified: boolean('auto_classified').default(false),
   auto_reason: varchar('auto_reason', { length: 255 }),
@@ -164,7 +165,7 @@ export const shadowFindings = mysqlTable('shadow_findings', {
   occurrence_count: int('occurrence_count').default(1).notNull(),
   unique_pcs: int('unique_pcs').default(1).notNull(),
   status: mysqlEnum('status', ['shadow', 'promoted', 'rejected']).default('shadow').notNull(),
-  promoted_by: int('promoted_by').references(() => admins.id, { onDelete: 'set null' }),
+  promoted_by: bigint('promoted_by', { mode: 'number', unsigned: true }).references(() => admins.id, { onDelete: 'set null' }),
   promoted_at: datetime('promoted_at', { mode: 'string' }),
   created_at: datetime('created_at', { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 }, (table) => ({
