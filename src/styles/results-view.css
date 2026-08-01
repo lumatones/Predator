@@ -1,0 +1,169 @@
+/* ═══════════════════════════════════════════════════
+   RESULTS VIEW — filter bar, chips, enhanced layout
+   ═══════════════════════════════════════════════════ */
+
+.results-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ── Filter Bar ── */
+.results-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.01) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  animation: phaseFadeIn 0.4s var(--ease-out) both;
+}
+
+.results-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  transition: all var(--duration-fast);
+  margin-bottom: 2px;
+}
+
+.results-search:focus-within {
+  border-color: color-mix(in srgb, var(--accent-red) 30%, transparent);
+  background: rgba(255,255,255,0.05);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-red) 8%, transparent);
+}
+
+.results-filter-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.results-filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.results-filter-label {
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  min-width: 56px;
+  flex-shrink: 0;
+}
+
+.results-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ── Filter Chip ── */
+.results-filter-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.results-filter-chip:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.15);
+  color: var(--text-secondary);
+}
+
+.results-filter-chip:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: 2px;
+}
+
+.results-filter-chip.active {
+  background: color-mix(in srgb, var(--chip-color, var(--accent-red)) 18%, transparent);
+  border-color: color-mix(in srgb, var(--chip-color, var(--accent-red)) 45%, transparent);
+  color: var(--chip-color, var(--accent-red));
+  font-weight: var(--fw-semibold);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--chip-color, var(--accent-red)) 12%, transparent);
+}
+
+.results-filter-chip.active:hover {
+  background: color-mix(in srgb, var(--chip-color, var(--accent-red)) 26%, transparent);
+}
+
+/* ── Filter info row ── */
+.results-filter-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border-color);
+}
+
+.results-filter-reset {
+  background: none;
+  border: none;
+  color: var(--accent-red);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: all var(--duration-fast);
+}
+
+.results-filter-reset:hover {
+  background: rgba(255,68,68,0.1);
+}
+
+/* ── Action bar ── */
+.checker-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.export-msg {
+  font-size: 11px;
+  color: var(--color-success);
+  font-weight: var(--fw-bold);
+  animation: phaseFadeIn 0.3s var(--ease-out) both;
+}
+
+/* ── Empty detail panel prompt ── */
+.checker-detail-empty svg {
+  opacity: 0.25;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .results-filter-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .results-filter-label {
+    min-width: auto;
+  }
+  .results-filter-bar {
+    padding: var(--space-2);
+  }
+}

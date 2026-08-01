@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo, memo } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
 
@@ -9,17 +9,14 @@ interface TabCacheEntry {
 }
 const tabCache = new Map<ScanMode, TabCacheEntry>()
 import { exportHtml, exportJson, exportMarkdown, exportPdf, sendToTelegram } from '../utils/export-report'
-import { groupResults } from '../utils/result-grouper'
 import { Magnetic } from '../components/ui/Magnetic'
 import { Button } from '../components/ui/Button'
-import PredatorLogo3D from '../components/ui/PredatorLogo3D'
 import { ScanTerminal } from '../components/ui/ScanTerminal'
 import { Skeleton } from '../components/ui/Skeleton'
 import { FileDetailModal } from '../components/ui/FileDetailModal'
 import { BinaryTriagePanel } from '../components/ui/BinaryTriagePanel'
 import type { BinaryTriageReport } from '../../types/binary-triage'
-import { ThreatMap } from '../components/ui/ThreatMap'
-import { ApcDashboard } from '../components/ui/ApcDashboard'
+import { ResultsView } from '../components/ui/ResultsView'
 import { CompactScanOverlay } from '../components/ui/CompactScanOverlay'
 import { Tooltip } from '../components/ui/Tooltip'
 import { ScanningDots } from '../components/ui/AnimatedIcons'
@@ -31,11 +28,6 @@ import {
   IconUSB,
   IconShield,
   IconGlobe,
-  IconRegistry,
-  IconMonitor,
-  IconLock,
-  IconDNA,
-  IconChart,
 } from '../icons'
 
 // Import the eraser/broom icon for cleaner scan
@@ -253,89 +245,10 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
   }
 }
 
-// ── Success celebration sparkles (stable config, no Math.random in render) ──
-const SPARKLE_CONFIGS = [0,1,2,3,4].map(i => ({
-  left: `${20 + ((i * 17 + 7) % 60)}%`,
-  top: `${10 + ((i * 13 + 3) % 50)}%`,
-  delay: `${0.1 + i * 0.15}s`,
-  size: `${6 + (i % 3) * 4}px`,
-  bg: i % 2 === 0 ? 'var(--color-success)' as const : 'var(--chart-lime)' as const,
-  radius: i % 3 === 0 ? '50%' as const : '2px' as const,
-}))
-
-const SuccessSparkles = memo(function SuccessSparkles() {
-  return <>
-    {SPARKLE_CONFIGS.map((cfg, i) => (
-      <span key={i} className="success-sparkle" style={{
-        left: cfg.left, top: cfg.top, animationDelay: cfg.delay,
-        width: cfg.size, height: cfg.size,
-        background: cfg.bg, borderRadius: cfg.radius,
-      }} />
-    ))}
-  </>
-})
-
-const INITIAL_SHOW = 5
-
-// ── Pure helpers extracted OUTSIDE component (not recreated on every render) ──
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatTime(ms: number, secLabel: string): string {
-  if (ms < 1000) return `${ms} ms`
-  return `${(ms / 1000).toFixed(1)} ${secLabel}`
-}
-
-function riskLabel(risk: ScanResult['risk'], lang: 'ru' | 'en'): string {
-  if (risk === 'critical') return lang === 'ru' ? 'Критический' : 'Critical'
-  const t = (k: string) => T[lang][k] || k
-  return risk === 'high' ? t('high') : risk === 'medium' ? t('medium') : t('low')
-}
-
-function typeName(type: string, lang: 'ru' | 'en'): string {
-  const t = (k: string) => T[lang][k] || k
-  switch (type) {
-    case 'file': return t('typeFile')
-    case 'browser': return t('typeBrowser')
-    case 'process': return t('typeProcess')
-    case 'registry': return t('typeRegistry')
-    case 'hardware': return t('typeHardware')
-    case 'software': return t('typeSoftware')
-    case 'system': return t('typeSystem')
-    default: return type
-  }
-}
-
-function typeIcon(type: string, size = 14) {
-  const c = 'var(--text-secondary)'
-  switch (type) {
-    case 'file': return <IconFolder size={size} color={c} />
-    case 'browser': return <IconGlobe size={size} color={c} />
-    case 'process': return <IconGear size={size} color={c} />
-    case 'registry': return <IconRegistry size={size} color={c} />
-    case 'hardware': return <IconUSB size={size} color={c} />
-    case 'software': return <IconMonitor size={size} color={c} />
-    case 'system': return <IconMonitor size={size} color={c} />
-    default: return <IconFolder size={size} color={c} />
-  }
-}
-
 // ── Component ──
 
 export default function Checker({ lang, tokenId, onBack, accent, light, dark }: CheckerProps) {
   const prefersReducedMotion = useReducedMotion()
-
-  const containerVariants = prefersReducedMotion
-    ? { hidden: {}, visible: {} }
-    : { hidden: {}, visible: { transition: { staggerChildren: 0.03 } } }
-
-  const itemVariants = prefersReducedMotion
-    ? { hidden: {}, visible: {} }
-    : { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.3 } } }
 
   const t = useMemo(() => (key: string) => T[lang][key] || key, [lang])
   const [activeTab, setActiveTab] = useState<ScanMode>('full')
@@ -349,9 +262,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
   const findingTriggerRef = useRef<HTMLElement | null>(null)
   const [error, setError] = useState('')
   const [tabTransition, setTabTransition] = useState<'enter' | 'idle' | 'exit'>('idle')
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['critical', 'high']))
-  const [showAllGroups, setShowAllGroups] = useState<Set<string>>(new Set())
-  const [searchQuery, setSearchQuery] = useState('')
   const [exportMsg, setExportMsg] = useState('')
   const [copiedPath, setCopiedPath] = useState('')
   const [tabCounts, setTabCounts] = useState<Map<ScanMode, number>>(new Map())
@@ -364,45 +274,10 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
   const { play: playSound } = useSound()
   const scanRef = useRef<boolean>(false)
   const isMounted = useRef(true)
-
-  useEffect(() => {
-    return () => {
-      isMounted.current = false
-    }
-  }, [])
-
-  const filteredResults = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim()
-    if (!q) return results
-    return results.filter(r =>
-      r.fileName.toLowerCase().includes(q) ||
-      r.path.toLowerCase().includes(q) ||
-      r.matches.some(m => m.toLowerCase().includes(q))
-    )
-  }, [results, searchQuery])
-
-  // ── Grouped results for clean cheat display ──
-  const groupedResults = useMemo(() => groupResults(results), [results])
-  const [cheatExpandedGroups, setCheatExpandedGroups] = useState<Set<string>>(new Set())
-  const [showOtherItems, setShowOtherItems] = useState(false)
-  const [showSafeDevices, setShowSafeDevices] = useState(false)
-
-  // Auto-expand high-risk cheat groups on first load
-  useEffect(() => {
-    if (groupedResults.cheatGroups.length > 0 && cheatExpandedGroups.size === 0) {
-      const highRiskGroups = groupedResults.cheatGroups
-        .filter(g => g.risk === 'high')
-        .map(g => g.cheatName)
-      if (highRiskGroups.length > 0) {
-        setCheatExpandedGroups(new Set(highRiskGroups))
-      }
-    }
-  }, [groupedResults.cheatGroups])
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const currentTab = TABS.find(t => t.id === activeTab)!
-  const activeTabIndex = TABS.findIndex(t => t.id === activeTab)
-  const isInconclusive = summary?.status === 'inconclusive'
+  const currentTab = TABS.find(tab => tab.id === activeTab)!
+  const activeTabIndex = TABS.findIndex(tab => tab.id === activeTab)
 
   const openFinding = useCallback((result: ScanResult, event: React.MouseEvent<HTMLElement>) => {
     findingTriggerRef.current = event.currentTarget
@@ -507,12 +382,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     setSelectedResult(null)
     setPhase('idle')
     scanRef.current = false
-    setExpandedGroups(new Set(['critical', 'high']))
-    setShowAllGroups(new Set())
-    setCheatExpandedGroups(new Set())
-    setShowOtherItems(false)
-    setShowSafeDevices(false)
-    setSearchQuery('')
   }, [])
 
   const handleExport = useCallback((format: 'html' | 'json' | 'md') => {
@@ -604,8 +473,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       setProgress(null)
       setSelectedResult(null)
       setError('')
-      setSearchQuery('')
-
       setTabTransition('enter')
       setTimeout(() => setTabTransition('idle'), 200)
     }, 150)
@@ -764,493 +631,41 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
 
       {/* Results */}
       {phase === 'done' && (
-        <div className="checker-results">
-          {summary && (
-            <div className={`checker-summary card-section${summary.suspiciousFiles > 0 ? ' warning-active' : isInconclusive ? ' warning-active inconclusive' : ' safe'}`}>
-              <div className={`checker-summary-icon ${summary.suspiciousFiles > 0 || isInconclusive ? 'warning' : 'safe'}`}>
-                {summary.suspiciousFiles > 0 || isInconclusive ? (
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                  </svg>
-                ) : (
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
-                    <polyline points="22 4 12 14.01 9 11.01"/>
-                  </svg>
-                )}
-              </div>
-              {isInconclusive && (
-                <div className="checker-empty-state checker-inconclusive-state" role="status" style={{ marginBottom: 12 }}>
-                  <div className="checker-empty-title">{t('scanInconclusive')}</div>
-                  <div className="checker-empty-desc">{t('scanInconclusiveHint')}</div>
-                  {summary.diagnostics && summary.diagnostics.length > 0 && (
-                    <div className="checker-inconclusive-details">
-                      {summary.diagnostics.map(diagnostic => diagnostic.errorMessage || diagnostic.errorCode || diagnostic.detectorId).join(' · ')}
-                    </div>
-                  )}
-                </div>
-              )}
-              {summary.suspiciousFiles > 0 ? (
-                <div className="checker-summary-text" style={{ marginBottom: 8 }}>
-                  {`${summary.suspiciousFiles} ${t('threatsFound')}`}
-                </div>
-              ) : !isInconclusive ? (
-                <div className="checker-empty-state">
-                  {/* Success sparkles — stable seed via useMemo */}
-                  <SuccessSparkles />
-                  <div className="checker-empty-logo">
-                    <PredatorLogo3D accent={accent} light={light} dark={dark} size={72} phase="done" threatCount={0} />
-                  </div>
-                  <div className="checker-empty-check">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </div>
-                  <div className="checker-empty-title">Система чиста</div>
-                  <div className="checker-empty-desc">Проверены следующие модули:</div>
-                  <div className="checker-empty-modules">
-                    <span className="checker-empty-module"><IconFolder size={12} /> Файловая система</span>
-                    <span className="checker-empty-module"><IconGear size={12} /> Процессы</span>
-                    <span className="checker-empty-module"><IconRegistry size={12} /> Реестр</span>
-                    <span className="checker-empty-module"><IconUSB size={12} /> DMA-устройства</span>
-                    <span className="checker-empty-module"><IconGlobe size={12} /> Сеть</span>
-                    <span className="checker-empty-module"><IconLock size={12} /> Цифровые подписи</span>
-                    <span className="checker-empty-module"><IconDNA size={12} /> Поведенческий анализ</span>
-                    <span className="checker-empty-module"><IconGlobe size={12} /> История браузера</span>
-                    <span className="checker-empty-module"><IconChart size={12} /> Энтропия файлов</span>
-                  </div>
-                </div>
-              ) : null}
-              <div className="checker-summary-stats" style={{ animationDelay: '0.3s', animation: 'phaseFadeIn 0.5s 0.3s var(--ease-out) both' }}>
-                <span>{summary.totalScanned} {t('filesScanned')}</span>
-                <span className="checker-summary-dot">•</span><span>{t('time')}: {formatTime(summary.scanTimeMs, t('sec'))}</span>
-              </div>
-            </div>
-          )}
-
-          {results.length > 0 && summary && summary.suspiciousFiles > 0 && (
-            <>
-              <ThreatMap results={results} />
-              <ApcDashboard results={results} lang={lang} />
-            </>
-          )}
-
-          {/* ── Connected Devices Section ── */}
-          {(groupedResults.deviceSummary.hasSuspiciousDevices || groupedResults.deviceSummary.hasDmaHistory || groupedResults.deviceSummary.connectedSafe.length > 0) && (
-            <div className="devices-section">
-              <div className="devices-header">
-                <span className="devices-title">🔌 {t('devicesTitle')}</span>
-              </div>
-
-              {/* Suspicious devices (DMA/FPGA) */}
-              {groupedResults.deviceSummary.connectedSuspicious.length > 0 && (
-                <div className="devices-group suspicious">
-                  <div className="devices-group-header">
-                    <span>{t('devicesSuspicious')} ({groupedResults.deviceSummary.connectedSuspicious.length})</span>
-                  </div>
-                  {groupedResults.deviceSummary.connectedSuspicious.map((r, i) => (
-                    <div key={`dma-${i}`} className="device-item danger"
-                      onClick={(event) => openFinding(r, event)}>
-                      <span className="device-item-icon">⚠️</span>
-                      <div className="device-item-info">
-                        <span className="device-item-name">{r.fileName}</span>
-                        {r.matches.slice(0, 2).map((m, j) => (
-                          <span key={j} className="device-item-detail">{m}</span>
-                        ))}
-                      </div>
-                      <span className="device-item-risk high">HIGH</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* DMA history */}
-              {groupedResults.deviceSummary.dmaHistory.length > 0 && (
-                <div className="devices-group history">
-                  <div className="devices-group-header">
-                    <span>{t('devicesHistory')} ({groupedResults.deviceSummary.dmaHistory.length})</span>
-                  </div>
-                  {groupedResults.deviceSummary.dmaHistory.map((r, i) => (
-                    <div key={`dmahist-${i}`} className="device-item warning"
-                      onClick={(event) => openFinding(r, event)}>
-                      <span className="device-item-icon">⏳</span>
-                      <div className="device-item-info">
-                        <span className="device-item-name">{r.fileName}</span>
-                        {r.matches.slice(0, 2).map((m, j) => (
-                          <span key={j} className="device-item-detail">{m}</span>
-                        ))}
-                      </div>
-                      <span className="device-item-risk high">WAS CONNECTED</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Safe devices (collapsible) */}
-              {groupedResults.deviceSummary.connectedSafe.length > 0 && (
-                <div className="devices-group safe">
-                  <div className="devices-group-header" style={{ cursor: 'pointer' }}
-                    onClick={() => setShowSafeDevices(o => !o)}>
-                    <span>{t('devicesSafe')} ({groupedResults.deviceSummary.connectedSafe.length})</span>
-                    <span className={`cheat-group-chevron ${showSafeDevices ? 'open' : ''}`}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </span>
-                  </div>
-                  {showSafeDevices && (
-                    <div className="devices-safe-list">
-                      {groupedResults.deviceSummary.connectedSafe.map((r, i) => (
-                        <div key={`safe-${i}`} className="device-item safe"
-                          onClick={(event) => openFinding(r, event)}>
-                          <span className="device-item-icon">
-                            {r.fileName.includes('📱') ? '📱' : r.fileName.includes('💾') ? '💾' : r.fileName.includes('⌨️') ? '⌨️' : r.fileName.includes('📹') ? '📹' : r.fileName.includes('🎵') ? '🎵' : r.fileName.includes('📶') ? '📶' : '🔌'}
-                          </span>
-                          <span className="device-item-name">{r.fileName}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Grouped Cheat Detection Cards ── */}
-          {groupedResults.cheatGroups.length > 0 && (
-            <div className="cheat-groups-section">
-              <div className="cheat-groups-header">
-                <span className="cheat-groups-title">
-                  🎯 {t('cheatsFound')}: {groupedResults.summary.totalCheatsDetected}
-                </span>
-                <span className="cheat-groups-subtitle">
-                  {groupedResults.summary.totalHighRisk} HIGH · {groupedResults.summary.totalMediumRisk} MEDIUM
-                </span>
-              </div>
-              {groupedResults.cheatGroups.map(group => {
-                const isExpanded = cheatExpandedGroups.has(group.cheatName)
-                const toggleGroup = () => {
-                  setCheatExpandedGroups(prev => {
-                    const next = new Set(prev)
-                    if (next.has(group.cheatName)) next.delete(group.cheatName)
-                    else next.add(group.cheatName)
-                    return next
-                  })
-                }
-                const parts: string[] = []
-                if (group.counts.files > 0) parts.push(`${group.counts.files} ${t('cheatFilesUnit')}`)
-                if (group.counts.processes > 0) parts.push(`${group.counts.processes} ${t('cheatProcUnit')}`)
-                if (group.counts.registry > 0) parts.push(`${group.counts.registry} ${t('cheatRegUnit')}`)
-                if (group.counts.browser > 0) parts.push(`${group.counts.browser} ${t('cheatBrowserUnit')}`)
-                if (group.counts.hardware > 0) parts.push(`${group.counts.hardware} ${t('cheatHwUnit')}`)
-                if (group.counts.other > 0) parts.push(`${group.counts.other} ${t('cheatOtherUnit')}`)
-                const findingSummary = parts.join(', ')
-                const confColor = group.confidence >= 70 ? '#22c55e' : group.confidence >= 40 ? '#f59e0b' : '#ef4444'
-                return (
-                  <div key={group.cheatName} className={`cheat-group-card ${group.risk}`}>
-                    <button className="cheat-group-header" onClick={toggleGroup}>
-                      <div className="cheat-group-header-left">
-                        <span className={`cheat-group-risk-dot ${group.risk}`} />
-                        <span className="cheat-group-name">{group.cheatName}</span>
-                        <span className={`cheat-group-badge ${group.risk}`}>{riskLabel(group.risk, lang)}</span>
-                      </div>
-                      <div className="cheat-group-header-right">
-                        <span className="cheat-group-count">{group.findings.length}</span>
-                        <span className={`cheat-group-chevron ${isExpanded ? 'open' : ''}`}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                        </span>
-                      </div>
-                    </button>
-                    <div className="cheat-group-meta">
-                      <span className="cheat-group-summary">{findingSummary}</span>
-                      <span className="cheat-group-confidence" style={{ color: confColor }}>
-                        {group.confidence}% {t('cheatConfidence')}
-                      </span>
-                    </div>
-                    {isExpanded && (
-                      <div className="cheat-group-body">
-                        {group.tags.length > 0 && (
-                          <div className="cheat-group-tags">
-                            {group.tags.map((tag, i) => (
-                              <span key={i} className="cheat-group-tag">{tag}</span>
-                            ))}
-                          </div>
-                        )}
-                        {group.findings.map((r, i) => (
-                          <div key={`${r.path}-${i}`}
-                            className={`cheat-group-item ${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? 'selected' : ''}`}
-                            data-risk={r.risk}
-                            onClick={(event) => openFinding(r, event)}
-                          >
-                            <span className="cheat-group-item-type">{typeIcon(r.type, 12)}</span>
-                            <div className="cheat-group-item-info">
-                              <span className="cheat-group-item-name">{r.fileName}</span>
-                              <span className="cheat-group-item-path">{r.path.length > 50 ? r.path.slice(0, 47) + '...' : r.path}</span>
-                            </div>
-                            <span className="cheat-group-item-risk" data-risk={r.risk}>{riskLabel(r.risk, lang)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* ── Other suspicious items (ungrouped) ── */}
-          {(groupedResults.otherHigh.length > 0 || groupedResults.otherMedium.length > 0) && (
-            <div className="cheat-other-section">
-              <button className="cheat-other-header" onClick={() => setShowOtherItems(o => !o)}>
-                <span>🔍 {t('cheatOtherActivity')} ({groupedResults.otherHigh.length + groupedResults.otherMedium.length})</span>
-                <span className={`cheat-group-chevron ${showOtherItems ? 'open' : ''}`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </span>
-              </button>
-              {showOtherItems && (
-                <div className="cheat-other-body">
-                  {[...groupedResults.otherHigh, ...groupedResults.otherMedium].map((r, i) => (
-                    <div key={`other-${i}`}
-                      className={`result-row${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? ' selected' : ''}`}
-                      data-risk={r.risk}
-                      onClick={(event) => openFinding(r, event)}
-                    >
-                      <div className="result-row-main">
-                        <div className="result-info">
-                          <span className="result-name">{r.fileName}</span>
-                          <span className="result-path">{r.path.length > 55 ? r.path.slice(0, 52) + '...' : r.path}</span>
-                        </div>
-                        <div className="result-matches">
-                          {r.matches.slice(0, 1).map((m, j) => (
-                            <span key={j} className="match-tag">{m.includes(':') ? m.split(':').slice(1).join(':') : m}</span>
-                          ))}
-                          {r.matches.length > 1 && <span className="match-more">+{r.matches.length - 1}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {results.length > 0 && (
-            <div className="checker-search">
-              <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-              </svg>
-              <input
-                type="text"
-                className="search-input"
-                placeholder={t('searchPlaceholder')}
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-              {searchQuery && (
-                <button className="search-clear" onClick={() => setSearchQuery('')}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          )}
-
-          {results.length > 0 && (
-            <div className="checker-results-split">
-              <div className="checker-results-list">
-                <motion.div className="checker-groups" variants={containerVariants} initial="hidden" animate="visible">
-                  {filteredResults.length > 0 ? (
-                    (['critical', 'high', 'medium', 'low'] as const).map(riskLevel => {
-                    const group = filteredResults.filter(r => r.risk === riskLevel)
-                    if (group.length === 0) return null
-                    const isExpanded = expandedGroups.has(riskLevel)
-                    const isShowAll = showAllGroups.has(riskLevel)
-                    const visible = isShowAll ? group : group.slice(0, INITIAL_SHOW)
-                    const hidden = group.length - INITIAL_SHOW
-
-                    const toggleGroup = () => {
-                      setExpandedGroups(prev => {
-                        const next = new Set(prev)
-                        if (next.has(riskLevel)) next.delete(riskLevel)
-                        else next.add(riskLevel)
-                        return next
-                      })
-                    }
-                    const toggleShowAll = () => {
-                      setShowAllGroups(prev => {
-                        const next = new Set(prev)
-                        if (next.has(riskLevel)) next.delete(riskLevel)
-                        else next.add(riskLevel)
-                        return next
-                      })
-                    }
-
-                    return (
-                      <motion.div key={riskLevel} className={`result-group group-${riskLevel}`} variants={itemVariants}>
-                        <button className="group-header" onClick={toggleGroup}>
-                          <div className="group-header-left">
-                            <span className={`group-risk-dot dot-${riskLevel}`} />
-                            <span className="group-title">{
-                              riskLevel === 'critical' ? t('groupCritical') :
-                              riskLevel === 'high' ? t('groupHigh') :
-                              riskLevel === 'medium' ? t('groupMedium') : t('groupLow')
-                            }</span>
-                          </div>
-                          <div className="group-header-right">
-                            <span className="group-count">{group.length}</span>
-                            <span className={`group-chevron ${isExpanded ? 'open' : ''}`}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polyline points="6 9 12 15 18 9" />
-                              </svg>
-                            </span>
-                          </div>
-                        </button>
-
-                        {isExpanded && (
-                          <motion.div className="group-body" variants={containerVariants} initial="hidden" animate="visible">
-                            {visible.map((r, i) => (
-                              <motion.div key={`${r.path}-${i}`}
-                                className={`result-row${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? ' selected' : ''}`}
-                                data-testid="checker-result-row"
-                                data-risk={r.risk}
-                                variants={itemVariants}
-                                onClick={(event) => openFinding(r, event)}
-                              >
-                                <div className="result-row-main">
-                                  <div className="result-info">
-                                    <span className="result-name">{r.fileName}</span>
-                                    <span className="result-path">{r.path.length > 55 ? r.path.slice(0, 52) + '...' : r.path}</span>
-                                  </div>
-                                  <div className="result-matches">
-                                    {r.matches.slice(0, 1).map((m, j) => (
-                                      <span key={j} className="match-tag">{m.includes(':') ? m.split(':').slice(1).join(':') : m}</span>
-                                    ))}
-                                    {r.matches.length > 1 && <span className="match-more">+{r.matches.length - 1}</span>}
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))}
-
-                            {hidden > 0 && !isShowAll && (
-                              <button className="group-show-btn" onClick={toggleShowAll}>
-                                {t('showAll')} {group.length} ({hidden} {t('groupHidden')})
-                              </button>
-                            )}
-                            {isShowAll && group.length > INITIAL_SHOW && (
-                              <button className="group-show-btn collapse" onClick={toggleShowAll}>
-                                {t('collapse')}
-                              </button>
-                            )}
-                          </motion.div>
-                        )}
-                      </motion.div>
-                    )
-                  })
-                  ) : (
-                    searchQuery && <div className="search-no-results">{t('searchNoResults')}</div>
-                  )}
-                </motion.div>
-              </div>
-
-              <div className="checker-results-detail">
-                {selectedResult ? (
-                  <>
-                    <div className="checker-detail-title-row">
-                      <span className="checker-type-icon-large">{typeIcon(selectedResult.type)}</span>
-                      <div>
-                        <div className="checker-detail-filename">{selectedResult.fileName}</div>
-                        <div className="checker-detail-type">{typeName(selectedResult.type, lang)} · {riskLabel(selectedResult.risk, lang)}</div>
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div className="checker-detail-section">
-                        <span className="checker-detail-label">{t('path')}</span>
-                        <span className="checker-detail-value" style={{ wordBreak: 'break-all', fontSize: 11 }}>{selectedResult.path}</span>
-                        <button
-                          className={`checker-copy-btn${copiedPath === selectedResult.path ? ' copied' : ''}`}
-                          onClick={() => {
-                            navigator.clipboard.writeText(selectedResult.path).catch(() => {})
-                            setCopiedPath(selectedResult.path)
-                            setTimeout(() => setCopiedPath(''), 2000)
-                          }}
-                        >
-                          {copiedPath === selectedResult.path ?
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg> :
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                          </svg>}
-                        </button>
-                      </div>
-                      {selectedResult.size > 0 && (
-                        <div className="checker-detail-section">
-                          <span className="checker-detail-label">Size</span>
-                          <span className="checker-detail-value">{formatSize(selectedResult.size)}</span>
-                        </div>
-                      )}
-                      <div className="checker-detail-section">
-                        <span className="checker-detail-label">{t('matches')}</span>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {selectedResult.matches.map((m, j) => (
-                            <span key={j} className="match-tag">{m}</span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="checker-detail-empty">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" style={{ opacity: 0.3 }}>
-                      <path d="M7 11L12 6l5 5M12 6v12"/>
-                    </svg>
-                    <span>Выберите элемент из списка</span>
-                    <span style={{ fontSize: 11, opacity: 0.5 }}>Нажмите на строку для просмотра деталей</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="checker-actions">
-            <Button className="start-button secondary" size="sm" onClick={handleClear}>{t('clear')}</Button>
-            <div className="checker-export-group">
-              <Button data-testid="checker-export-html" className="start-button secondary" size="sm" onClick={() => handleExport('html')} title={t('exportHtml')}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                {t('exportHtml')}
-              </Button>
-              <Button className="start-button secondary" size="sm" onClick={() => handleExport('md')} title="Markdown">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                MD
-              </Button>
-              <Button className="start-button secondary" size="sm" onClick={handleExportPdf} title="PDF (печать)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                PDF
-              </Button>
-              <Button className="start-button secondary" size="sm" onClick={handleTelegramExport} title="Отправить в Telegram">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
-                </svg>
-                {telegramSending ? '...' : 'TG'}
-              </Button>
-              <span className="checker-export-msg">{exportMsg}</span>
-            </div>
-            <Button className="start-button" size="sm" onClick={handleStartScan}>{t('scanAgain')}</Button>
-          </div>
-        </div>
+        <ResultsView
+          results={results}
+          summary={summary}
+          lang={lang}
+          accent={accent}
+          light={light}
+          dark={dark}
+          selectedResult={selectedResult}
+          onSelectResult={openFinding}
+          onClear={handleClear}
+          exportMsg={exportMsg}
+          copiedPath={copiedPath}
+          onCopyPath={(path) => { navigator.clipboard.writeText(path).catch(() => {}); setCopiedPath(path); setTimeout(() => setCopiedPath(''), 2000); }}
+          telegramSending={telegramSending}
+          onExportHtml={() => handleExport('html')}
+          onExportJson={() => handleExport('json')}
+          onExportMd={() => handleExport('md')}
+          onExportPdf={handleExportPdf}
+          onTelegramExport={handleTelegramExport}
+        />
+      )}
+      {phase === 'done' && (
+        <motion.button
+          className="checker-start-btn"
+          onClick={handleStartScan}
+          whileHover={prefersReducedMotion ? undefined : { scale: 1.02, y: -1 }}
+          whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+          style={{ marginTop: 16, maxWidth: 300 }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+          </svg>
+          {t('scanAgain')}
+        </motion.button>
       )}
       </div>{/* /tab-content */}
 
