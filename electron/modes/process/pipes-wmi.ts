@@ -5,7 +5,7 @@
  * WMI event subscriptions used for persistence.
  */
 
-import { execPowerShell, execWithTimeout } from '../../utils/exec'
+import { execPowerShell } from '../../utils/exec'
 import * as fs from 'fs'
 import * as path from 'path'
 

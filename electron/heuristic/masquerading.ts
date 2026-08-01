@@ -11,7 +11,6 @@
 import path from 'path'
 import type { Stats } from 'fs'
 import { MASQUERADING_FILENAMES } from '../cheats-db'
-import { isTrustedPath } from '../cheat-rules'
 import type { PeAnalysisResult, SectionEntropy } from '../cheat-rules'
 import { _WR } from '../types'
 

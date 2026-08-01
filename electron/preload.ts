@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setMinimizeToTray: (value: boolean) => ipcRenderer.invoke('set-minimize-to-tray', value),
 
   // Scanner
-  startScan: (mode?: string, tokenId?: number) => ipcRenderer.invoke('start-scan', mode || 'files', { token_id: tokenId }),
+  startScan: (mode?: string, tokenId?: number) => ipcRenderer.invoke('start-scan', mode || 'quick', { token_id: tokenId }),
   onScanProgress: (callback: (data: import('./types').ScanProgress) => void) => {
     return makeListener('scan-progress', callback)
   },

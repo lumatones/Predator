@@ -6,11 +6,12 @@
  * Also verifies driver digital signatures for DMA/FPGA devices.
  */
 
-import { execPowerShell, execWithTimeout } from '../../utils/exec'
+import { execPowerShell, execPowerShellAsync } from '../../utils/exec'
 import * as fs from 'fs'
+import fsp from 'fs/promises'
 import * as path from 'path'
 import { _WR } from '../../types'
-import type { UsbDeviceInfo, UsbDescriptors } from './descriptors'
+import type { UsbDeviceInfo } from './descriptors'
 import { DMA_VENDORS } from './descriptors'
 
 // ═══════════════════════════════════════════════════
@@ -27,14 +28,6 @@ export interface DriverSignatureResult {
   details: string[]
 }
 
-// Known legitimate signers for FTDI/FPGA drivers
-const LEGITIMATE_SIGNERS = [
-  'microsoft windows',
-  'microsoft windows hardware compatibility',
-  'ftdi ltd',
-  'future technology devices international',
-]
-
 export const DMA_DRIVER_FILES = [
   'ftd3xx.dll', 'ftd2xx.dll', 'ftdiBus3.sys', 'ftdiBus2.sys',
   'leechcore.dll', 'vmm.dll', 'pcileech.dll', 'pcileech_core.dll',
@@ -45,11 +38,40 @@ export const DMA_DRIVER_FILES = [
  * Check digital signature of a driver file.
  * Returns full signature info: validity, signer name, trust level.
  */
-export function checkDriverSignature(filepath: string): DriverSignatureResult | null {
-  try {
-    if (!fs.existsSync(filepath)) return null
+function parseDriverSignatureOutput(out: string): DriverSignatureResult | null {
+  if (!out || out.length < 5) return null
 
-    const psScript = `
+  const result = JSON.parse(out)
+  const status = result.Status || 'Unknown'
+  const signer = (result.Signer || '').toLowerCase()
+  const issuer = (result.Issuer || '').toLowerCase()
+
+  const isValid = status === 'Valid'
+  const isMicrosoft = signer.includes('microsoft') || issuer.includes('microsoft')
+  const isFtdi = signer.includes('ftdi') || signer.includes('future technology')
+  const isSelfSigned = signer === issuer && !isMicrosoft && !isFtdi
+
+  const details: string[] = []
+  if (isValid) {
+    details.push(`Signed by: ${result.Signer || 'Unknown'}`)
+    if (isMicrosoft) details.push('✅ Microsoft-signed driver (trusted)')
+    else if (isFtdi) details.push('✅ FTDI-signed driver (trusted)')
+    else details.push('⚠ Signed by third party — verify manually')
+  } else if (status === 'NotSigned') {
+    details.push('❌ DRIVER IS NOT SIGNED')
+    details.push('⚠ Legitimate drivers are ALWAYS signed')
+    details.push('⚠ Unsigned DMA driver = strong cheat indicator')
+  } else if (status === 'HashMismatch') {
+    details.push('❌ Driver signature HASH MISMATCH (tampered)')
+  } else {
+    details.push(`⚠ Unknown signature status: ${status}`)
+  }
+
+  return { isValid, signer, isMicrosoft, isFtdi, isSelfSigned, details }
+}
+
+function buildDriverSignatureScript(filepath: string): string {
+  return `
 $ErrorActionPreference = 'SilentlyContinue'
 $sig = Get-AuthenticodeSignature -FilePath '${filepath.replace(/'/g, "''")}'
 @{
@@ -58,38 +80,35 @@ $sig = Get-AuthenticodeSignature -FilePath '${filepath.replace(/'/g, "''")}'
   Issuer = if ($sig.SignerCertificate) { $sig.SignerCertificate.Issuer } else { '' }
 } | ConvertTo-Json -Compress
 `
+}
+
+export function checkDriverSignature(filepath: string): DriverSignatureResult | null {
+  try {
+    if (!fs.existsSync(filepath)) return null
+
+    const psScript = buildDriverSignatureScript(filepath)
     const out = (execPowerShell(psScript, { timeout: 5000 }) || '').trim()
-
-    if (!out || out.length < 5) return null
-
-    const result = JSON.parse(out)
-    const status = result.Status || 'Unknown'
-    const signer = (result.Signer || '').toLowerCase()
-    const issuer = (result.Issuer || '').toLowerCase()
-
-    const isValid = status === 'Valid'
-    const isMicrosoft = signer.includes('microsoft') || issuer.includes('microsoft')
-    const isFtdi = signer.includes('ftdi') || signer.includes('future technology')
-    const isSelfSigned = signer === issuer && !isMicrosoft && !isFtdi
-
-    const details: string[] = []
-    if (isValid) {
-      details.push(`Signed by: ${result.Signer || 'Unknown'}`)
-      if (isMicrosoft) details.push('✅ Microsoft-signed driver (trusted)')
-      else if (isFtdi) details.push('✅ FTDI-signed driver (trusted)')
-      else details.push('⚠ Signed by third party — verify manually')
-    } else if (status === 'NotSigned') {
-      details.push('❌ DRIVER IS NOT SIGNED')
-      details.push('⚠ Legitimate drivers are ALWAYS signed')
-      details.push('⚠ Unsigned DMA driver = strong cheat indicator')
-    } else if (status === 'HashMismatch') {
-      details.push('❌ Driver signature HASH MISMATCH (tampered)')
-    } else {
-      details.push(`⚠ Unknown signature status: ${status}`)
-    }
-
-    return { isValid, signer, isMicrosoft, isFtdi, isSelfSigned, details }
+    return parseDriverSignatureOutput(out)
   } catch {
+    return null
+  }
+}
+
+/** Check a driver signature without blocking the Electron event loop. */
+export async function checkDriverSignatureAsync(
+  filepath: string,
+  signal?: AbortSignal,
+): Promise<DriverSignatureResult | null> {
+  try {
+    await fsp.access(filepath)
+    const out = await execPowerShellAsync(buildDriverSignatureScript(filepath), {
+      timeout: 5000,
+      signal,
+    })
+    if (signal?.aborted) throw new Error('Driver signature scan aborted')
+    return parseDriverSignatureOutput((out || '').trim())
+  } catch (err) {
+    if (signal?.aborted) throw err
     return null
   }
 }

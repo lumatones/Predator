@@ -11,7 +11,7 @@
  * Only scans readable committed memory regions (skips PAGE_GUARD, PAGE_NOACCESS).
  */
 
-import { execPowerShell, execWithTimeout } from '../utils/exec'
+import { execPowerShell } from '../utils/exec'
 import { type ScanResult, addFindingDedup } from '../types'
 
 // ═══════════════════════════════════════════════════

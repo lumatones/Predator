@@ -7,7 +7,10 @@ const audioCtxRef = { current: null as AudioContext | null }
 function getCtx(): AudioContext | null {
   if (audioCtxRef.current) return audioCtxRef.current
   try {
-    audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const webkitAudioContext = (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    const AudioContextConstructor = window.AudioContext || webkitAudioContext
+    if (!AudioContextConstructor) return null
+    audioCtxRef.current = new AudioContextConstructor()
     return audioCtxRef.current
   } catch { return null }
 }

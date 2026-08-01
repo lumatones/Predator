@@ -7,7 +7,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { execPowerShell, execWithTimeout } from './utils/exec'
+import { execPowerShell } from './utils/exec'
 import { checkAutoRulesOnStrings } from './auto-yara'
 
 export interface DumpResult {

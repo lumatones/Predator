@@ -13,7 +13,7 @@ import path from 'path'
 import fs from 'fs'
 import { CFG } from './config'
 // sql.js singleton — initialized once, reused across all scans
-import initSqlJs, { Database, SqlJsStatic } from 'sql.js'
+import initSqlJs, { Database, SqlJsStatic, type SqlValue } from 'sql.js'
 
 let _sqlInitialized = false
 let _SQL: SqlJsStatic | null = null
@@ -133,9 +133,9 @@ interface DbRow {
  * Open a SQLite database and execute a query.
  * Returns all rows as an array of objects.
  */
-function queryDb(db: Database, sql: string, params: unknown[] = []): DbRow[] {
+function queryDb(db: Database, sql: string, params: SqlValue[] = []): DbRow[] {
   const stmt = db.prepare(sql)
-  if (params.length > 0) stmt.bind(params as any)
+  if (params.length > 0) stmt.bind(params)
 
   const rows: DbRow[] = []
   while (stmt.step()) {

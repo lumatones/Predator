@@ -6,9 +6,11 @@
  */
 
 import crypto from 'crypto'
-import fs from 'fs'
+import type { Stats } from 'fs'
+import fsp from 'fs/promises'
 import path from 'path'
-import { execPowerShell, execWithTimeout } from '../utils/exec'
+import { execPowerShellAsync } from '../utils/exec'
+import { readFilePrefix } from '../utils/file-io'
 import { BrowserWindow } from 'electron'
 
 import { EXTENDED_SCAN_PATHS } from '../constants'
@@ -68,7 +70,12 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
 
   // Phase 1b: USB/PCI device inventory scan
   await sendProgress(win, { phase: 'scanning', currentDir: 'USB & PCI device inventory...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 2 })
-  results.push(...safeCall('runFullUsbDeviceScan', () => runFullUsbDeviceScan()))
+  try {
+    results.push(...await runFullUsbDeviceScan(signal))
+  } catch (err) {
+    if (aborted()) return { results, filesScanned }
+    console.warn('[scanner] USB device scan failed:', (err as Error).message)
+  }
   if (aborted()) return { results, filesScanned }
 
   // Phase 2: heuristic file scan
@@ -79,7 +86,7 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
       const filePaths: string[] = []
       let dirFileCount = 0
       const DIR_FILE_LIMIT = 2000
-      for await (const filePath of walkDirAsync(dir)) {
+      for await (const filePath of walkDirAsync(dir, signal)) {
         dirFileCount++
         if (dirFileCount > DIR_FILE_LIMIT) {
           console.warn(`[Predator] Directory file limit reached: ${dir} (${dirFileCount})`)
@@ -89,23 +96,28 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
       }
 
       if (filePaths.length > 0) {
-        const sigResults = batchCheckSignatures(filePaths)
-        const sigChecked = [...sigResults.values()].filter(Boolean).length
-        const sigTotal = [...sigResults.values()].filter(v => v === false).length + sigChecked
-        if (sigTotal > 0) {
-          console.log(`  🔐 Batch signature check: ${sigChecked}/${sigTotal} valid (${(sigChecked/sigTotal*100).toFixed(0)}%)`)
+        try {
+          const sigResults = await batchCheckSignatures(filePaths, 500, signal)
+          const sigChecked = [...sigResults.values()].filter(Boolean).length
+          const sigTotal = [...sigResults.values()].filter(v => v === false).length + sigChecked
+          if (sigTotal > 0) {
+            console.log(`  🔐 Batch signature check: ${sigChecked}/${sigTotal} valid (${(sigChecked/sigTotal*100).toFixed(0)}%)`)
+          }
+        } catch (err) {
+          if (aborted()) return { results, filesScanned }
+          console.warn('[scanner] batch signature check failed:', (err as Error).message)
         }
       }
 
       if (filePaths.length > 0) {
         const scanResults = await runParallel(filePaths, async (filePath) => {
           // E11: Incremental scan — skip unchanged files
-          let st: fs.Stats | undefined
-          try { st = fs.statSync(filePath) } catch { return null }
+          let st: Stats | undefined
+          try { st = await fsp.stat(filePath) } catch { return null }
           if (st && !hasFileChanged(ctx, filePath, st.mtimeMs)) {
             return null
           }
-          let hr = heuristicFileScan(filePath)
+          let hr = await heuristicFileScan(filePath, signal)
           // Mark file as scanned for incremental mode
           if (st) markFileScanned(ctx, filePath, st.mtimeMs)
           let riskScore = hr?.riskScore || 0
@@ -116,17 +128,13 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
             const ruleName = shadowHits[0]?.match(/\[([^\]]+)\]/)?.[1] || 'unknown'
             let shadowSha256: string | undefined
             if (ext2 === '.exe' || ext2 === '.dll' || ext2 === '.sys') {
-              let fd2: number | undefined
               try {
                 const h = crypto.createHash('sha256')
-                fd2 = fs.openSync(filePath, 'r')
-                const st = fs.statSync(filePath)
-                const buf = Buffer.alloc(Math.min(st.size, 50 * 1024 * 1024))
-                fs.readSync(fd2, buf, 0, buf.length, 0)
+                const st = await fsp.stat(filePath)
+                const buf = await readFilePrefix(filePath, Math.min(st.size, 50 * 1024 * 1024), signal)
                 h.update(buf)
                 shadowSha256 = h.digest('hex')
               } catch (err) { console.warn('[scanner] shadow sha256 failed:', (err as Error).message) }
-              finally { if (fd2 !== undefined) { try { fs.closeSync(fd2) } catch { /* best effort */ } } }
             }
             ctx.shadowFindings.push({
               path: filePath, fileName: path.basename(filePath), type: 'file', risk: 'low',
@@ -162,27 +170,13 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
             let partialHash: string | undefined
             let fileSize = 0
             try {
-              const stat2 = fs.statSync(filePath)
+              const stat2 = await fsp.stat(filePath)
               fileSize = stat2.size
-              const partialBuf = Buffer.alloc(Math.min(stat2.size, 64 * 1024))
-              let fd: number | undefined
-              try {
-                fd = fs.openSync(filePath, 'r')
-                fs.readSync(fd, partialBuf, 0, partialBuf.length, 0)
-              } finally {
-                if (fd !== undefined) { try { fs.closeSync(fd) } catch { /* best effort */ } }
-              }
+              const partialBuf = await readFilePrefix(filePath, Math.min(stat2.size, 64 * 1024), signal)
               partialHash = crypto.createHash('sha256').update(partialBuf).digest('hex')
               if (risk === 'high' && (ext === '.exe' || ext === '.dll' || ext === '.sys')) {
                 const h = crypto.createHash('sha256')
-                const fullBuf = Buffer.alloc(Math.min(stat2.size, 50 * 1024 * 1024))
-                let fd2: number | undefined
-                try {
-                  fd2 = fs.openSync(filePath, 'r')
-                  fs.readSync(fd2, fullBuf, 0, fullBuf.length, 0)
-                } finally {
-                  if (fd2 !== undefined) { try { fs.closeSync(fd2) } catch { /* best effort */ } }
-                }
+                const fullBuf = await readFilePrefix(filePath, Math.min(stat2.size, 50 * 1024 * 1024), signal)
                 h.update(fullBuf)
                 sha256Hash = h.digest('hex')
               }
@@ -220,8 +214,13 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
 
   // Phase 5b: game integrity + modules + handles
   await sendProgress(win, { phase: 'scanning', currentDir: 'Game integrity...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 6 })
-  results.push(...safeCall('scanGameIntegrity', () => scanGameIntegrity()))
-  results.push(...safeCall('scanGameModules', () => scanGameModules()))
+  try {
+    results.push(...await scanGameIntegrity(signal))
+    results.push(...await scanGameModules(signal))
+  } catch (err) {
+    if (aborted()) return { results, filesScanned }
+    console.warn('[scanner] game signature scan failed:', (err as Error).message)
+  }
   results.push(...safeCall('scanOpenHandles', () => scanOpenHandles()))
   // E14: Game memory pattern scan + CEF debug port detection
   await sendProgress(win, { phase: 'scanning', currentDir: 'Game memory analysis...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 6 })
@@ -234,13 +233,18 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
   results.push(...safeCall('scanNamedPipes', () => scanNamedPipes()))
   results.push(...safeCall('scanWmiPersistence', () => scanWmiPersistence()))
   results.push(...safeCall('runApcScan', () => runApcScan()))
-  results.push(...safeCall('scanByovd', () => scanByovd()))
+  try {
+    results.push(...await scanByovd(signal))
+  } catch (err) {
+    if (aborted()) return { results, filesScanned }
+    console.warn('[scanner] BYOVD scan failed:', (err as Error).message)
+  }
   if (aborted()) return { results, filesScanned }
 
   try {
-    const psOut = execPowerShell(
+    const psOut = await execPowerShellAsync(
       `Get-Process | Where-Object { $_.Modules } | Select-Object Name, Id, @{N='Mods';E={$_.Modules | Select -Expand ModuleName}} | ConvertTo-Json -Depth 3`,
-      { timeout: 10000 },
+      { timeout: 10000, signal },
     )
     const processes = parsePsJson<{ Name?: string; Id?: number; Mods?: string[] }>(psOut || '')
     for (const proc of processes) {
@@ -274,10 +278,25 @@ export async function runFullScan(win: BrowserWindow | null): Promise<{ results:
 
   // Phase 6: DMA + scheduled tasks + IOMMU
   await sendProgress(win, { phase: 'scanning', currentDir: 'DMA devices + IOMMU...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 8 })
-  results.push(...safeCall('scanDmaDevices', () => scanDmaDevices()))
-  results.push(...safeCall('checkIommuStatus', () => checkIommuStatus()))
+  try {
+    results.push(...await scanDmaDevices(signal))
+  } catch (err) {
+    if (aborted()) return { results, filesScanned }
+    console.warn('[scanner] DMA device scan failed:', (err as Error).message)
+  }
+  try {
+    results.push(...await checkIommuStatus(signal))
+  } catch (err) {
+    if (aborted()) return { results, filesScanned }
+    console.warn('[scanner] IOMMU scan failed:', (err as Error).message)
+  }
   await sendProgress(win, { phase: 'scanning', currentDir: 'Scheduled tasks...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 8 })
-  results.push(...safeCall('scanScheduledTasks', () => scanScheduledTasks()))
+  try {
+    results.push(...await scanScheduledTasks(signal))
+  } catch (err) {
+    if (aborted()) return { results, filesScanned }
+    console.warn('[scanner] scheduled task scan failed:', (err as Error).message)
+  }
   if (aborted()) return { results, filesScanned }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Registry cheat scan...', filesFound: results.length, filesScanned, totalDirs: 13, dirsDone: 9 })

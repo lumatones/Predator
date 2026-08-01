@@ -12,6 +12,7 @@ import { scanNetstatV2 } from '../modes/network'
 import { scanBrowserHistory } from '../modes/browser'
 import { scanScheduledTasks } from '../modes/dma'
 import { runAntiTamperScan } from '../anti-tamper'
+import { runSelfIntegrityScan } from '../self-integrity'
 import { safeCall, safeSpread } from '../utils/safe-spread'
 import { QUICK_CHEAT_KEYWORDS } from '../signature-registry'
 import { type ScanResult, sendProgress, clearFindingDedup, ctx } from '../types'
@@ -25,6 +26,10 @@ export async function runQuickScan(win: BrowserWindow | null): Promise<{ results
   clearFindingDedup()
 
   results.push(...safeCall('runAntiTamperScan', () => runAntiTamperScan()))
+  try {
+    // H2: verify own executable integrity in every scan mode (not just full)
+    results.push(...await runSelfIntegrityScan())
+  } catch (err) { console.error('[quick-scan] runSelfIntegrityScan crashed:', (err as Error).message) }
   if (aborted()) return { results, filesScanned }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Processes...', filesFound: results.length, filesScanned, totalDirs: 7, dirsDone: 1 })
@@ -44,7 +49,12 @@ export async function runQuickScan(win: BrowserWindow | null): Promise<{ results
   await sendProgress(win, { phase: 'scanning', currentDir: 'Pipes & persistence...', filesFound: results.length, filesScanned, totalDirs: 7, dirsDone: 4 })
   results.push(...safeCall('scanNamedPipes', () => scanNamedPipes()))
   results.push(...safeCall('scanWmiPersistence', () => scanWmiPersistence()))
-  results.push(...safeCall('scanScheduledTasks', () => scanScheduledTasks()))
+  try {
+    results.push(...await scanScheduledTasks(signal))
+  } catch (err) {
+    if (aborted()) return { results, filesScanned }
+    console.warn('[quick-scan] scheduled task scan failed:', (err as Error).message)
+  }
   results.push(...safeCall('scanStartupFolder', () => scanStartupFolder()))
   if (aborted()) return { results, filesScanned }
 

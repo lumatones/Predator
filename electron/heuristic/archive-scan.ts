@@ -9,7 +9,7 @@
  */
 
 import path from 'path'
-import { spawnSync } from 'child_process'
+import { spawnAsyncWithTimeout } from '../utils/exec'
 import { matchKeywords, matchPatterns } from '../signature-registry'
 import { PROC_BASES, FILE_NAMES } from './cheat-names'
 
@@ -26,30 +26,45 @@ export const ARCHIVE_EXTS = new Set(['.zip', '.rar', '.7z'])
  * @param filepath - Path to .zip/.rar/.7z file
  * @returns Array of human-readable match descriptions (max 5)
  */
-export function scanArchiveContents(filepath: string): string[] {
+export async function scanArchiveContents(
+  filepath: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
   const matches: string[] = []
   const ext = path.extname(filepath).toLowerCase()
-  if (!ARCHIVE_EXTS.has(ext)) return matches
+  if (!ARCHIVE_EXTS.has(ext) || signal?.aborted) return matches
 
   try {
-    let output = ''
+    let output: string | null
     if (ext === '.zip') {
-      const shell = spawnSync('powershell', [
-        '-NoProfile', '-Command',
-        `[System.IO.Compression.ZipFile]::OpenRead('${filepath.replace(/'/g, "''")}').Entries | Select-Object -ExpandProperty FullName`,
-      ], { encoding: 'utf-8', timeout: 10000 })
-      output = shell.stdout || ''
+      const escapedPath = filepath.replace(/'/g, "''")
+      const script = "$archive = [System.IO.Compression.ZipFile]::OpenRead('"
+        + escapedPath
+        + "'); try { $archive.Entries | Select-Object -ExpandProperty FullName } finally { $archive.Dispose() }"
+      output = await spawnAsyncWithTimeout(
+        'powershell',
+        ['-NoProfile', '-Command', script],
+        { timeout: 10000, signal },
+      )
     } else {
-      const sevenZip = spawnSync('7z', ['l', '-slt', filepath], { encoding: 'utf-8', timeout: 10000 })
-      output = sevenZip.stdout || ''
+      output = await spawnAsyncWithTimeout(
+        '7z',
+        ['l', '-slt', filepath],
+        { timeout: 10000, signal },
+      )
     }
 
-    if (!output) return matches
+    if (!output || signal?.aborted) return matches
 
     const lower = output.toLowerCase()
     const lines = lower.split(/[\r\n]+/)
     for (const line of lines) {
-      const fName = path.basename(line.trim())
+      if (signal?.aborted) return matches
+      const trimmedLine = line.trim()
+      const archiveEntry = trimmedLine.startsWith('path = ')
+        ? trimmedLine.slice('path = '.length).trim()
+        : trimmedLine
+      const fName = path.basename(archiveEntry)
       if (!fName || fName.length < 3) continue
       for (const base of PROC_BASES) {
         if (fName.includes(base)) {
@@ -73,6 +88,8 @@ export function scanArchiveContents(filepath: string): string[] {
       }
       if (matches.length >= 5) break
     }
-  } catch (_e) { /* archive scanning optional */ }
+  } catch (err) {
+    if (!signal?.aborted) console.warn('[archive-scan] failed:', (err as Error).message)
+  }
   return matches
 }

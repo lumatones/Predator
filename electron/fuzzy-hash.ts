@@ -70,13 +70,6 @@ const _tlshTrie: Map<string, Set<string>> = new Map()
 /** How many hashes were loaded from disk */
 let _loadedFromDisk = 0
 
-function getBucket(fileSize: number): string {
-  for (const bucket of SIZE_BUCKETS) {
-    if (fileSize >= bucket.min && fileSize < bucket.max) return bucket.label
-  }
-  return 'medium'
-}
-
 function getThreshold(fileSize: number): number {
   for (const bucket of SIZE_BUCKETS) {
     if (fileSize >= bucket.min && fileSize < bucket.max) return bucket.threshold

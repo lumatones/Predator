@@ -12,7 +12,7 @@
 import path from 'path'
 import { CFG } from './config'
 
-const { PF, PF86, HOME, PD, WR } = CFG
+const { PF, PF86, HOME } = CFG
 
 // ═══════════════════════════════════════════════════
 // 0. GAME PROCESSES — what we protect
@@ -254,7 +254,8 @@ export const KNOWN_CHEAT_FILES: string[] = [
 // Updated: 2026-07-24 — added EpicGamesLauncher.exe masquerading loader
 
 // ── Mutable — cloud-sync fetcher adds new hashes at runtime ──
-export let KNOWN_CHEAT_HASHES: string[] = [
+// Private: use getKnownCheatHashes() for read access, setKnownCheatHashes/mergeCheatHashes for mutation.
+let _knownCheatHashes: string[] = [
   // dxwebsetup.exe — masquerading as Microsoft DirectX Web Setup Installer
   // Sources: user reports + Falcon Sandbox (CrowdStrike 100% malicious, 103090 indicators)
   // Packer: VMProtect (confirmed by ESET: Win32/Packed.VMProtect.ACX trojan)
@@ -269,20 +270,25 @@ export let KNOWN_CHEAT_HASHES: string[] = [
   'a8aab22b4264dda90489192e41adca4989de531ff3453df685ea729b61045c29',
 ]
 
-/** Replace the entire KNOWN_CHEAT_HASHES array with cloud-fetched data */
+/** Read-only access to known cheat hashes. Never mutate the returned array. */
+export function getKnownCheatHashes(): ReadonlyArray<string> {
+  return _knownCheatHashes
+}
+
+/** Replace the entire cheat hash database with cloud-fetched data */
 export function setKnownCheatHashes(hashes: string[]): void {
-  KNOWN_CHEAT_HASHES = hashes
+  _knownCheatHashes = hashes
 }
 
 /** Merge new hashes into the existing set (deduplicates) */
 export function mergeCheatHashes(hashes: string[]): void {
-  const existing = new Set(KNOWN_CHEAT_HASHES)
+  const existing = new Set(_knownCheatHashes)
   for (const h of hashes) {
     if (h.length === 64 && !existing.has(h)) {
       existing.add(h)
     }
   }
-  KNOWN_CHEAT_HASHES = Array.from(existing)
+  _knownCheatHashes = Array.from(existing)
 }
 
 // ═══════════════════════════════════════════════════

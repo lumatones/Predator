@@ -21,7 +21,12 @@ import fs from 'fs'
 import http from 'http'
 import https from 'https'
 import path from 'path'
-import { execPowerShell, execWithTimeout } from './utils/exec'
+import { execPowerShell } from './utils/exec'
+import { readFileRange } from './utils/file-io'
+// NOTE: importing self-protect loads koffi bindings at module load. Unit tests
+// must mock '../self-protect' — any test importing full-scan/scanner without
+// that mock will fail on Linux CI (koffi.load('kernel32.dll') is Windows-only).
+import { criticalTamperResponse } from './self-protect'
 import { app } from 'electron'
 import { getApiBase } from './config'
 import type { ScanResult } from './types'
@@ -48,22 +53,22 @@ const IS_DEBUG_BUILD = (() => {
   } catch { return false }
 })()
 
-/** Known-good module names (Predator's own files) */
-const OWN_MODULE_PATTERNS = [
-  'predator', 'ffmpeg', 'sharp', 'better-sqlite3',
-  'koffi', 'electron', 'napi',
-]
-
-/** Expected IAT DLLs — any deviation = DLL proxying */
-const EXPECTED_IAT_DLLS = new Set([
-  'kernel32.dll', 'user32.dll', 'gdi32.dll', 'advapi32.dll',
-  'shell32.dll', 'ole32.dll', 'oleaut32.dll', 'comctl32.dll',
-  'ws2_32.dll', 'ntdll.dll', 'crypt32.dll', 'winmm.dll',
-  'msvcrt.dll', 'vcruntime140.dll', 'ucrtbase.dll',
-  'dbghelp.dll', 'psapi.dll', 'version.dll', 'setupapi.dll',
-  'iphlpapi.dll', 'winhttp.dll', 'secur32.dll', 'netapi32.dll',
-  'powrprof.dll', 'shlwapi.dll', 'wininet.dll',
-])
+/**
+ * Compare two dotted version strings ('0.4.5'). Returns >0 when `a` is newer
+ * than `b`, 0 when equal, <0 when older. Used to distinguish a legit
+ * auto-update (version bump) from a delete+reset tampering attempt.
+ * Exported for unit tests.
+ */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(n => parseInt(n, 10) || 0)
+  const pb = b.split('.').map(n => parseInt(n, 10) || 0)
+  const len = Math.max(pa.length, pb.length)
+  for (let i = 0; i < len; i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
 
 // ═══════════════════════════════════════════════════
 // 0. SERVER-SIDE HASH FETCH
@@ -120,7 +125,15 @@ interface IntegrityState {
   versionSeed: string  // app.getVersion() at baseline creation — prevents delete+reset attack
   lastVerified: string
   tamperCount: number
+  /** How the baseline was established — 'server' (verified) or 'tofu' (fallback). */
+  source?: 'server' | 'tofu'
+  /** When a server re-verification was last attempted (TOFU throttle key).
+   *  Distinct from lastVerified so the 'all good' path can't starve it. */
+  lastServerCheck?: string
 }
+
+/** TOFU re-verification throttle — at most one server fetch per 24h per baseline. */
+const TOFU_RECHECK_MS = 24 * 60 * 60 * 1000
 
 function readIntegrityState(): IntegrityState | null {
   try {
@@ -159,15 +172,16 @@ export async function verifySelfExeIntegrity(): Promise<ScanResult[]> {
       return results
     }
 
-    // Streaming SHA256 — 64KB chunks, non-blocking I/O
+    // Streaming SHA256 — async chunked reads, no event-loop blocking
     const h = crypto.createHash('sha256')
-    const fd = fs.openSync(exePath, 'r')
-    const buf = Buffer.alloc(64 * 1024)
-    let bytesRead: number
-    while ((bytesRead = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
-      h.update(buf.subarray(0, bytesRead))
+    const CHUNK = 1024 * 1024 // 1 MB chunks
+    let offset = 0
+    while (offset < stat.size) {
+      const chunk = await readFileRange(exePath, offset, CHUNK)
+      if (chunk.length === 0) break
+      h.update(chunk)
+      offset += chunk.length
     }
-    fs.closeSync(fd)
     const currentHash = h.digest('hex')
     const currentVersion = app?.getVersion?.() ?? 'dev'
 
@@ -195,6 +209,7 @@ export async function verifySelfExeIntegrity(): Promise<ScanResult[]> {
             versionSeed: currentVersion,
             lastVerified: now,
             tamperCount: 1,
+            source: 'server',
           })
           results.push({
             path: exePath,
@@ -211,6 +226,13 @@ export async function verifySelfExeIntegrity(): Promise<ScanResult[]> {
             size: stat.size,
             modifiedAt: now,
           })
+          // Server-verified mismatch is the highest-confidence signal in this
+          // module — not a heuristic, so immediate tamper response is safe.
+          criticalTamperResponse([
+            'Server-verified exe hash mismatch (first run)',
+            `Expected: ${serverHash.slice(0, 16)}...`,
+            `Actual:   ${currentHash.slice(0, 16)}...`,
+          ])
           return results
         }
 
@@ -221,6 +243,7 @@ export async function verifySelfExeIntegrity(): Promise<ScanResult[]> {
           versionSeed: currentVersion,
           lastVerified: now,
           tamperCount: 0,
+          source: 'server',
         })
         console.log('[self-integrity] ✅ Baseline verified against server — trusted')
         return results
@@ -235,23 +258,105 @@ export async function verifySelfExeIntegrity(): Promise<ScanResult[]> {
         versionSeed: currentVersion,
         lastVerified: now,
         tamperCount: 0,
+        source: 'tofu',
       })
       return results
     }
 
     // RISK #1 mitigation: if .predator_integrity was deleted, the version
     // seed acts as a secondary integrity check — a re-stored baseline
-    // would have a different version than the original build
+    // would have a different version than the original build.
+    //
+    // BUT a legit auto-update (electron-updater) ALSO changes the version
+    // seed + exe hash. Distinguish the two:
+    //   1. Version went UP + server confirms new hash   → legit update, rebase
+    //   2. Version went UP + server unreachable          → likely update, rebase
+    //   3. Version changed + server hash MISMATCH        → hard tampering
+    //   4. Version went DOWN or same-version hash change → tampering
     if (stored.versionSeed && stored.versionSeed !== currentVersion) {
+      const versionBumped = compareVersions(currentVersion, stored.versionSeed) > 0
+
+      // Case 1/3: ask the server for the expected hash of the NEW version
+      const serverHash = await fetchExpectedHash(currentVersion)
+      if (serverHash) {
+        if (serverHash.toLowerCase() !== currentHash.toLowerCase()) {
+          // Case 3 — server knows this version and the local exe does NOT match
+          writeIntegrityState({
+            exeHash: serverHash, // store SERVER hash → mismatch fires every run
+            exeSize: stat.size,
+            versionSeed: currentVersion,
+            lastVerified: now,
+            tamperCount: (stored.tamperCount || 0) + 1,
+            source: 'server',
+          })
+          results.push({
+            path: exePath,
+            fileName: '⛔ CRITICAL: Executable hash mismatch (server-verified)',
+            type: 'system',
+            risk: 'critical',
+            matches: [
+              `Expected SHA256 (server): ${serverHash.slice(0, 16)}...`,
+              `Actual SHA256 (local):   ${currentHash.slice(0, 16)}...`,
+              `Version: ${stored.versionSeed} → ${currentVersion}`,
+              '⛔ Predator.exe does NOT match the official release build',
+              'The executable may have been patched/modified by cheat software',
+            ],
+            size: stat.size,
+            modifiedAt: now,
+          })
+          criticalTamperResponse([
+            'Server-verified exe hash mismatch (version change)',
+            `Expected: ${serverHash.slice(0, 16)}...`,
+            `Actual:   ${currentHash.slice(0, 16)}...`,
+          ])
+          return results
+        }
+        // Case 1 — server confirms the new version's hash → legit update
+        writeIntegrityState({
+          exeHash: currentHash,
+          exeSize: stat.size,
+          versionSeed: currentVersion,
+          lastVerified: now,
+          tamperCount: 0,
+          source: 'server',
+        })
+        console.log(`[self-integrity] ✅ Version update ${stored.versionSeed} → ${currentVersion} verified against server — baseline rebased`)
+        return results
+      }
+
+      // Server unreachable — only a version BUMP is treated as a legit update
+      // (electron-updater replaces the exe AND bumps app.getVersion()).
+      // A downgrade or a changed version with the same file is suspicious.
+      // Note: lastServerCheck records the fetch we just attempted, so the
+      // retry happens after the 24h throttle instead of on every scan.
+      if (versionBumped) {
+        writeIntegrityState({
+          exeHash: currentHash,
+          exeSize: stat.size,
+          versionSeed: currentVersion,
+          lastVerified: now,
+          tamperCount: 0,
+          source: 'tofu',
+          lastServerCheck: now,
+        })
+        console.warn(`[self-integrity] ⚠ Server hash unavailable — rebased baseline for version bump ${stored.versionSeed} → ${currentVersion}`)
+        return results
+      }
+
+      // Case 4 — version went DOWN or changed without a bump
+      const newCount = (stored.tamperCount || 0) + 1
+      const repeated = newCount >= 2
       results.push({
         path: exePath,
-        fileName: '⚠ SELF-INTEGRITY: Version seed mismatch',
+        fileName: repeated
+          ? '⛔ CRITICAL: Repeated version/seed tampering'
+          : '⚠ SELF-INTEGRITY: Version seed mismatch',
         type: 'system',
-        risk: 'high',
+        risk: repeated ? 'critical' : 'high',
         matches: [
           `Expected version: ${stored.versionSeed}`,
           `Current version: ${currentVersion}`,
-          '⚠ .predator_integrity was deleted and re-created — possible tampering',
+          '⚠ Version did NOT increase — .predator_integrity may have been re-created',
           'Baseline trust broken — executable may have been patched',
         ].filter(Boolean),
         size: stat.size,
@@ -263,34 +368,126 @@ export async function verifySelfExeIntegrity(): Promise<ScanResult[]> {
           `⚠ SHA256 ALSO changed: ${stored.exeHash.slice(0, 16)}... → ${currentHash.slice(0, 16)}...`
         )
       }
-      const newCount = (stored.tamperCount || 0) + 1
       writeIntegrityState({ ...stored, tamperCount: newCount, lastVerified: now })
+      // H1 consistency: repeated downgrade/seed tampering also escalates.
+      if (repeated) {
+        criticalTamperResponse([
+          `Version seed mismatch (tamperCount=${newCount})`,
+          `Stored version: ${stored.versionSeed}`,
+          `Current version: ${currentVersion}`,
+          'Repeated version/seed tampering — terminating scanner',
+        ])
+      }
       return results
     }
 
-    // Normal path: verify hash
+    // TOFU-gap mitigation: if the baseline was established via
+    // trust-on-first-use (server was offline), re-verify it against the
+    // server on LATER runs when it may be reachable. Otherwise a tampered
+    // exe + deleted integrity file + offline first run would poison the
+    // baseline forever (audit finding H1/C1).
+    //
+    // Throttled by lastServerCheck (not lastVerified!) — the 'all good'
+    // path refreshes lastVerified on every run, so keying on it would starve
+    // this branch entirely for users who scan daily.
+    let serverCheckedAt: string | undefined
+    // Fall back to 0 (immediately due) when no server check is recorded — a
+    // legacy/TOFU baseline without lastServerCheck must self-heal on the next
+    // run instead of being starved by a fresh lastVerified.
+    const lastServerCheckAt = stored.lastServerCheck
+      ? new Date(stored.lastServerCheck).getTime()
+      : 0
+    if (stored.source !== 'server' && Date.now() - lastServerCheckAt >= TOFU_RECHECK_MS) {
+      const serverHash = await fetchExpectedHash(currentVersion)
+      if (serverHash) {
+        if (serverHash.toLowerCase() !== currentHash.toLowerCase()) {
+          // Server now reachable and disagrees with the TOFU baseline → hard tampering
+          writeIntegrityState({
+            exeHash: serverHash, // store SERVER hash → mismatch fires every run
+            exeSize: stat.size,
+            versionSeed: currentVersion,
+            lastVerified: now,
+            tamperCount: (stored.tamperCount || 0) + 1,
+            source: 'server',
+            lastServerCheck: now,
+          })
+          results.push({
+            path: exePath,
+            fileName: '⛔ CRITICAL: Executable hash mismatch (server-verified)',
+            type: 'system',
+            risk: 'critical',
+            matches: [
+              `Expected SHA256 (server): ${serverHash.slice(0, 16)}...`,
+              `Actual SHA256 (local):   ${currentHash.slice(0, 16)}...`,
+              '⛔ Predator.exe does NOT match the official release build',
+              'TOFU baseline re-verified against server — tampering confirmed',
+            ],
+            size: stat.size,
+            modifiedAt: now,
+          })
+          criticalTamperResponse([
+            'Server-verified exe hash mismatch (TOFU re-verification)',
+            `Expected: ${serverHash.slice(0, 16)}...`,
+            `Actual:   ${currentHash.slice(0, 16)}...`,
+          ])
+          return results
+        }
+        // Server confirms the TOFU baseline → upgrade to trusted baseline
+        writeIntegrityState({
+          exeHash: currentHash,
+          exeSize: stat.size,
+          versionSeed: currentVersion,
+          lastVerified: now,
+          tamperCount: 0,
+          source: 'server',
+          lastServerCheck: now,
+        })
+        console.log('[self-integrity] ✅ TOFU baseline verified against server — upgraded to trusted')
+        return results
+      }
+      // Server still unreachable — record the attempt, then fall through to
+      // the local hash comparison below (lastServerCheck persisted there).
+      serverCheckedAt = now
+    }
+
+    // Normal path: verify hash (persist lastServerCheck so the TOFU throttle
+    // is tracked across the fall-through from the unreachable-server branch)
     if (stored.exeHash !== currentHash) {
       const newCount = (stored.tamperCount || 0) + 1
-      writeIntegrityState({ ...stored, tamperCount: newCount, lastVerified: now })
+      writeIntegrityState({ ...stored, tamperCount: newCount, lastVerified: now, lastServerCheck: serverCheckedAt ?? stored.lastServerCheck })
+      const repeated = newCount >= 2
 
       results.push({
         path: exePath,
-        fileName: '⚠ SELF-INTEGRITY FAILED: Executable modified',
+        fileName: repeated
+          ? '⛔ CRITICAL: Repeated executable tampering'
+          : '⚠ SELF-INTEGRITY FAILED: Executable modified',
         type: 'system',
-        risk: 'high',
+        risk: repeated ? 'critical' : 'high',
         matches: [
           `Expected SHA256: ${stored.exeHash.slice(0, 16)}...`,
           `Actual SHA256:   ${currentHash.slice(0, 16)}...`,
           `Tamper count: ${newCount}`,
           '⚠ Predator executable has been modified — possible patching/tampering',
-          newCount > 1 ? '⚠ REPEATED tampering detected — critical' : '',
+          repeated ? '⚠ REPEATED tampering detected — critical' : '',
         ].filter(Boolean),
         size: stat.size,
         modifiedAt: now,
       })
+
+      // H1: repeated tampering (2+ detections) → emergency shutdown.
+      // Single detection stays a finding so false positives don't kill the app.
+      if (repeated) {
+        criticalTamperResponse([
+          `Executable SHA256 mismatch (tamperCount=${newCount})`,
+          `Expected: ${stored.exeHash.slice(0, 16)}...`,
+          `Actual:   ${currentHash.slice(0, 16)}...`,
+          'Repeated integrity failures — terminating scanner',
+        ])
+      }
     } else {
       // All good — update last verified timestamp
-      writeIntegrityState({ ...stored, lastVerified: now })
+      writeIntegrityState({ ...stored, lastVerified: now, lastServerCheck: serverCheckedAt ?? stored.lastServerCheck })
     }
   } catch (err) {
     console.warn('[self-integrity] exe hash failed:', (err as Error).message)
@@ -401,7 +598,7 @@ $results | ConvertTo-Json -Compress
  * Normal: 0-5 INT3 instructions (alignment padding in some compilers)
  * Suspicious: 20+ INT3 in executable sections
  */
-export function scanForInt3Patches(): ScanResult[] {
+export async function scanForInt3Patches(): Promise<ScanResult[]> {
   const results: ScanResult[] = []
   const now = new Date().toISOString()
   const INT3 = 0xCC
@@ -413,14 +610,13 @@ export function scanForInt3Patches(): ScanResult[] {
     if (stat.size < MIN_EXE_SIZE) return results
 
     // Parse PE to find .text section, scan only that
-    const fd = fs.openSync(exePath, 'r')
-    const peHdrBuf = Buffer.alloc(4096)
-    fs.readSync(fd, peHdrBuf, 0, 4096, 0)
+    const peHdrBuf = await readFileRange(exePath, 0, 4096)
+    if (peHdrBuf.length < 2) return results
 
     // MZ header → PE offset
-    if (peHdrBuf[0] !== 0x4D || peHdrBuf[1] !== 0x5A) { fs.closeSync(fd); return results }
+    if (peHdrBuf[0] !== 0x4D || peHdrBuf[1] !== 0x5A) return results
     const peOff = peHdrBuf.readUInt32LE(0x3C)
-    if (peHdrBuf[peOff] !== 0x50 || peHdrBuf[peOff + 1] !== 0x45) { fs.closeSync(fd); return results }
+    if (peOff + 2 > peHdrBuf.length || peHdrBuf[peOff] !== 0x50 || peHdrBuf[peOff + 1] !== 0x45) return results
 
     const coffOff = peOff + 4
     const numSections = peHdrBuf.readUInt16LE(coffOff + 2)
@@ -442,12 +638,10 @@ export function scanForInt3Patches(): ScanResult[] {
       }
     }
 
-    if (textRaw === 0 || textSize === 0 || textRaw >= stat.size) { fs.closeSync(fd); return results }
+    if (textRaw === 0 || textSize === 0 || textRaw >= stat.size) return results
     const readSize = Math.min(textSize, 20 * 1024 * 1024)
 
-    const buf = Buffer.alloc(readSize)
-    fs.readSync(fd, buf, 0, readSize, textRaw)
-    fs.closeSync(fd)
+    const buf = await readFileRange(exePath, textRaw, readSize)
 
     let int3Count = 0
     let consecutiveInt3 = 0
@@ -596,7 +790,7 @@ export async function runSelfIntegrityScan(): Promise<ScanResult[]> {
 
   results.push(...await verifySelfExeIntegrity())
   results.push(...checkCodeSectionProtection())
-  results.push(...scanForInt3Patches())
+  results.push(...await scanForInt3Patches())
   results.push(...verifyImportTable())
 
   return results

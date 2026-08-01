@@ -85,6 +85,16 @@ function extractIndicators(finding: Pick<ScanResult, 'matches' | 'fileName' | 'p
 }
 
 function buildEvidence(finding: ScanResult): FindingEvidence[] {
+  if (finding.evidence && finding.evidence.length > 0) {
+    return finding.evidence.map(item => ({
+      source: item.source,
+      weight: item.weight,
+      confidence: item.confidence,
+      label: item.category,
+      detail: `${item.explanation} Raw: ${item.raw}`,
+    }))
+  }
+
   const haystack = normalizeFindingText(finding)
   const evidence: FindingEvidence[] = []
   const push = (source: string, weight: number, confidence: number, label: string, detail: string) => {
@@ -100,8 +110,8 @@ function buildEvidence(finding: ScanResult): FindingEvidence[] {
   if (/usn|journal|sdelete|shellbags|timestomp|wipe|deleted/.test(haystack)) push('anti-forensic', 0.8, 82, 'Антифорензика', 'Найдены признаки сокрытия или удаления следов активности.')
 
   if (evidence.length === 0) {
-    const baseConfidence = finding.risk === 'high' ? 70 : finding.risk === 'medium' ? 50 : 30
-    push(finding.type, finding.risk === 'high' ? 0.7 : finding.risk === 'medium' ? 0.45 : 0.2, baseConfidence, 'Общий индикатор', 'Сработали совпадения сканера, требующие ручной проверки.')
+    const baseConfidence = finding.risk === 'critical' ? 90 : finding.risk === 'high' ? 70 : finding.risk === 'medium' ? 50 : 30
+    push(finding.type, finding.risk === 'critical' ? 0.9 : finding.risk === 'high' ? 0.7 : finding.risk === 'medium' ? 0.45 : 0.2, baseConfidence, 'Общий индикатор', 'Сработали совпадения сканера, требующие ручной проверки.')
   }
 
   return evidence
@@ -109,7 +119,7 @@ function buildEvidence(finding: ScanResult): FindingEvidence[] {
 
 export function buildFindingExplanation(finding: ScanResult, lang: Lang = 'ru'): FindingExplanation {
   const kind = getFindingKind(finding)
-  const riskText = finding.risk === 'high' ? 'высокий' : finding.risk === 'medium' ? 'средний' : 'низкий'
+  const riskText = finding.risk === 'critical' ? 'критический' : finding.risk === 'high' ? 'высокий' : finding.risk === 'medium' ? 'средний' : 'низкий'
 
   const ruBase: Record<FindingKind, Omit<FindingExplanation, 'kind' | 'confidenceNote' | 'indicators' | 'evidence'>> = {
     dma: {

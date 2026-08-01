@@ -82,10 +82,16 @@ router.post('/token/use', validate(useTokenSchema), async (req: Request, res: Re
       return res.status(403).json({ valid: false, error: 'Token already used' })
     }
 
-    await query(
-      'UPDATE tokens SET used_by = ?, used_at = NOW(), is_active = FALSE WHERE id = ?',
+    // Keep the claim atomic: a concurrent request can pass the SELECT too,
+    // but only one request may update an active, unused token.
+    const updateResult = await query<{ affectedRows?: number }>(
+      'UPDATE tokens SET used_by = ?, used_at = NOW(), is_active = FALSE WHERE id = ? AND is_active = TRUE AND used_by IS NULL',
       [pc_username || 'unknown', tok.id]
     )
+
+    if (updateResult?.affectedRows !== 1) {
+      return res.status(403).json({ valid: false, error: 'Token already used' })
+    }
 
     return res.json({ valid: true, token_id: tok.id, message: 'Token activated' })
   } catch (err: any) {

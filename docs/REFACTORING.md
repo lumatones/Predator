@@ -1,7 +1,7 @@
 # Refactoring Plan &mdash; Predator
 
-> **Progress:** 16 of 18 tasks completed
-> **Last updated:** 2026-07-30 (v0.4.3)
+> **Progress:** 17 of 19 tasks completed
+> **Last updated:** 2026-08-01 (v0.4.5)
 
 ## Current Code Metrics
 
@@ -14,8 +14,11 @@
 | Module-level mutable state | 0 | 0 |
 | `require()` CJS-style | 0 | 0 |
 | `execSync` in child_process | 161 calls | 0 (all migrated to `execPowerShell`/`execWithTimeout`) |
-| Tests | 165 | 243 |
+| Tests | 165 | 387 (283 Electron + 104 server) |
 | TypeScript errors | 0 | 0 |
+| Structured Evidence Model | — | Implemented (stable IDs, confidence, explanations, correlations) |
+| Renderer contract tests | — | 4 tests + Chrome/CDP Checker smoke |
+| Renderer smoke runtime | — | Node 22+ + installed Chrome |
 
 ---
 
@@ -180,6 +183,28 @@ Extracted into `electron/heuristic/` submodules:
 
 ---
 
+## Priority 12 — Evidence Model & Explainable Risk
+
+### Solution implemented
+- Added optional structured evidence to `ScanResult` with source, category, weight, confidence, explanation, raw value, timestamp, and related finding IDs.
+- Added stable `findingId` and deterministic evidence IDs, including duplicate findings and repeated rescoring.
+- Restricted correlations to explicit detection-layer pairs with a shared meaningful token.
+- Propagated `critical` through scanner, scheduler, filtering, grouping, UI, and exports; legacy server contracts normalize it to `high` at the boundary.
+- Added bounded evidence payload validation and regression coverage.
+
+**Status:** Completed in v0.4.5.
+
+## Priority 13 — Renderer Smoke & Contract Tests
+
+### Solution implemented
+- Added a dedicated Vitest config for `src/__tests__` renderer contract tests.
+- Covered JSON/HTML/Markdown report exports, structured evidence, Finding explanations, and critical/high grouping.
+- Added a dev-only `?smoke=checker` harness with stable test IDs.
+- Added dependency-free Chrome/CDP smoke runner for Checker → mock scan → result → Finding modal → HTML export.
+- Added `npm run test:renderer` and `npm run test:renderer:smoke`; the latter requires Node 22+ and Chrome.
+
+**Status:** Completed in v0.4.5.
+
 ## Summary
 
 | # | Task | Effort | Status |
@@ -200,5 +225,6 @@ Extracted into `electron/heuristic/` submodules:
 | 14 | RULES.md update | 30min | Completed |
 | 15 | ARCHITECTURE.md creation | 1h | Completed |
 | 16 | README.md rewrite | 30min | Completed |
+| 17 | Evidence Model & explainable risk | 3-4h | Completed |
 | &mdash; | HTTP client | 1h | Planned |
 | &mdash; | Enum for types | 30min | Planned |

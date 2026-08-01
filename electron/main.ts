@@ -360,17 +360,18 @@ ipcMain.handle('start-download', async () => {
   try {
     await autoUpdater.downloadUpdate()
     return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
 })
 
 ipcMain.handle('restart-app', async () => {
   try {
     autoUpdater.quitAndInstall()
-  } catch (err: any) {
-    writeCrashLog('IPC_ERROR', 'Restart failed: ' + err.message)
-    console.error('Restart failed:', err.message)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    writeCrashLog('IPC_ERROR', 'Restart failed: ' + message)
+    console.error('Restart failed:', message)
   }
 })
 

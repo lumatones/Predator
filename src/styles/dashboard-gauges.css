@@ -12,6 +12,13 @@
   align-items: center;
   justify-content: center;
   margin: 0 auto;
+  max-width: 100%;
+}
+
+.dash-gauge svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 .dash-gauge svg { display: block; }
@@ -44,5 +51,23 @@
 .dash-gauge-sub {
   font-size: var(--text-2xs);
   color: var(--text-muted);
+}
+
+@media (max-width: 600px) {
+  .dash-gauges {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .dash-gauge {
+    width: min(110px, 100%) !important;
+    height: auto !important;
+    aspect-ratio: 1;
+  }
+
+  .dash-gauge svg {
+    width: 100%;
+    height: auto;
+  }
 }
 

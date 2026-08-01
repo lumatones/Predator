@@ -238,7 +238,6 @@ function findSimilarRule(rules: AutoRule[], strings: string[]): AutoRule | null 
 /** Apply confidence decay to idle rules */
 function applyDecay(rules: AutoRule[]): void {
   const now = Date.now()
-  const decayThreshold = DECAY_DAYS * 86400000
   for (const rule of rules) {
     const daysSinceLastMatch = (now - rule.lastMatchedAt) / 86400000
     if (daysSinceLastMatch > DECAY_DAYS) {

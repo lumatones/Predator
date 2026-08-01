@@ -37,6 +37,7 @@ export type AdminActionType =
   | 'hash_confirm'
   | 'hash_reject'
   | 'hash_confirm_from_scan'
+  | 'client_hash_register'
   | 'shadow_promote'
   | 'shadow_reject'
 
@@ -47,6 +48,7 @@ interface AuditMeta {
   count?: number
   ruleName?: string
   sha256?: string
+  version?: string
 }
 
 /**
@@ -90,8 +92,9 @@ export function logAdminAction(
   const ip = req.ip || req.socket.remoteAddress || 'unknown'
   const requestId = req.requestId || null
 
-  // Fire-and-forget — don't block the response
-  query(
+  // Fire-and-forget — don't block the response. Normalize both async and
+  // imperfect test/database adapters so audit logging can never break a route.
+  void Promise.resolve().then(() => query(
     `INSERT INTO admin_audit_log (admin_id, admin_username, action, target_id, target_type, meta, ip_address, request_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -104,7 +107,7 @@ export function logAdminAction(
       ip,
       requestId,
     ]
-  ).catch((err) => {
+  )).catch((err) => {
     console.warn('[audit-log] write failed:', (err as Error).message)
   })
 }

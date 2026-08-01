@@ -6,8 +6,8 @@
  * Updated 2026-07-24: added cheat loader rules, enhanced PE heuristics.
  */
 
-import fs from 'fs'
-import path from 'path'
+import fsp from 'fs/promises'
+import { readFilePrefix, readFileRange } from './utils/file-io'
 
 // ═══════════════════════════════════════════════
 // YARA-LIKE RULES
@@ -345,13 +345,6 @@ const LEGIT_SECTIONS = new Set([
   '.sxdata', '.loadcfg', '.00cfg',
 ])
 
-// Section names that suggest packing / obfuscation
-const PACKED_SECTIONS = new Set([
-  '.vmp', '.themida', '.enigma', '.packed', '.upx0', '.upx1',
-  '.nsp0', '.nsp1', '.petite', '.morph', '.kkrunchy',
-  '.0000', 'PEC2MO', 'PEC2',
-])
-
 // ═══════════════════════════════════════════════
 // SECTION ENTROPY ANALYSIS
 // ═══════════════════════════════════════════════
@@ -400,42 +393,41 @@ function getSectionEntropyThresholds(name: string): { low: number; high: number;
  *   - .text entropy < 5.0 → possibly packed/obfuscated
  *   - Unknown section with high entropy → packed
  */
-export function analyzeSectionEntropy(filepath: string): SectionEntropy[] {
+export async function analyzeSectionEntropy(
+  filepath: string,
+  signal?: AbortSignal,
+): Promise<SectionEntropy[]> {
   const results: SectionEntropy[] = []
 
   try {
-    const stat = fs.statSync(filepath)
+    const stat = await fsp.stat(filepath)
     if (stat.size < 64) return results
 
-    // Read full headers to find section table
-    const headerSize = Math.min(stat.size, 4096)
-    const headerBuf = Buffer.alloc(headerSize)
-    const fd = fs.openSync(filepath, 'r')
-    fs.readSync(fd, headerBuf, 0, headerSize, 0)
+    // Read headers and the section table without blocking the main process.
+    const headerBuf = await readFilePrefix(filepath, Math.min(stat.size, 4096), signal)
+    if (headerBuf.length < 0x40 || headerBuf[0] !== 0x4D || headerBuf[1] !== 0x5A) return results
 
-    // Validate MZ + PE
-    if (headerBuf[0] !== 0x4D || headerBuf[1] !== 0x5A) { fs.closeSync(fd); return results }
     const peOff = headerBuf.readUInt32LE(0x3C)
-    if (peOff + 24 > headerSize ||
-        headerBuf[peOff] !== 0x50 || headerBuf[peOff + 1] !== 0x45) { fs.closeSync(fd); return results }
+    if (peOff + 24 > headerBuf.length ||
+        headerBuf[peOff] !== 0x50 || headerBuf[peOff + 1] !== 0x45) return results
 
     const numSections = headerBuf.readUInt16LE(peOff + 4 + 2)
     const optHeaderSize = headerBuf.readUInt16LE(peOff + 4 + 16)
     const secOff = peOff + 4 + 20 + optHeaderSize
+    const tableSize = Math.min(numSections * 40, 40 * 40)
+    if (secOff < 0 || secOff > stat.size || tableSize < 40) return results
 
-    // Read section table (40 bytes each)
-    const tableSize = Math.min(numSections * 40, headerSize - secOff)
-    if (tableSize < 40) { fs.closeSync(fd); return results }
-
-    const sectionTable = Buffer.alloc(tableSize)
-    // Re-read from the correct offset (might be past initial 4KB)
-    fs.readSync(fd, sectionTable, 0, tableSize, secOff)
-    fs.closeSync(fd)
+    const sectionTable = await readFileRange(filepath, secOff, tableSize, signal)
 
     for (let i = 0; i < numSections && i < 40; i++) {
+      if (signal?.aborted) throw new Error('Section entropy analysis aborted')
       const o = i * 40
+      if (o + 40 > sectionTable.length) break
+
       let name = ''
-      for (let j = 0; j < 8 && sectionTable[o + j] !== 0; j++) name += String.fromCharCode(sectionTable[o + j])
+      for (let j = 0; j < 8 && sectionTable[o + j] !== 0; j++) {
+        name += String.fromCharCode(sectionTable[o + j])
+      }
 
       const secName = name.startsWith('.') ? name : `.${name}`
       const rawOffset = sectionTable.readUInt32LE(o + 20)
@@ -444,32 +436,23 @@ export function analyzeSectionEntropy(filepath: string): SectionEntropy[] {
 
       if (rawSize === 0 || rawOffset === 0) continue
 
-      // Read section content from disk
-      const readSize = Math.min(rawSize, 10 * 1024 * 1024) // max 10 MB per section
-      if (rawOffset + readSize > stat.size) continue
+      // Read at most 10 MB per section and reject ranges outside the file.
+      const readSize = Math.min(rawSize, 10 * 1024 * 1024)
+      if (rawOffset > stat.size || readSize > stat.size - rawOffset) continue
 
-      const secBuf = Buffer.alloc(readSize)
-      const fd2 = fs.openSync(filepath, 'r')
-      const bytesRead = fs.readSync(fd2, secBuf, 0, readSize, rawOffset)
-      fs.closeSync(fd2)
+      const secBuf = await readFileRange(filepath, rawOffset, readSize, signal)
+      if (secBuf.length < 16) continue
 
-      if (bytesRead < 16) continue
-
-      // Calculate entropy
-      const entropy = calculateEntropyFromBuf(secBuf.subarray(0, bytesRead))
-
-      // Check thresholds
+      const entropy = calculateEntropyFromBuf(secBuf)
       const thresholds = getSectionEntropyThresholds(secName)
       let isSuspicious = false
       let reason: string | undefined
 
-      // .rsrc with entropy > 7.5 = hidden shellcode/config
       if (entropy > thresholds.suspicious) {
         isSuspicious = true
         reason = `Entropy ${entropy.toFixed(2)} > ${thresholds.suspicious.toFixed(1)} — unusually high for section type (possible packed/hidden code)`
       }
 
-      // .text with entropy < 5.0 = packed/obfuscated code
       if ((secName === '.text' || secName === 'CODE') && entropy < 5.0) {
         isSuspicious = true
         reason = `Entropy ${entropy.toFixed(2)} < 5.0 — unusually low for code section (obfuscated/packed)`
@@ -485,7 +468,10 @@ export function analyzeSectionEntropy(filepath: string): SectionEntropy[] {
         reason,
       })
     }
-  } catch { /* skip unreadable files */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    // Skip unreadable or malformed files, matching the previous API behavior.
+  }
 
   return results
 }
@@ -510,15 +496,16 @@ function calculateEntropyFromBuf(data: Buffer): number {
  * Analyze PE headers of a binary file.
  * Reads: MZ signature → PE signature → COFF header → Optional header → Sections
  */
-export function analyzePeHeaders(filepath: string): PeAnalysisResult | null {
+export async function analyzePeHeaders(
+  filepath: string,
+  signal?: AbortSignal,
+): Promise<PeAnalysisResult | null> {
   try {
-    const stat = fs.statSync(filepath)
+    const stat = await fsp.stat(filepath)
     if (stat.size < 64) return null // Too small to be a PE
 
-    const fd = fs.openSync(filepath, 'r')
-    const buffer = Buffer.alloc(Math.min(stat.size, 4096))
-    fs.readSync(fd, buffer, 0, buffer.length, 0)
-    fs.closeSync(fd)
+    const buffer = await readFilePrefix(filepath, Math.min(stat.size, 4096), signal)
+    if (buffer.length < 2) return null
 
     // Check MZ signature
     if (buffer[0] !== 0x4D || buffer[1] !== 0x5A) {
@@ -530,12 +517,14 @@ export function analyzePeHeaders(filepath: string): PeAnalysisResult | null {
     }
 
     // Read PE offset from MZ header at offset 0x3C
+    if (buffer.length < 0x40) return null
     const peOffset = buffer.readUInt32LE(0x3C)
-    if (peOffset + 4 > buffer.length) {
+    if (peOffset + 24 > buffer.length) {
       return {
         isValidPe: false, sectionCount: 0, suspiciousSections: [],
-        isSuspicious: false, subsystem: '', relocsStripped: false,
+        isSuspicious: false, relocsStripped: false,
         entryPointInSuspiciousSection: false, peSuspicionScore: 0,
+        subsystem: '',
       }
     }
 
@@ -550,39 +539,38 @@ export function analyzePeHeaders(filepath: string): PeAnalysisResult | null {
     }
 
     const peSigOffset = peOffset + 4
-
-    // COFF header (20 bytes)
     const coffHeader = peSigOffset
-    const machine = buffer.readUInt16LE(coffHeader)
+    if (coffHeader + 20 > buffer.length) return null
+
     const sectionCount = buffer.readUInt16LE(coffHeader + 2)
     const characteristics = buffer.readUInt16LE(coffHeader + 18)
-
-    // Optional header follows COFF header
+    const optHeaderSize = buffer.readUInt16LE(coffHeader + 16)
     const optHeader = coffHeader + 20
-    const magic = buffer.readUInt16LE(optHeader)
+    if (optHeaderSize === 0 || optHeader + optHeaderSize > buffer.length) return null
 
+    const magic = buffer.readUInt16LE(optHeader)
     let subsystem = 0
     let entryPointAddress = 0
-
-    if (magic === 0x10B) { // PE32
+    if (magic === 0x10B) {
+      if (optHeaderSize < 70 || optHeader + 70 > buffer.length) return null
       entryPointAddress = buffer.readUInt32LE(optHeader + 16)
       subsystem = buffer.readUInt16LE(optHeader + 68)
-    } else if (magic === 0x20B) { // PE32+
+    } else if (magic === 0x20B) {
+      if (optHeaderSize < 74 || optHeader + 74 > buffer.length) return null
       entryPointAddress = buffer.readUInt32LE(optHeader + 16)
       subsystem = buffer.readUInt16LE(optHeader + 72)
     }
 
-    // Section headers (each 40 bytes, starting after optional header)
-    const sectionOffset = optHeader + (magic === 0x10B ? 0xF8 : 0xF0)
+    // Section headers (each 40 bytes, starting after the actual optional header).
+    const sectionOffset = optHeader + optHeaderSize
+    if (sectionOffset > buffer.length) return null
     const suspiciousSections: string[] = []
     let entryPointInSuspiciousSection = false
-    let packedSectionFound = false
 
     for (let i = 0; i < sectionCount && i < 40; i++) {
       const secStart = sectionOffset + i * 40
-      if (secStart + 8 > buffer.length) break
+      if (secStart + 40 > buffer.length) break
 
-      // Section name is 8 bytes, null-terminated
       const nameBytes: number[] = []
       for (let j = 0; j < 8; j++) {
         const b = buffer[secStart + j]
@@ -590,24 +578,17 @@ export function analyzePeHeaders(filepath: string): PeAnalysisResult | null {
         nameBytes.push(b)
       }
       const sectionName = '.' + String.fromCharCode(...nameBytes).replace(/^\./, '')
-
-      // Virtual address for entry point check
       const virtualAddress = buffer.readUInt32LE(secStart + 12)
       const sectionSize = buffer.readUInt32LE(secStart + 8)
 
-      // Check if entry point is in this section
-      if (entryPointAddress >= virtualAddress && entryPointAddress < virtualAddress + sectionSize) {
-        if (!LEGIT_SECTIONS.has(sectionName)) {
-          entryPointInSuspiciousSection = true
-        }
+      if (entryPointAddress >= virtualAddress &&
+          entryPointAddress < virtualAddress + sectionSize &&
+          !LEGIT_SECTIONS.has(sectionName)) {
+        entryPointInSuspiciousSection = true
       }
 
-      // Check section name
       if (!LEGIT_SECTIONS.has(sectionName) && sectionName.length > 1) {
         suspiciousSections.push(sectionName)
-      }
-      if (PACKED_SECTIONS.has(sectionName)) {
-        packedSectionFound = true
       }
     }
 
@@ -616,21 +597,13 @@ export function analyzePeHeaders(filepath: string): PeAnalysisResult | null {
       5: 'OS2_CUI', 7: 'POSIX_CUI',
       9: 'WINDOWS_CE_GUI', 10: 'EFI',
     }
-
     const relocsStripped = (characteristics & 0x0001) !== 0
     const isSuspicious = suspiciousSections.length > 0 || entryPointInSuspiciousSection || relocsStripped
 
-    // v0.0.12: Calculate overall suspicion score (0-100)
-    let peSuspicionScore = 0
-    // Suspicious sections: +10 each, max +40
-    peSuspicionScore += Math.min(suspiciousSections.length * 10, 40)
-    // Entry point in suspicious section: +20
+    let peSuspicionScore = Math.min(suspiciousSections.length * 10, 40)
     if (entryPointInSuspiciousSection) peSuspicionScore += 20
-    // Relocs stripped: +15
     if (relocsStripped) peSuspicionScore += 15
-    // Unknown subsystem: +15
     if (!subsystemNames[subsystem] || subsystem === 0) peSuspicionScore += 15
-    // Many sections (> 6 suggests packing): +10
     if (sectionCount > 6) peSuspicionScore += 10
 
     return {
@@ -643,7 +616,8 @@ export function analyzePeHeaders(filepath: string): PeAnalysisResult | null {
       entryPointInSuspiciousSection,
       peSuspicionScore,
     }
-  } catch {
+  } catch (err) {
+    if (signal?.aborted) throw err
     return null
   }
 }

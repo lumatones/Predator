@@ -10,7 +10,7 @@
  *   usb/bandwidth.ts     — bandwidth monitoring (active DMA detection)
  */
 
-import * as fs from 'fs'
+import fsp from 'fs/promises'
 import * as path from 'path'
 import { _WR, type ScanResult, addFindingDedup } from '../types'
 
@@ -26,7 +26,7 @@ import {
 // ── Classification ──
 import {
   classifyDevice,
-  checkDriverSignature,
+  checkDriverSignatureAsync,
   DMA_DRIVER_FILES,
   type DeviceSummary,
 } from './usb/classification'
@@ -49,93 +49,105 @@ import { runUsbAnomalyScan } from './usb/anomaly'
  * Find FTDI/FPGA/DMA driver files on the system and check their signatures.
  * Returns ScanResult[] with findings.
  */
-export function scanDmaDriverSignatures(): ScanResult[] {
+export async function scanDmaDriverSignatures(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
   // 1. Check system32/drivers for known DMA-related .sys files
   const driversDir = path.join(_WR, 'System32', 'drivers')
-  if (fs.existsSync(driversDir)) {
-    try {
-      for (const file of fs.readdirSync(driversDir)) {
-        const lower = file.toLowerCase()
-        const isDmaDriver = DMA_DRIVER_FILES.some(f => lower === f.toLowerCase()) ||
-          lower.includes('ftd') || lower.includes('ft6') ||
-          lower.includes('leech') || lower.includes('vmm') ||
-          lower.includes('xilinx') || lower.includes('fpga')
+  let driverFiles: string[] = []
+  try {
+    driverFiles = await fsp.readdir(driversDir)
+  } catch {
+    driverFiles = []
+  }
+  if (signal?.aborted) throw new Error('DMA driver signature scan aborted')
 
-        if (!isDmaDriver) continue
+  for (const file of driverFiles) {
+    if (signal?.aborted) throw new Error('DMA driver signature scan aborted')
+    const lower = file.toLowerCase()
+    const isDmaDriver = DMA_DRIVER_FILES.some(f => lower === f.toLowerCase()) ||
+      lower.includes('ftd') || lower.includes('ft6') ||
+      lower.includes('leech') || lower.includes('vmm') ||
+      lower.includes('xilinx') || lower.includes('fpga')
 
-        const fullPath = path.join(driversDir, file)
-        const sigResult = checkDriverSignature(fullPath)
-        if (!sigResult) continue
+    if (!isDmaDriver) continue
 
-        if (!sigResult.isValid || sigResult.isSelfSigned) {
-          if (addFindingDedup(`dmasig:${file}`)) {
-            results.push({
-              path: `Hardware: DMA Driver Signature`,
-              fileName: `🔐 DMA Driver: ${file} — ${sigResult.isValid ? 'SELF-SIGNED' : 'UNSIGNED'}`,
-              type: 'hardware',
-              risk: 'high',
-              matches: [
-                `Driver: ${file}`,
-                ...sigResult.details,
-                `⚠ Legitimate FTDI/FPGA drivers are ALWAYS Microsoft or FTDI signed`,
-                `⚠ Unsigned or self-signed DMA driver = cheat card indicator`,
-              ],
-              size: 0,
-              modifiedAt: new Date().toISOString(),
-            })
-          }
-        } else if (sigResult.isValid && !sigResult.isMicrosoft && !sigResult.isFtdi) {
-          if (addFindingDedup(`dmasig:${file}`)) {
-            results.push({
-              path: `Hardware: DMA Driver Signature`,
-              fileName: `⚠ DMA Driver: ${file} (signed by ${sigResult.signer.slice(0, 40)})`,
-              type: 'hardware',
-              risk: 'medium',
-              matches: [
-                `Driver: ${file}`,
-                ...sigResult.details,
-                `Third-party signature — not Microsoft/FTDI`,
-              ],
-              size: 0,
-              modifiedAt: new Date().toISOString(),
-            })
-          }
-        }
+    const fullPath = path.join(driversDir, file)
+    const sigResult = await checkDriverSignatureAsync(fullPath, signal)
+    if (signal?.aborted) throw new Error('DMA driver signature scan aborted')
+    if (!sigResult) continue
+
+    if (!sigResult.isValid || sigResult.isSelfSigned) {
+      if (addFindingDedup(`dmasig:${file}`)) {
+        results.push({
+          path: `Hardware: DMA Driver Signature`,
+          fileName: `🔐 DMA Driver: ${file} — ${sigResult.isValid ? 'SELF-SIGNED' : 'UNSIGNED'}`,
+          type: 'hardware',
+          risk: 'high',
+          matches: [
+            `Driver: ${file}`,
+            ...sigResult.details,
+            `⚠ Legitimate FTDI/FPGA drivers are ALWAYS Microsoft or FTDI signed`,
+            `⚠ Unsigned or self-signed DMA driver = cheat card indicator`,
+          ],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
       }
-    } catch { /* driver scan optional */ }
+    } else if (sigResult.isValid && !sigResult.isMicrosoft && !sigResult.isFtdi) {
+      if (addFindingDedup(`dmasig:${file}`)) {
+        results.push({
+          path: `Hardware: DMA Driver Signature`,
+          fileName: `⚠ DMA Driver: ${file} (signed by ${sigResult.signer.slice(0, 40)})`,
+          type: 'hardware',
+          risk: 'medium',
+          matches: [
+            `Driver: ${file}`,
+            ...sigResult.details,
+            `Third-party signature — not Microsoft/FTDI`,
+          ],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
+      }
+    }
   }
 
   // 2. Check System32 for PCILeech DLLs
   const system32Dir = path.join(_WR, 'System32')
-  if (fs.existsSync(system32Dir)) {
-    try {
-      for (const file of fs.readdirSync(system32Dir)) {
-        const lower = file.toLowerCase()
-        if (!DMA_DRIVER_FILES.some(f => lower === f.toLowerCase())) continue
+  let system32Files: string[] = []
+  try {
+    system32Files = await fsp.readdir(system32Dir)
+  } catch {
+    system32Files = []
+  }
+  if (signal?.aborted) throw new Error('DMA driver signature scan aborted')
 
-        const fullPath = path.join(system32Dir, file)
-        const sigResult = checkDriverSignature(fullPath)
-        if (!sigResult?.isValid) {
-          if (addFindingDedup(`dmasig-sys32:${file}`)) {
-            results.push({
-              path: `Hardware: DMA Driver Signature`,
-              fileName: `🔐 PCILeech Component: ${file} — UNSIGNED ⚠`,
-              type: 'hardware',
-              risk: 'high',
-              matches: [
-                `File: ${fullPath}`,
-                ...(sigResult?.details || ['Driver signature check failed']),
-                `⚠ PCILeech components in System32 = DMA cheat infrastructure`,
-              ],
-              size: 0,
-              modifiedAt: new Date().toISOString(),
-            })
-          }
-        }
+  for (const file of system32Files) {
+    if (signal?.aborted) throw new Error('DMA driver signature scan aborted')
+    const lower = file.toLowerCase()
+    if (!DMA_DRIVER_FILES.some(f => lower === f.toLowerCase())) continue
+
+    const fullPath = path.join(system32Dir, file)
+    const sigResult = await checkDriverSignatureAsync(fullPath, signal)
+    if (signal?.aborted) throw new Error('DMA driver signature scan aborted')
+    if (!sigResult?.isValid) {
+      if (addFindingDedup(`dmasig-sys32:${file}`)) {
+        results.push({
+          path: `Hardware: DMA Driver Signature`,
+          fileName: `🔐 PCILeech Component: ${file} — UNSIGNED ⚠`,
+          type: 'hardware',
+          risk: 'high',
+          matches: [
+            `File: ${fullPath}`,
+            ...(sigResult?.details || ['Driver signature check failed']),
+            `⚠ PCILeech components in System32 = DMA cheat infrastructure`,
+          ],
+          size: 0,
+          modifiedAt: new Date().toISOString(),
+        })
       }
-    } catch { /* system32 scan optional */ }
+    }
   }
 
   return results
@@ -214,28 +226,32 @@ export function deviceReportToScanResults(report: DeviceReport): ScanResult[] {
  * Scan setupapi.dev.log for DMA-related driver installations.
  * This reveals EXACT timestamps when DMA cards were installed.
  */
-export function scanSetupApiLog(): ScanResult[] {
+export async function scanSetupApiLog(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
   const logPath = path.join(_WR, 'INF', 'setupapi.dev.log')
-
-  if (!fs.existsSync(logPath)) return results
 
   try {
     const dmaKeywords = ['ven_10ee', 'ven_1172', 'ven_1204', 'ven_dada', 'vid_0403', 'vid_104c',
       'xilinx', 'altera', 'fpga', 'ftdi', 'pcileech', 'ftd3xx', 'leechcore']
 
-    const stat = fs.statSync(logPath)
+    const stat = await fsp.stat(logPath)
+    if (signal?.aborted) throw new Error('SetupAPI scan aborted')
     const readSize = Math.min(stat.size, 1_000_000)
     const buf = Buffer.alloc(readSize)
-    const fd = fs.openSync(logPath, 'r')
-    fs.readSync(fd, buf, 0, readSize, stat.size - readSize)
-    fs.closeSync(fd)
+    const handle = await fsp.open(logPath, 'r')
+    try {
+      await handle.read(buf, 0, readSize, Math.max(0, stat.size - readSize))
+    } finally {
+      await handle.close()
+    }
+    if (signal?.aborted) throw new Error('SetupAPI scan aborted')
     const content = buf.toString('utf-8').toLowerCase()
     const lines = content.split('\n')
 
     const foundEntries: string[] = []
 
     for (let i = 0; i < lines.length; i++) {
+      if (signal?.aborted) throw new Error('SetupAPI scan aborted')
       const line = lines[i]
       for (const kw of dmaKeywords) {
         if (line.includes(kw)) {
@@ -265,7 +281,10 @@ export function scanSetupApiLog(): ScanResult[] {
         modifiedAt: new Date().toISOString(),
       })
     }
-  } catch { /* setupapi log optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* setupapi log optional */
+  }
 
   return results
 }
@@ -278,16 +297,18 @@ export function scanSetupApiLog(): ScanResult[] {
  * Run the full USB/hardware device scan.
  * Combines device inventory + history + setupapi log scan + bandwidth monitoring.
  */
-export function runFullUsbDeviceScan(): ScanResult[] {
+export async function runFullUsbDeviceScan(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
+  if (signal?.aborted) return results
 
   const presentDevices = enumeratePresentDevices()
   const { devices: historyDevices, installDates } = enumerateDeviceHistory()
 
   const deviceReport = buildDeviceReport(presentDevices, historyDevices, installDates)
   results.push(...deviceReportToScanResults(deviceReport))
-  results.push(...scanSetupApiLog())
-  results.push(...scanDmaDriverSignatures())
+  results.push(...await scanSetupApiLog(signal))
+  results.push(...await scanDmaDriverSignatures(signal))
+  if (signal?.aborted) return results
 
   // E16: USB anomaly detection — VID/PID spoofing + PCIe scan
   results.push(...runUsbAnomalyScan(presentDevices))

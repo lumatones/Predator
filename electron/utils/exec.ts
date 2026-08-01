@@ -15,7 +15,7 @@
  *   5. Logs timeout events to stderr for debugging
  */
 
-import { execSync, execFileSync } from 'child_process'
+import { execSync, execFileSync, spawn } from 'child_process'
 
 export interface ExecOptions {
   /** Max execution time in ms (default 8000) */
@@ -71,9 +71,10 @@ export function execWithTimeout(
       maxBuffer: opts.maxBuffer,
       killSignal: 'SIGTERM',
     }) as string
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Log timeout events for debugging (not a crash)
-    if (err.killed || err.signal) {
+    const processError = err as { killed?: boolean; signal?: string | null }
+    if (processError.killed || processError.signal) {
       console.warn(`[exec] Timed out after ${opts.timeout}ms: ${command.slice(0, 80)}...`)
     }
     return null
@@ -99,8 +100,9 @@ export function execFileWithTimeout(
       maxBuffer: opts.maxBuffer,
       killSignal: 'SIGTERM',
     }) as string
-  } catch (err: any) {
-    if (err.killed || err.signal) {
+  } catch (err: unknown) {
+    const processError = err as { killed?: boolean; signal?: string | null }
+    if (processError.killed || processError.signal) {
       console.warn(`[exec] Timed out after ${opts.timeout}ms: ${file} ${args.slice(0, 3).join(' ')}...`)
     }
     return null
@@ -118,6 +120,139 @@ export function execFileWithTimeout(
  *   // Multi-line C# Add-Type script:
  *   const out = execPowerShell(cSharpScript, { timeout: 15000, collapseLines: 'semicolons' })
  */
+export interface AsyncExecOptions extends ExecOptions {
+  /** Abort the child process when the scan is cancelled. */
+  signal?: AbortSignal
+}
+
+/**
+ * Execute a program without a shell and collect stdout asynchronously.
+ *
+ * Unlike execSync/execFileSync this never blocks the Electron event loop.
+ * `args` are passed directly to the child process, so values cannot alter
+ * shell syntax. Timeout and cancellation both terminate the child process.
+ */
+export function spawnAsyncWithTimeout(
+  file: string,
+  args: string[],
+  options: AsyncExecOptions = {},
+): Promise<string | null> {
+  const opts = { ...DEFAULT_OPTS, ...options }
+
+  return new Promise(resolve => {
+    if (options.signal?.aborted) {
+      resolve(null)
+      return
+    }
+
+    let child: ReturnType<typeof spawn>
+    let settled = false
+    let stdout = ''
+    const timerState: { handle?: ReturnType<typeof setTimeout> } = {}
+
+    function cleanup() {
+      if (timerState.handle) clearTimeout(timerState.handle)
+      opts.signal?.removeEventListener('abort', abort)
+    }
+
+    function finish(result: string | null) {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(result)
+    }
+
+    function terminate() {
+      if (!child?.pid) return
+      child.kill()
+      // On Windows, PowerShell can create descendants while inspecting an
+      // archive or process tree. Kill the whole tree to avoid orphan work.
+      if (process.platform === 'win32') {
+        const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+          windowsHide: true,
+          shell: false,
+          stdio: 'ignore',
+        })
+        killer.on('error', () => { /* best effort cleanup */ })
+      }
+    }
+
+    function abort() {
+      terminate()
+      finish(null)
+    }
+
+    try {
+      child = spawn(file, args, {
+        windowsHide: opts.windowsHide,
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch {
+      resolve(null)
+      return
+    }
+
+    child.stdout?.setEncoding(opts.encoding)
+    child.stdout?.on('data', (chunk: string) => {
+      stdout += chunk
+      if (Buffer.byteLength(stdout, opts.encoding) > opts.maxBuffer) {
+        terminate()
+        finish(null)
+      }
+    })
+    child.on('error', () => finish(null))
+    child.on('close', (code, signal) => {
+      if (code === 0) {
+        finish(stdout)
+      } else {
+        if (signal) {
+          console.warn(`[exec] Async process stopped (${signal}): ${file}`)
+        }
+        finish(null)
+      }
+    })
+
+    if (settled) return
+    opts.signal?.addEventListener('abort', abort, { once: true })
+    timerState.handle = setTimeout(() => {
+      terminate()
+      console.warn(`[exec] Async process timed out after ${opts.timeout}ms: ${file}`)
+      finish(null)
+    }, opts.timeout)
+    if (settled && timerState.handle) {
+      clearTimeout(timerState.handle)
+      timerState.handle = undefined
+    }
+
+    if (opts.signal?.aborted) abort()
+  })
+}
+
+/** Run PowerShell asynchronously without shell interpolation. */
+export function execPowerShellAsync(
+  script: string,
+  options: AsyncExecOptions = {},
+): Promise<string | null> {
+  let prepared = script
+
+  if (options.collapseLines === 'semicolons') {
+    prepared = prepared
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l)
+      .join('; ')
+  } else if (options.collapseLines === 'spaces') {
+    prepared = prepared.split('\n').map(l => l.trim()).join(' ')
+  }
+
+  return spawnAsyncWithTimeout(
+    'powershell',
+    ['-NoProfile', '-Command', prepared],
+    { ...options, windowsHide: true },
+  )
+}
+
 export function execPowerShell(
   script: string,
   options: ExecOptions = {},

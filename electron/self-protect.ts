@@ -33,7 +33,6 @@ const SetSecurityInfo = advapi32.func(
   'long SetSecurityInfo(void* handle, int ObjectType, uint32_t SecurityInfo, void* psidOwner, void* psidGroup, void* pDacl, void* pSacl)',
 )
 const GetCurrentProcess = kernel32.func('void* GetCurrentProcess()')
-const GetCurrentProcessId = kernel32.func('uint32_t GetCurrentProcessId()')
 
 // Handle stripping
 const SetHandleInformation = kernel32.func(
@@ -73,13 +72,10 @@ const LookupAccountNameW = advapi32.func(
 )
 
 const ACL_REVISION = 2
-const ACCESS_ALLOWED_ACE_TYPE = 0
-const ACCESS_DENIED_ACE_TYPE = 1
 const PROCESS_VM_READ = 0x0010
 const PROCESS_VM_WRITE = 0x0020
 const PROCESS_VM_OPERATION = 0x0008
 const PROCESS_CREATE_THREAD = 0x0002
-const PROCESS_QUERY_INFORMATION = 0x0400
 const PROCESS_SUSPEND_RESUME = 0x0800
 // Deny VM-sensitive operations for Everyone
 const DENY_ACCESS_MASK = PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_CREATE_THREAD | PROCESS_SUSPEND_RESUME
@@ -216,13 +212,13 @@ export function stripHandles(): { success: boolean; detail: string } {
     if (!hProcess) return { success: false, detail: 'GetCurrentProcess failed' }
 
     // Mark our process handle as PROTECT_FROM_CLOSE and non-inheritable
-    const result = SetHandleInformation(
+    const _result = SetHandleInformation(
       hProcess,
       HANDLE_FLAG_PROTECT_FROM_CLOSE | HANDLE_FLAG_INHERIT,
       0, // Clear both flags — not protect-from-close (we need to close on exit) but non-inheritable
     )
     // Actually, we want PROTECT_FROM_CLOSE to prevent handle closure attacks
-    const result2 = SetHandleInformation(
+    const _result2 = SetHandleInformation(
       hProcess,
       HANDLE_FLAG_PROTECT_FROM_CLOSE,
       HANDLE_FLAG_PROTECT_FROM_CLOSE,
@@ -304,11 +300,6 @@ export function stripDebugPrivilege(): { success: boolean; detail: string } {
 // ═══════════════════════════════════════════════════
 // 4. ANTI-DLL-INJECTION MONITORING
 // ═══════════════════════════════════════════════════
-
-interface InjectionCheck {
-  newDlls: string[]
-  suspiciousPaths: string[]
-}
 
 // Snapshot of loaded modules at startup — used for comparison
 let _moduleSnapshot: Set<string> | null = null

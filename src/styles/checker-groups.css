@@ -267,6 +267,7 @@
   transition: all var(--duration-fast);
 }
 
+.cheat-group-item[data-risk="critical"]::before,
 .cheat-group-item[data-risk="high"]::before {
   background: var(--accent-red);
   box-shadow: 0 0 8px rgba(255,68,68,0.3);
@@ -331,6 +332,7 @@
   flex-shrink: 0;
 }
 
+.cheat-group-item-risk[data-risk="critical"],
 .cheat-group-item-risk[data-risk="high"] { color: var(--accent-red); }
 .cheat-group-item-risk[data-risk="medium"] { color: #F59E0B; }
 .cheat-group-item-risk[data-risk="low"] { color: #9CA3AF; }

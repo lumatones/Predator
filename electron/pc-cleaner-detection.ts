@@ -20,7 +20,6 @@
  */
 
 import { execPowerShell, execWithTimeout } from './utils/exec'
-import { spawnSync } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { ScanResult, addFindingDedup, _WR, _HOME } from './types'
@@ -79,7 +78,6 @@ export function detectUsnJournalTampering(): ScanResult[] {
       if (fsutilOut) {
         // Extract Maximum Size and Allocation Delta
         const maxSizeMatch = fsutilOut.match(/Maximum Size\s*:\s*0x([0-9a-fA-F]+)/)
-        const allocDeltaMatch = fsutilOut.match(/Allocation Delta\s*:\s*0x([0-9a-fA-F]+)/)
         const usnIdMatch = fsutilOut.match(/USN ID\s*:\s*0x([0-9a-fA-F]+)/)
         const lowestUsnMatch = fsutilOut.match(/Lowest ValidUsn\s*:\s*0x([0-9a-fA-F]+)/)
 

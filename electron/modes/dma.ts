@@ -1,8 +1,8 @@
-import { execPowerShell, execWithTimeout } from '../utils/exec'
+import { execPowerShellAsync, spawnAsyncWithTimeout } from '../utils/exec'
 import * as path from 'path'
-import * as fs from 'fs'
+import fsp from 'fs/promises'
 import { BrowserWindow } from 'electron'
-import { ScanResult, addFindingDedup, sendProgress, execCmd, parsePsJson, _WR, ctx } from '../types'
+import { ScanResult, addFindingDedup, sendProgress, parsePsJson, _WR, ctx } from '../types'
 import { scanBrowserHistory } from './browser'
 import { getScanPaths } from '../cheats-db'
 import { runAntiTamperScan } from '../anti-tamper'
@@ -26,20 +26,26 @@ const DMA_FPGA_CHIPS = ['xc7a35t', 'xc7a75t', 'xc7a100t', 'xc7a200t', 'artix-7',
 // PCILeech ecosystem files
 const PCILEECH_FILES = ['leechcore.dll', 'vmm.dll', 'ftd3xx.dll', 'pcileech.dll', 'pcileech_core.dll', 'leechsvc.dll', 'memprocfs.exe']
 
-// Thunderbolt-specific DMA attack indicators
-const THUNDERBOLT_VENDORS = ['8086'] // Intel Thunderbolt controllers — check for unauthorized devices behind them
-
 // PCI Class Codes for suspicious generic bridges (possible spoofed FPGA devices)
 const SUSPICIOUS_PCI_CLASSES = ['0604', '0600', '0680'] // PCI Bridge, Host Bridge, Other Bridge
 
 /**
  * Query PnP devices via WMIC or PowerShell
  */
-export function queryPnpDevices(filter: string): string {
-  return execCmd(
-    `wmic path Win32_PnPEntity where "${filter}" get DeviceID,Name,PnPDeviceID /format:csv 2>nul`,
+export async function queryPnpDevices(filter: string, signal?: AbortSignal): Promise<string> {
+  const wmicOutput = await spawnAsyncWithTimeout('wmic', [
+    'path', 'Win32_PnPEntity', 'where', `"${filter}"`,
+    'get', 'DeviceID,Name,PnPDeviceID', '/format:csv',
+  ], { timeout: 8000, signal })
+  if (signal?.aborted) throw new Error('DMA PnP query aborted')
+  if (wmicOutput?.trim()) return wmicOutput.trim()
+
+  const psOutput = await execPowerShellAsync(
     `Get-PnpDevice -PresentOnly | Where-Object { ${filter} } | Format-Table -AutoSize | Out-String -Width 4096`,
-  ).trim()
+    { timeout: 8000, signal },
+  )
+  if (signal?.aborted) throw new Error('DMA PnP query aborted')
+  return (psOutput || '').trim()
 }
 
 /**
@@ -47,7 +53,7 @@ export function queryPnpDevices(filter: string): string {
  * Cheaters change Vendor/Device IDs in FPGA firmware to hide from name-based detection.
  * This catches "generic" PCI bridges with suspicious characteristics.
  */
-function scanPciFingerprints(): ScanResult[] {
+async function scanPciFingerprints(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
   try {
@@ -57,9 +63,11 @@ function scanPciFingerprints(): ScanResult[] {
       'Get-PnpDevice -PresentOnly -Class System | Select-Object InstanceId, FriendlyName, Class, Status | ConvertTo-Json -Compress'
     ].join('')
 
-    const out = execPowerShell(psCmd.replace(/"/g, '\\"'), {
+    const out = await execPowerShellAsync(psCmd, {
       timeout: 8000,
+      signal,
     }) || ''
+    if (signal?.aborted) throw new Error('DMA PCI fingerprint scan aborted')
 
     if (!out || out.length < 5) return results
 
@@ -72,8 +80,6 @@ function scanPciFingerprints(): ScanResult[] {
     for (const dev of devices) {
       const name = (dev.FriendlyName || '').toLowerCase()
       const instanceId = (dev.InstanceId || '').toLowerCase()
-      const deviceClass = (dev.Class || '')
-
       const signals: string[] = []
 
       // Signal 1: Generic PCI bridge names that cheaters spoof FPGA as
@@ -119,7 +125,10 @@ function scanPciFingerprints(): ScanResult[] {
         })
       }
     }
-  } catch { /* PCI fingerprinting optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* PCI fingerprinting optional */
+  }
 
   return results
 }
@@ -127,11 +136,12 @@ function scanPciFingerprints(): ScanResult[] {
 /**
  * Scan for DMA devices (PCI hardware + software files + drivers + fingerprinting)
  */
-export function scanDmaDevices(): ScanResult[] {
+export async function scanDmaDevices(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
   // 1. Hardware: PCI/System devices matching known DMA vendors
-  const output = queryPnpDevices("PNPClass='PCI' OR PNPClass='System'")
+  const output = await queryPnpDevices("PNPClass='PCI' OR PNPClass='System'", signal)
+  if (signal?.aborted) throw new Error('DMA device scan aborted')
   if (output) {
     const lower = output.toLowerCase()
     for (const vendor of KNOWN_DMA_VENDORS) {
@@ -147,14 +157,16 @@ export function scanDmaDevices(): ScanResult[] {
   }
 
   // 1b. PCI fingerprinting (new — catches spoofed devices)
-  results.push(...scanPciFingerprints())
+  results.push(...await scanPciFingerprints(signal))
+  if (signal?.aborted) throw new Error('DMA device scan aborted')
 
   // 1c. FTDI FT601 USB detection (all DMA cards use this USB bridge)
   try {
-    const usbOut = execPowerShell(
+    const usbOut = await execPowerShellAsync(
       'Get-PnpDevice -PresentOnly -Class USB | Where-Object { $_.InstanceId -match \'0403\' } | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress',
-      { timeout: 8000 },
+      { timeout: 8000, signal },
     ) || ''
+    if (signal?.aborted) throw new Error('DMA FTDI query aborted')
     if (usbOut && usbOut.length > 5) {
       for (const ftid of FTDI_USB_IDS) {
         if (usbOut.toLowerCase().includes(ftid.toLowerCase())) {
@@ -175,73 +187,110 @@ export function scanDmaDevices(): ScanResult[] {
         }
       }
     }
-  } catch { /* FTDI USB check optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* FTDI USB check optional */
+  }
 
   // 2. Software: DMA-related files in scan paths
   const dmaKeywords = ['dma', 'fpga', 'pcileech', 'fuser', 'screamer', 'leechcore', 'memprocfs', 'vmm', 'kmem', 'coremap', 'ftd3', 'ftd2', 'ft601', 'leechsvc', 'xc7a']
   for (const dir of getScanPaths()) {
-    if (!fs.existsSync(dir)) continue
+    if (signal?.aborted) throw new Error('DMA device scan aborted')
+
+    let entries: string[]
     try {
-      for (const entry of fs.readdirSync(dir)) {
-        const lower = entry.toLowerCase()
-        const matches: string[] = []
-        for (const kw of dmaKeywords) {
-          if (lower.includes(kw)) matches.push(`dma-keyword:${kw}`)
-        }
-        if (matches.length > 0) {
-          try {
-            const stat = fs.statSync(path.join(dir, entry))
-            results.push({ path: path.join(dir, entry), fileName: entry, type: 'software', risk: 'high', matches, size: stat.size, modifiedAt: stat.mtime.toISOString() })
-          } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
-        }
+      entries = await fsp.readdir(dir)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn('[dma] failed to read scan path:', (err as Error).message)
       }
-    } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
+      continue
+    }
+
+    for (const entry of entries) {
+      if (signal?.aborted) throw new Error('DMA device scan aborted')
+      const lower = entry.toLowerCase()
+      const matches: string[] = []
+      for (const kw of dmaKeywords) {
+        if (lower.includes(kw)) matches.push(`dma-keyword:${kw}`)
+      }
+      if (matches.length === 0) continue
+
+      const fullPath = path.join(dir, entry)
+      try {
+        const stat = await fsp.stat(fullPath)
+        if (signal?.aborted) throw new Error('DMA device scan aborted')
+        results.push({ path: fullPath, fileName: entry, type: 'software', risk: 'high', matches, size: stat.size, modifiedAt: stat.mtime.toISOString() })
+      } catch (err) {
+        if (signal?.aborted) throw err
+        console.warn('[dma] failed:', (err as Error).message)
+      }
+    }
   }
 
   // 3. Drivers: DMA-related files in System32\drivers + PCILeech ecosystem
+  const sysDir = path.join(_WR, 'System32', 'drivers')
+  let driverEntries: string[] = []
   try {
-    const sysDir = path.join(_WR, 'System32', 'drivers')
-    if (fs.existsSync(sysDir)) {
-      for (const driver of fs.readdirSync(sysDir)) {
-        const lower = driver.toLowerCase()
-        const matches: string[] = []
-        if (dmaKeywords.some(k => lower.includes(k))) matches.push(`driver:${driver}`)
-        // Check against known PCILeech ecosystem files
-        if (PCILEECH_FILES.some(f => lower === f.toLowerCase())) matches.push(`pcileech-driver:${driver}`)
-        if (matches.length > 0) {
-          results.push({ path: path.join(sysDir, driver), fileName: `Driver: ${driver}`, type: 'software', risk: 'high', matches, size: 0, modifiedAt: new Date().toISOString() })
-        }
-      }
+    driverEntries = await fsp.readdir(sysDir)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('[dma] failed to read driver directory:', (err as Error).message)
     }
-  } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
+    driverEntries = []
+  }
+
+  for (const driver of driverEntries) {
+    if (signal?.aborted) throw new Error('DMA device scan aborted')
+    const lower = driver.toLowerCase()
+    const matches: string[] = []
+    if (dmaKeywords.some(k => lower.includes(k))) matches.push(`driver:${driver}`)
+    // Check against known PCILeech ecosystem files
+    if (PCILEECH_FILES.some(f => lower === f.toLowerCase())) matches.push(`pcileech-driver:${driver}`)
+    if (matches.length > 0) {
+      results.push({ path: path.join(sysDir, driver), fileName: `Driver: ${driver}`, type: 'software', risk: 'high', matches, size: 0, modifiedAt: new Date().toISOString() })
+    }
+  }
+
+  if (signal?.aborted) throw new Error('DMA device scan aborted')
 
   // 3b. PCILeech ecosystem files in System32
   const system32Dir = path.join(_WR, 'System32')
-  if (fs.existsSync(system32Dir)) {
-    try {
-      for (const file of fs.readdirSync(system32Dir)) {
-        const lower = file.toLowerCase()
-        if (PCILEECH_FILES.some(f => lower === f.toLowerCase())) {
-          results.push({
-            path: path.join(system32Dir, file),
-            fileName: `⚠ PCILeech Component: ${file}`,
-            type: 'software',
-            risk: 'high',
-            matches: [`pcileech-file:${file}`, `⚠ Core DMA memory acquisition library`],
-            size: 0,
-            modifiedAt: new Date().toISOString(),
-          })
-        }
-      }
-    } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
+  let system32Entries: string[] = []
+  try {
+    system32Entries = await fsp.readdir(system32Dir)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('[dma] failed to read System32:', (err as Error).message)
+    }
+    system32Entries = []
   }
+
+  for (const file of system32Entries) {
+    if (signal?.aborted) throw new Error('DMA device scan aborted')
+    const lower = file.toLowerCase()
+    if (PCILEECH_FILES.some(f => lower === f.toLowerCase())) {
+      results.push({
+        path: path.join(system32Dir, file),
+        fileName: `⚠ PCILeech Component: ${file}`,
+        type: 'software',
+        risk: 'high',
+        matches: [`pcileech-file:${file}`, `⚠ Core DMA memory acquisition library`],
+        size: 0,
+        modifiedAt: new Date().toISOString(),
+      })
+    }
+  }
+
+  if (signal?.aborted) throw new Error('DMA device scan aborted')
 
   // 3c. FPGA chip detection in PCI device descriptions
   try {
-    const pciOut = execPowerShell(
+    const pciOut = await execPowerShellAsync(
       'Get-PnpDevice -PresentOnly -Class System | Select-Object InstanceId, FriendlyName | ConvertTo-Json -Compress',
-      { timeout: 8000 },
+      { timeout: 8000, signal },
     ) || ''
+    if (signal?.aborted) throw new Error('DMA FPGA query aborted')
     if (pciOut && pciOut.length > 5) {
       for (const chip of DMA_FPGA_CHIPS) {
         if (pciOut.toLowerCase().includes(chip)) {
@@ -261,7 +310,10 @@ export function scanDmaDevices(): ScanResult[] {
         }
       }
     }
-  } catch { /* FPGA detection optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* FPGA detection optional */
+  }
 
   return results
 }
@@ -269,17 +321,24 @@ export function scanDmaDevices(): ScanResult[] {
 /**
  * Scan registry for DMA-related services
  */
-export function scanDmaRegistry(): ScanResult[] {
+export async function scanDmaRegistry(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
   const svcPath = 'HKLM\\SYSTEM\\CurrentControlSet\\Services'
 
   for (const term of ['dma', 'fpga', 'pcileech', 'fuser', 'leech']) {
     try {
-      const out = execWithTimeout(`reg query "${svcPath}" /s /f "${term}" 2>nul`, { timeout: 5000 }) || ''
+      const out = await spawnAsyncWithTimeout('reg', ['query', svcPath, '/s', '/f', term], {
+        timeout: 5000,
+        signal,
+      }) || ''
+      if (signal?.aborted) throw new Error('DMA registry scan aborted')
       if (out.trim().length > 0) {
         results.push({ path: svcPath, fileName: `Registry: ${term.toUpperCase()}-related services`, type: 'registry', risk: 'high', matches: [`registry:${term} service(s) found`], size: 0, modifiedAt: new Date().toISOString() })
       }
-    } catch (err) { console.warn('[dma] failed:', (err as Error).message) }
+    } catch (err) {
+      if (signal?.aborted) throw err
+      console.warn('[dma] failed:', (err as Error).message)
+    }
   }
 
   return results
@@ -288,7 +347,7 @@ export function scanDmaRegistry(): ScanResult[] {
 /**
  * Check IOMMU/VT-d status — if disabled, DMA protection is off
  */
-export function checkIommuStatus(): ScanResult[] {
+export async function checkIommuStatus(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
   const psCmd = `
@@ -307,9 +366,11 @@ $info | ConvertTo-Json -Compress
 `
 
   try {
-    const out = execPowerShell(psCmd.replace(/"/g, '\\"'), {
+    const out = await execPowerShellAsync(psCmd, {
       timeout: 8000,
+      signal,
     }) || ''
+    if (signal?.aborted) throw new Error('IOMMU scan aborted')
 
     if (out && out.length > 2) {
       try {
@@ -347,7 +408,10 @@ $info | ConvertTo-Json -Compress
         }
       } catch { /* parse error */ }
     }
-  } catch { /* IOMMU check optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* IOMMU check optional */
+  }
 
   return results
 }
@@ -365,12 +429,12 @@ export async function runDmaScan(win: BrowserWindow | null): Promise<{ results: 
   if (aborted()) return { results, filesScanned: 0 }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking PCI devices...', filesFound: 0, filesScanned: 0, totalDirs: 5, dirsDone: 1 })
-  results.push(...scanDmaDevices())
+  results.push(...await scanDmaDevices(signal))
 
   if (aborted()) return { results, filesScanned: results.length }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking USB devices...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 2 })
-  const usbOut = queryPnpDevices("PNPClass='USB'")
+  const usbOut = await queryPnpDevices("PNPClass='USB'", signal)
   if (usbOut && (usbOut.toLowerCase().includes('ftdi') || usbOut.toLowerCase().includes('ftd3'))) {
     results.push({ path: 'USB Devices', fileName: 'USB Device: Possible DMA interface', type: 'hardware', risk: 'medium', matches: ['usb:FTDI device (common DMA interface)'], size: 0, modifiedAt: new Date().toISOString() })
   }
@@ -378,7 +442,7 @@ export async function runDmaScan(win: BrowserWindow | null): Promise<{ results: 
   if (aborted()) return { results, filesScanned: results.length }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking registry...', filesFound: results.length, filesScanned: results.length, totalDirs: 5, dirsDone: 3 })
-  results.push(...scanDmaRegistry())
+  results.push(...await scanDmaRegistry(signal))
 
   if (aborted()) return { results, filesScanned: results.length }
 
@@ -393,7 +457,7 @@ export async function runDmaScan(win: BrowserWindow | null): Promise<{ results: 
 /**
  * Scan scheduled tasks for suspicious entries
  */
-export function scanScheduledTasks(): ScanResult[] {
+export async function scanScheduledTasks(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
   try {
@@ -404,15 +468,18 @@ export function scanScheduledTasks(): ScanResult[] {
       '} | Select-Object TaskName, TaskPath, Author, State, @{N=\'Actions\';E={($_.Actions | ForEach-Object { $_.Execute }) -join \'; \'}} | ConvertTo-Json -Compress'
     ].join('\n').trim()
 
-    const out = execPowerShell(ps, {
+    const out = await execPowerShellAsync(ps, {
       timeout: 10000,
+      signal,
     }) || ''
+    if (signal?.aborted) throw new Error('Scheduled task scan aborted')
 
     if (!out || out.length < 5) return results
 
     const tasks = parsePsJson<{ TaskName?: string; Author?: string; Actions?: string; State?: string }>(out)
 
     for (const task of tasks) {
+      if (signal?.aborted) throw new Error('Scheduled task scan aborted')
       const name = (task.TaskName || '').trim()
       const author = (task.Author || '').trim()
       const actions = (task.Actions || '').toLowerCase()
@@ -462,7 +529,10 @@ export function scanScheduledTasks(): ScanResult[] {
         })
       }
     }
-  } catch { /* schtasks optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* schtasks optional */
+  }
 
   return results
 }

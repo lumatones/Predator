@@ -1,13 +1,24 @@
 import type { BrowserWindow } from 'electron'
 import type { PeAnalysisResult, SectionEntropy } from './cheat-rules'
 import { execWithTimeout } from './utils/exec'
-import os from 'os'
-
 // ═══════════════════════════════════════════════════
 // SCANNER — Shared Types & Utilities
 // ═══════════════════════════════════════════════════
 
 export type ScanMode = 'full' | 'quick' | 'dma' | 'cleaner'
+
+/** Structured, auditable evidence attached to a finding after scoring. */
+export interface EvidenceRecord {
+  id: string
+  source: string
+  category: string
+  weight: number
+  confidence: number
+  explanation: string
+  raw: string
+  timestamp: string
+  relatedFindingIds?: string[]
+}
 
 export interface ScanResult {
   path: string
@@ -25,6 +36,14 @@ export interface ScanResult {
   hasValidSignature?: boolean
   /** Rule name for shadow-mode findings (telemetry grouping) */
   ruleName?: string
+  /** Structured evidence; optional for backwards compatibility with older detectors/reports. */
+  evidence?: EvidenceRecord[]
+  /** Stable identifier used when linking evidence across findings. */
+  findingId?: string
+  /** Explainable per-finding weighted score, when scoring has completed. */
+  riskScore?: number
+  /** Human-readable summary of why this finding received its score. */
+  riskExplanation?: string
 }
 
 export interface ScanProgress {
@@ -81,6 +100,8 @@ export class ScanContext {
   fileMtimeCache = new Map<string, number>()
   /** AbortController for scan cancellation */
   abortController: AbortController | null = null
+  /** True until the owning scan reaches its finally block. */
+  scanActive = false
   /** Persistent profile escalation bonus (0 = not escalated) */
   escalationBonus: number = 0
 
@@ -99,19 +120,44 @@ export class ScanContext {
     this.peHeaderCache.clear()
     this.cheatNameCache.clear()
     this.shadowFindings = []
+    this.abortController = null
+    this.scanActive = false
   }
 
   /** Reset scan-specific state but PRESERVE expensive caches (signatures, PE headers).
    *  Digital signatures don't change between scans — no need to re-check via PowerShell.
    *  sigCache → 2s per file saved on subsequent scans. */
-  resetScan() {
+  resetScan(): AbortController {
     this.findingDedup.clear()
     this.cheatNameCache.clear()
     this.shadowFindings = []
     // Create new AbortController for this scan
     this.abortController?.abort() // Cancel any previous scan
-    this.abortController = new AbortController()
+    const controller = new AbortController()
+    this.abortController = controller
+    this.scanActive = true
     // NOTE: sigCache and peHeaderCache intentionally NOT cleared
+    return controller
+  }
+
+  /** Start a background scan only when no other scan currently owns the context. */
+  tryStartScan(): AbortController | null {
+    if (this.scanActive) return null
+    this.findingDedup.clear()
+    this.cheatNameCache.clear()
+    this.shadowFindings = []
+    const controller = new AbortController()
+    this.abortController = controller
+    this.scanActive = true
+    return controller
+  }
+
+  /** Mark a scan as finished only if it still owns the active controller. */
+  finishScan(controller: AbortController) {
+    if (this.abortController === controller) {
+      this.abortController = null
+      this.scanActive = false
+    }
   }
 }
 
@@ -181,13 +227,14 @@ export function execCmd(cmd: string, psCmd: string, opts: { timeout?: number; wi
   }
 }
 
-// ── System paths ──
-
-export const _PF = process.env.ProgramFiles || 'C:\\Program Files'
-export const _PF86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'
-export const _PD = process.env.ProgramData || 'C:\\ProgramData'
-export const _WR = process.env.SystemRoot || 'C:\\Windows'
-export const _HOME = os.homedir()
+// ── System paths (single source of truth: config.ts CFG) ──
+import { CFG } from './config'
+export { CFG } from './config'
+/** @deprecated Use CFG.PF instead */ export const _PF = CFG.PF
+/** @deprecated Use CFG.PF86 instead */ export const _PF86 = CFG.PF86
+/** @deprecated Use CFG.PD instead */ export const _PD = CFG.PD
+/** @deprecated Use CFG.WR instead */ export const _WR = CFG.WR
+/** @deprecated Use CFG.HOME instead */ export const _HOME = CFG.HOME
 
 // ── PowerShell JSON utility ──
 

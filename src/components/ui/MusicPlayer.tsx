@@ -44,6 +44,7 @@ const UI: Record<string, Record<string, string>> = {
     repeat: 'Повтор',
     source: 'Источник',
     close: 'Закрыть',
+    remove: 'Удалить',
     searchHint: 'Поиск идёт через iTunes Preview, Jamendo и YouTube/Invidious. Если внешние сервисы недоступны, появятся демо-треки.',
   },
   en: {
@@ -64,6 +65,7 @@ const UI: Record<string, Record<string, string>> = {
     repeat: 'Repeat',
     source: 'Source',
     close: 'Close',
+    remove: 'Remove',
     searchHint: 'Search uses iTunes Preview, Jamendo and YouTube/Invidious. Demo tracks are shown if external services are unavailable.',
   },
 }
@@ -91,6 +93,9 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const dragRef = useRef({ startX: 0, startY: 0, startPosX: 0, startPosY: 0, isDragging: false })
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Keep the fixed panel stable on narrow screens; mobile uses edge-to-edge sizing.
+    if (window.innerWidth <= 600) return
+
     // Only start drag on the header area
     const target = e.target as HTMLElement
     if (target.closest('.music-close-btn') || target.closest('button')) return
@@ -112,11 +117,25 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       const d = dragRef.current
       if (!d.isDragging) return
+
+      const panel = panelRef.current
+      const rect = panel?.getBoundingClientRect()
       const dx = e.clientX - d.startX
       const dy = e.clientY - d.startY
+
+      if (!rect) {
+        setDragPos({ x: d.startPosX + dx, y: d.startPosY + dy })
+        return
+      }
+
+      const minX = 8 - rect.left + d.startPosX
+      const maxX = Math.max(minX, window.innerWidth - rect.width - 8 - rect.left + d.startPosX)
+      const minY = 8 - rect.top + d.startPosY
+      const maxY = Math.max(minY, window.innerHeight - rect.height - 8 - rect.top + d.startPosY)
+
       setDragPos({
-        x: d.startPosX + dx,
-        y: Math.max(-window.innerHeight * 0.1, d.startPosY + dy),
+        x: Math.min(maxX, Math.max(minX, d.startPosX + dx)),
+        y: Math.min(maxY, Math.max(minY, d.startPosY + dy)),
       })
     }
     const handleMouseUp = () => {
@@ -152,7 +171,6 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
       handleSearch('predator')
     }
     // handleSearch is stable (useCallback with []), safe to omit from deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, searchResults, searching])
 
   const formatTime = (s: number) => {
@@ -399,37 +417,44 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                       {t.clearQueue}
                     </button>
                   </div>
-                  <div className="music-track-list">
+                  <div className="music-track-list" role="list" aria-label={t.queue}>
                     {queue.map((track, i) => (
-                      <motion.button
+                      <motion.div
                         key={`${track.id}-${i}`}
                         className={`music-track-row${i === currentIndex ? ' active' : ''}`}
-                        onClick={() => playTrack(track, false)}
+                        role="listitem"
                         whileHover={{ background: i === currentIndex
                           ? `rgba(${parseInt(accent.slice(1,3), 16)}, ${parseInt(accent.slice(3,5), 16)}, ${parseInt(accent.slice(5,7), 16)}, 0.2)`
                           : 'rgba(255,255,255,0.03)'
                         }}
                         whileTap={{ scale: 0.98 }}
                       >
-                        <span className="music-queue-index">
-                          {i === currentIndex && status === 'playing'
-                            ? <span className="music-eq"><span /><span /><span /></span>
-                            : i + 1}
-                        </span>
-                        <div className="music-track-info">
-                          <span className="music-track-title">{track.title}</span>
-                          <span className="music-track-artist">{track.artist}</span>
-                        </div>
-                        <span className="music-track-duration">{formatTime(track.duration)}</span>
+                        <button
+                          className="music-track-play"
+                          onClick={() => playTrack(track, false)}
+                          aria-label={`${t.play}: ${track.title}`}
+                        >
+                          <span className="music-queue-index">
+                            {i === currentIndex && status === 'playing'
+                              ? <span className="music-eq"><span /><span /><span /></span>
+                              : i + 1}
+                          </span>
+                          <span className="music-track-info">
+                            <span className="music-track-title">{track.title}</span>
+                            <span className="music-track-artist">{track.artist}</span>
+                          </span>
+                          <span className="music-track-duration">{formatTime(track.duration)}</span>
+                        </button>
                         <button
                           className="music-remove-btn"
-                          onClick={e => { e.stopPropagation(); handleRemoveFromQueue(i) }}
+                          onClick={() => handleRemoveFromQueue(i)}
+                          aria-label={`${t.remove}: ${track.title}`}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                           </svg>
                         </button>
-                      </motion.button>
+                      </motion.div>
                     ))}
                   </div>
                 </div>

@@ -48,6 +48,18 @@ export const requestAccessSchema = z.object({
   pc_username: z.string().min(1, 'PC username is required').max(100).trim(),
 })
 
+const evidenceRecordSchema = z.object({
+  id: z.string().max(255),
+  source: z.string().max(100),
+  category: z.string().max(100),
+  weight: z.number().min(0).max(1),
+  confidence: z.number().min(0).max(100),
+  explanation: z.string().max(1000),
+  raw: z.string().max(2000),
+  timestamp: z.string().max(64),
+  relatedFindingIds: z.array(z.string().max(255)).max(20).optional(),
+})
+
 export const submitScanSchema = z.object({
   token_id: z.number().int().positive('token_id must be a positive integer'),
   pc_username: z.string().max(100).optional(),
@@ -68,8 +80,17 @@ export const submitScanSchema = z.object({
     size: z.number().optional(),
     modifiedAt: z.string().optional(),
     findingKind: z.string().optional(),
+    evidence: z.array(evidenceRecordSchema).max(50).optional(),
+    findingId: z.string().max(255).optional(),
+    riskScore: z.number().min(0).max(100).optional(),
+    riskExplanation: z.string().max(1000).optional(),
     tlsh: z.string().max(256).optional(),
-  })).max(200).optional(),
+  })).max(200).superRefine((results, ctx) => {
+    const evidenceCount = results.reduce((total, result) => total + (result.evidence?.length ?? 0), 0)
+    if (evidenceCount > 1000) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Evidence payload is too large' })
+    }
+  }).optional(),
 })
 
 export const submitHashesSchema = z.object({
@@ -156,6 +177,11 @@ export const hashConfirmFromScanSchema = z.object({
   sha256: z.string().length(64).regex(/^[a-f0-9]{64}$/, 'Must be SHA256'),
   file_name: z.string().max(255).optional(),
   file_size: z.number().int().min(0).optional(),
+})
+
+export const clientHashRegisterSchema = z.object({
+  version: z.string().min(1).max(20).regex(/^\d+\.\d+\.\d+$/, 'Version must be semver (e.g. 0.4.5)'),
+  sha256: z.string().length(64).regex(/^[a-f0-9]{64}$/, 'Must be SHA256'),
 })
 
 export const paginationQuerySchema = z.object({

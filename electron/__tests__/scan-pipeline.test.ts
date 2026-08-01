@@ -57,6 +57,13 @@ vi.mock('../config', () => ({
     protocol: 'http:',
     path: '/api',
   })),
+  CFG: {
+    PF: 'C:\\Program Files',
+    PF86: 'C:\\Program Files (x86)',
+    WR: 'C:\\Windows',
+    HOME: 'C:\\Users\\test',
+    PD: 'C:\\ProgramData',
+  },
 }))
 
 vi.mock('../types', async () => {
@@ -64,7 +71,7 @@ vi.mock('../types', async () => {
   return {
     ...actual,
     ctx: {
-      shadowFindings: [] as any[],
+      shadowFindings: [],
       sigCache: new Map(),
       cheatNameCache: new Map(),
       peHeaderCache: new Map(),

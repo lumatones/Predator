@@ -252,6 +252,21 @@ function uploadAsset(uploadUrl, filePath, fileName) {
 
   console.log(`\n  ${c.green}${c.bold}✅ Релиз ${TAG} готов!${c.reset}`)
   console.log(`  ${release.data.html_url}\n`)
+
+  // Optional: register the exe SHA256 on the server so desktop clients can
+  // build a server-verified integrity baseline instead of trust-on-first-use.
+  // Enabled when ADMIN_TOKEN or ADMIN_USER/ADMIN_PASS (+ SERVER_URL) are set.
+  const canRegister = process.env.ADMIN_TOKEN || (process.env.ADMIN_USER && process.env.ADMIN_PASS)
+  if (canRegister) {
+    console.log(`${c.cyan}[6/6]${c.reset} Register client hash on server...`)
+    try {
+      execSync('node scripts/register-client-hash.js', { cwd: ROOT, stdio: 'inherit', env: { ...process.env, SERVER_URL: process.env.SERVER_URL || 'http://localhost:3001' } })
+    } catch {
+      fail('client-hash registration failed (release continues — hash can be registered later)')
+    }
+  } else {
+    log('ℹ️  Skipping client-hash registration — set ADMIN_TOKEN or ADMIN_USER/ADMIN_PASS to enable')
+  }
 })().catch(err => {
   console.error(`\n  ${c.red}❌ ${err.message}${c.reset}\n`)
   process.exit(1)

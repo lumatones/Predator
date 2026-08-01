@@ -11,6 +11,7 @@ import { testConnection, query } from './config/database'
 import authRoutes from './routes/auth'
 import adminRoutes from './routes/admin'
 import v1Routes from './routes/v1'
+import websiteRoutes from './routes/website'
 import { metricsMiddleware, metricsRouter, startMetricsUpdater, stopMetricsUpdater, trackScan, trackHashSubmission, trackHashConfirmed, trackTokenUsed } from './middleware/metrics'
 import { wsAuthMiddleware, requireAdmin, getAdmin } from './middleware/ws-auth'
 import { requestIdMiddleware } from './middleware/request-id'
@@ -28,9 +29,15 @@ const ALLOWED_ORIGINS = (process.env.CLIENT_URL || '')
   .map(s => s.trim())
   .filter(Boolean)
 
+const LOCAL_DEV_ORIGINS = process.env.ALLOW_LOCAL_DEV_ORIGINS === 'true'
+  ? ['http://localhost:5173', 'http://127.0.0.1:5173']
+  : []
+
+const CORS_ORIGINS = [...new Set([...ALLOWED_ORIGINS, ...LOCAL_DEV_ORIGINS])]
+
 const corsOptions: cors.CorsOptions = {
-  origin: ALLOWED_ORIGINS.length > 0
-    ? ALLOWED_ORIGINS
+  origin: CORS_ORIGINS.length > 0
+    ? CORS_ORIGINS
     : '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -59,7 +66,7 @@ const authWriteLimiter = rateLimit({
 const server = http.createServer(app)
 const io = new Server(server, {
   cors: {
-    origin: ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS : '*',
+    origin: CORS_ORIGINS.length > 0 ? CORS_ORIGINS : '*',
     methods: ['GET', 'POST'],
   },
   pingInterval: 25000,
@@ -110,6 +117,7 @@ app.use('/api/auth/token/use', (_req, _res, next) => { trackTokenUsed(); next() 
 // ── Routes ────────────────────────────────────
 app.use('/api/auth', authRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/website', websiteRoutes)
 // API v1 — versioned routes (same handlers, maintained separately)
 app.use('/api/v1', v1Routes)
 // Metrics endpoint (Prometheus)

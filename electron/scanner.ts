@@ -10,11 +10,10 @@
  *   scanner/cleaner-scan.ts   — runCleanerScan (4 phases)
  */
 
-import { ipcMain, BrowserWindow } from 'electron'
+import { app, ipcMain, BrowserWindow } from 'electron'
 
-import { startCloudSync, stopCloudSync, fetchCheatHashes } from './cloud-sync'
 import { runPostScanPipeline } from './scan-pipeline'
-import { startTelemetryQueue, stopTelemetryQueue } from './telemetry-queue'
+import { startTelemetryQueue } from './telemetry-queue'
 import { filterNoiseFindings } from './result-grouper'
 import { rescoreResults } from './risk-scorer'
 import { handleCancelScan } from './ipc-handlers-scan'
@@ -83,7 +82,7 @@ export function registerScanHandlers() {
       console.log(`  📈 Profile ESCALATED: ${profile.consistencyPercent}% consistency over last scans — adding +${escalationBonus} to all findings`)
     }
     ctx.escalationBonus = escalationBonus
-    ctx.resetScan()
+    const scanController = ctx.resetScan()
 
     try {
       const startTime = Date.now()
@@ -101,27 +100,29 @@ export function registerScanHandlers() {
 
       await sendProgress(win, { phase: 'done', currentDir: '', filesFound: result.results.length, filesScanned: result.filesScanned, totalDirs: 1, dirsDone: 1 })
 
+      // E18: Apply weighted risk re-scoring before filtering.
+      // Critical findings may be promoted by scoring, so filtering raw results
+      // would make the displayed list disagree with the weighted result state.
+      const scoredResults = rescoreResults(result.results)
+      const filteredResults = filterNoiseFindings(scoredResults)
       const summary = {
         totalScanned: result.filesScanned,
-        suspiciousFiles: result.results.length,
-        highRiskCount: result.results.filter(r => r.risk === 'high').length,
+        suspiciousFiles: filteredResults.length,
+        highRiskCount: filteredResults.filter(r => r.risk === 'critical' || r.risk === 'high').length,
         scanTimeMs: Date.now() - startTime,
       }
-
-      // E18: Apply weighted risk re-scoring before filtering + pipeline
-      const scoredResults = rescoreResults(result.results)
-
-      const filteredResults = filterNoiseFindings(scoredResults)
       const filteredCount = scoredResults.length - filteredResults.length
       if (filteredCount > 0) {
         console.log(`  🔇 Filtered ${filteredCount} noise findings (${result.results.length} → ${filteredResults.length} shown to user)`)
       }
 
-      await runPostScanPipeline(scoredResults, summary, { tokenId, pcUsername, mode, startTime })
+      await runPostScanPipeline(scoredResults, summary, { tokenId, pcUsername, mode, startTime, clientVersion: app.getVersion() })
       return { results: filteredResults, summary } satisfies ScanResponse
     } catch (err) {
       console.error(`Scan error (${mode}):`, err)
       return { results: [], summary: { totalScanned: 0, suspiciousFiles: 0, highRiskCount: 0, scanTimeMs: 0 } } satisfies ScanResponse
+    } finally {
+      ctx.finishScan(scanController)
     }
   })
 }

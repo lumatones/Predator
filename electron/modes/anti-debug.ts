@@ -14,7 +14,7 @@
  * or embed anti-debug code in their cheat to hide from security software.
  */
 
-import { execPowerShell, execWithTimeout } from '../utils/exec'
+import { execPowerShell } from '../utils/exec'
 import { type ScanResult, addFindingDedup, parsePsJson } from '../types'
 
 // ═══════════════════════════════════════════════════

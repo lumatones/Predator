@@ -11,7 +11,6 @@ import os from 'os'
 import crypto from 'crypto'
 import {
   fuzzyMatch,
-  fuzzyMatchFile,
   fuzzyMatchWithSize,
   tlshDistance,
   clusterByTlsh,

@@ -230,7 +230,7 @@ describe('calculateRisk', () => {
     }]
     const score = calculateRisk(results)
     expect(score.categories).toBeDefined()
-    for (const [cat, data] of Object.entries(score.categories)) {
+    for (const [, data] of Object.entries(score.categories)) {
       expect(typeof data.score).toBe('number')
       expect(typeof data.count).toBe('number')
       expect(data.count).toBeGreaterThan(0)
@@ -310,6 +310,45 @@ describe('rescoreResults', () => {
     // yara_match=0.7 ≥ 0.6 → escalation
     expect(rescored[0].risk).toBe('medium')
     expect(rescored[0].matches.some(m => m.includes('Escalated'))).toBe(true)
+  })
+
+  it('preserves critical risk and evidence across repeated rescoring', () => {
+    const r: ScanResult = {
+      path: 'C:\\critical.exe', fileName: 'critical.exe', type: 'file',
+      risk: 'critical',
+      matches: ['byte pattern in memory'],
+      size: 4096, modifiedAt: new Date().toISOString(),
+    }
+
+    const once = rescoreResults([r])
+    const twice = rescoreResults(once)
+
+    expect(once[0].risk).toBe('critical')
+    expect(twice[0].risk).toBe('critical')
+    expect(twice[0].findingId).toBe(once[0].findingId)
+    expect(twice[0].evidence?.map(item => item.id)).toEqual(once[0].evidence?.map(item => item.id))
+  })
+
+  it('assigns stable unique IDs to duplicate findings', () => {
+    const duplicate: ScanResult = {
+      path: 'C:\\duplicate.exe', fileName: 'duplicate.exe', type: 'file',
+      risk: 'high',
+      matches: ['YARA rule matched'],
+      size: 4096, modifiedAt: new Date().toISOString(),
+    }
+
+    const once = rescoreResults([duplicate, { ...duplicate }])
+    const twice = rescoreResults(once)
+
+    const firstId = once[0].findingId
+    const secondId = once[1].findingId
+    expect(firstId).toContain('duplicate.exe:duplicate.exe')
+    expect(secondId).toBe(`${firstId}#duplicate:2`)
+    expect(new Set(once.map(result => result.findingId)).size).toBe(2)
+    expect(twice.map(result => result.findingId)).toEqual(once.map(result => result.findingId))
+    expect(twice.flatMap(result => result.evidence ?? []).map(item => item.id)).toEqual(
+      once.flatMap(result => result.evidence ?? []).map(item => item.id),
+    )
   })
 })
 

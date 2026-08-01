@@ -8,7 +8,7 @@
  * Normal USB devices max out at 20-50 MB/s for flash drives, 5-40 MB/s for phones.
  */
 
-import { execPowerShell, execWithTimeout } from '../../utils/exec'
+import { execPowerShell } from '../../utils/exec'
 import type { UsbDeviceInfo } from './descriptors'
 import { DMA_VENDORS } from './descriptors'
 import { PHONE_VENDORS, FLASH_DRIVE_VENDORS, USB_HUB_VENDORS } from './classification'

@@ -79,7 +79,7 @@ export const ThreatMap: React.FC<ThreatMapProps> = ({ results }) => {
       const region = extractRegion(r.path)
       const existing = map.get(region)
       if (existing) {
-        if (r.risk === 'high') existing.highCount++
+        if (r.risk === 'critical' || r.risk === 'high') existing.highCount++
         else if (r.risk === 'medium') existing.mediumCount++
         else existing.lowCount++
         existing.totalCount++
@@ -87,7 +87,7 @@ export const ThreatMap: React.FC<ThreatMapProps> = ({ results }) => {
         map.set(region, {
           name: region,
           path: region,
-          highCount: r.risk === 'high' ? 1 : 0,
+          highCount: r.risk === 'critical' || r.risk === 'high' ? 1 : 0,
           mediumCount: r.risk === 'medium' ? 1 : 0,
           lowCount: r.risk === 'low' ? 1 : 0,
           totalCount: 1,

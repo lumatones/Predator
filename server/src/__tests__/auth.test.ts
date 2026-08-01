@@ -11,6 +11,7 @@ import {
   mockQuery,
   mockToken,
   mockInsertResult,
+  mockUpdateResult,
   VALID_TOKEN,
   VALID_TOKEN_CLEAN,
 } from './test-helper'
@@ -117,8 +118,8 @@ describe('POST /api/auth/token/use', () => {
 
   it('activates token with pc_username and returns 200', async () => {
     mockQuery.mockResolvedValueOnce(mockToken({ id: 7 }))
-    // Second call: UPDATE tokens SET used_by
-    mockQuery.mockResolvedValueOnce([])
+    // Second call: conditional UPDATE tokens SET used_by
+    mockQuery.mockResolvedValueOnce(mockUpdateResult())
 
     const res = await request(app)
       .post('/api/auth/token/use')
@@ -128,11 +129,27 @@ describe('POST /api/auth/token/use', () => {
     expect(res.body.valid).toBe(true)
     expect(res.body.token_id).toBe(7)
     expect(res.body.message).toBe('Token activated')
+    expect(mockQuery).toHaveBeenLastCalledWith(
+      expect.stringContaining('is_active = TRUE AND used_by IS NULL'),
+      ['Player42', 7],
+    )
+  })
+
+  it('rejects a token lost to a concurrent activation', async () => {
+    mockQuery.mockResolvedValueOnce(mockToken({ id: 8 }))
+    mockQuery.mockResolvedValueOnce({ affectedRows: 0 })
+
+    const res = await request(app)
+      .post('/api/auth/token/use')
+      .send({ token: VALID_TOKEN, pc_username: 'Player42' })
+
+    expect(res.status).toBe(403)
+    expect(res.body.error).toBe('Token already used')
   })
 
   it('activates token without pc_username (defaults to "unknown")', async () => {
     mockQuery.mockResolvedValueOnce(mockToken({ id: 3 }))
-    mockQuery.mockResolvedValueOnce([])
+    mockQuery.mockResolvedValueOnce(mockUpdateResult())
 
     const res = await request(app)
       .post('/api/auth/token/use')

@@ -11,7 +11,7 @@
  *   3. Search for "AmsiScanBuffer", "EtwEventWrite" strings near RET instructions
  */
 
-import { execPowerShell, execWithTimeout } from '../utils/exec'
+import { execPowerShell } from '../utils/exec'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -84,7 +84,6 @@ export function scanProcessForAmsiEtw(pid: number, processName: string, existing
     result.riskScore += 20
   }
 
-  const shouldDelete = !existingDumpPath
   const dumpPath = existingDumpPath || path.join(os.tmpdir(), `predator_etw_${pid}_${Date.now()}.dmp`)
   if (!existingDumpPath) {
     const dumpResult = dumpProcessMemory(pid, processName)

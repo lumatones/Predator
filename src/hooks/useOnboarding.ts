@@ -29,23 +29,36 @@ export function useOnboarding(deps: UseOnboardingDeps) {
   } = deps
 
   const [phase, setPhase] = useState<AppPhase>('loading')
+  const smokeTarget = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('smoke') : null
+  const smokePhase: AppPhase | null = smokeTarget === 'checker'
+    ? 'checker'
+    : smokeTarget === 'main'
+      ? 'main'
+      : smokeTarget === 'dashboard'
+        ? 'dashboard'
+        : null
 
   // ── Enter onboarding on mount ──
   // Browser fallback (no Electron API)
   useEffect(() => {
+    if (smokePhase) {
+      setPhase(smokePhase)
+      return
+    }
     const api = window.electronAPI
     if (api) return
     const t = setTimeout(() => setPhase('onboarding-welcome'), 1200)
     return () => clearTimeout(t)
-  }, [])
+  }, [smokePhase])
 
   // Electron: brief loading screen then welcome
   useEffect(() => {
+    if (smokePhase) return
     const api = window.electronAPI
     if (!api) return
     const enterTimer = setTimeout(() => setPhase('onboarding-welcome'), 1500)
     return () => clearTimeout(enterTimer)
-  }, [])
+  }, [smokePhase])
 
   // ── Phase transitions (150ms delay for smooth Framer Motion exit→enter) ──
   const goToPhase = useCallback(

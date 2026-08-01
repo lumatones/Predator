@@ -12,6 +12,7 @@ import {
   adminLoginSchema,
   tokensGenerateSchema,
   hashConfirmFromScanSchema,
+  clientHashRegisterSchema,
   shadowPromoteSchema,
   validate,
 } from '../shared-types'
@@ -399,6 +400,28 @@ router.get('/history', async (req: Request, res: Response) => {
     })
   } catch (err: any) {
     console.error('History error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/admin/client-hash ────────────────
+// Register the expected SHA256 of Predator.exe for a given release version.
+// The desktop client fetches this via GET /api/v1/client-hash on first run to
+// establish a server-verified integrity baseline (closes the TOFU fallback).
+// Only superadmin can write — a compromised write path would poison baselines.
+router.post('/client-hash', requireRole('superadmin'), validate(clientHashRegisterSchema), async (req: Request, res: Response) => {
+  try {
+    const { version, sha256 } = req.body
+    const normalized = version.replace(/^v/, '')
+    await query(
+      `INSERT INTO client_hashes (version, sha256) VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE sha256 = VALUES(sha256)`,
+      [normalized, sha256.toLowerCase()]
+    )
+    logAdminAction(req, 'client_hash_register', { version: normalized })
+    return res.json({ success: true, version: normalized })
+  } catch (err: any) {
+    console.error('Client hash register error:', err)
     return res.status(500).json({ error: 'Internal server error' })
   }
 })

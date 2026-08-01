@@ -9,7 +9,6 @@ interface TabCacheEntry {
 }
 const tabCache = new Map<ScanMode, TabCacheEntry>()
 import { exportHtml, exportJson, exportMarkdown, exportPdf, sendToTelegram } from '../utils/export-report'
-import { submitScan } from '../api'
 import { groupResults } from '../utils/result-grouper'
 import { Magnetic } from '../components/ui/Magnetic'
 import { Button } from '../components/ui/Button'
@@ -98,7 +97,7 @@ const T: Record<string, Record<string, string>> = {
     devicesHistory: '⏳ История DMA',
     devicesPhone: 'Телефон', devicesFlash: 'Флешка', devicesDma: 'DMA',
     devicesUnknown: 'Неизвестно',
-    groupHigh: 'Высокий риск', groupMedium: 'Средний риск', groupLow: 'Низкий риск',
+    groupCritical: 'Критический риск', groupHigh: 'Высокий риск', groupMedium: 'Средний риск', groupLow: 'Низкий риск',
     showAll: 'Показать все', collapse: 'Свернуть',
     groupHidden: 'ещё скрыто',
     searchPlaceholder: 'Поиск по имени, пути или совпадениям...',
@@ -152,7 +151,7 @@ const T: Record<string, Record<string, string>> = {
     devicesHistory: '⏳ DMA History',
     devicesPhone: 'Phone', devicesFlash: 'Flash Drive', devicesDma: 'DMA',
     devicesUnknown: 'Unknown',
-    groupHigh: 'High risk', groupMedium: 'Medium risk', groupLow: 'Low risk',
+    groupCritical: 'Critical risk', groupHigh: 'High risk', groupMedium: 'Medium risk', groupLow: 'Low risk',
     showAll: 'Show all', collapse: 'Collapse',
     groupHidden: 'more hidden',
     searchPlaceholder: 'Search by name, path or matches...',
@@ -185,7 +184,7 @@ const TABS: TabConfig[] = [
 // ── Realistic mock data per mode ──
 
 function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: ScanResponse['summary'] } {
-  const now = new Date().toISOString()
+  const now = '2026-08-01T10:00:00.000Z'
 
   const mockSets: Record<ScanMode, { results: ScanResult[]; scanned: number }> = {
     full: {
@@ -237,7 +236,7 @@ function generateMockData(mode: ScanMode): { results: ScanResult[]; summary: Sca
       totalScanned: data.scanned,
       suspiciousFiles: data.results.length,
       highRiskCount: data.results.filter(r => r.risk === 'high').length,
-      scanTimeMs: 1500 + Math.random() * 2000,
+      scanTimeMs: 1800 + data.results.length * 100,
     },
   }
 }
@@ -279,7 +278,8 @@ function formatTime(ms: number, secLabel: string): string {
   return `${(ms / 1000).toFixed(1)} ${secLabel}`
 }
 
-function riskLabel(risk: string, lang: 'ru' | 'en'): string {
+function riskLabel(risk: ScanResult['risk'], lang: 'ru' | 'en'): string {
+  if (risk === 'critical') return lang === 'ru' ? 'Критический' : 'Critical'
   const t = (k: string) => T[lang][k] || k
   return risk === 'high' ? t('high') : risk === 'medium' ? t('medium') : t('low')
 }
@@ -334,9 +334,10 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
   const [results, setResults] = useState<ScanResult[]>(cachedEntry?.results ?? [])
   const [summary, setSummary] = useState<ScanResponse['summary'] | null>(cachedEntry?.summary ?? null)
   const [selectedResult, setSelectedResult] = useState<ScanResult | null>(null)
+  const findingTriggerRef = useRef<HTMLElement | null>(null)
   const [error, setError] = useState('')
   const [tabTransition, setTabTransition] = useState<'enter' | 'idle' | 'exit'>('idle')
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['high']))
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['critical', 'high']))
   const [showAllGroups, setShowAllGroups] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [exportMsg, setExportMsg] = useState('')
@@ -387,6 +388,12 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
   const currentTab = TABS.find(t => t.id === activeTab)!
   const activeTabIndex = TABS.findIndex(t => t.id === activeTab)
 
+  const openFinding = useCallback((result: ScanResult, event: React.MouseEvent<HTMLElement>) => {
+    findingTriggerRef.current = event.currentTarget
+    setSelectedResult(result)
+    setDetailModalOpen(true)
+  }, [])
+
   useEffect(() => {
     return () => {
       scanRef.current = false
@@ -432,7 +439,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
       setPhase('done')
       scanRef.current = false
       setTabCounts(prev => { const next = new Map(prev); next.set(activeTab, mock.results.length); return next; })
-      submitToServer(activeTab, mock.summary, mock.results)
       return
     }
 
@@ -450,7 +456,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
         setTabCounts(prev => { const next = new Map(prev); next.set(activeTab, response.results.length); return next; })
         playSound(response.summary.suspiciousFiles > 0 ? 'alarm' : 'complete')
         setPhase('done')
-        submitToServer(activeTab, response.summary, response.results)
       }
     } catch (err) {
       if (scanRef.current) {
@@ -472,7 +477,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     setSelectedResult(null)
     setPhase('idle')
     scanRef.current = false
-    setExpandedGroups(new Set(['high']))
+    setExpandedGroups(new Set(['critical', 'high']))
     setShowAllGroups(new Set())
     setCheatExpandedGroups(new Set())
     setShowOtherItems(false)
@@ -576,58 +581,6 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
     }, 150)
   }, [activeTab, phase, results, summary])
 
-  /**
-   * Determine findingKind from a scan result.
-   * If the Electron scanner already tagged it — use that.
-   * Otherwise infer from type and mode (dev/fallback).
-   */
-  const inferFindingKind = useCallback((r: ScanResult, mode: string): string => {
-    if (r.findingKind) return r.findingKind
-    if (mode === 'dma' || r.type === 'hardware') return 'dma'
-    if (mode === 'cleaner') return 'cleaner'
-    if (mode === 'usb') return 'usb'
-    if (r.type === 'process') return 'process'
-    if (r.type === 'browser') return 'browser'
-    if (r.type === 'registry') return 'registry'
-    if (r.type === 'software' || r.type === 'system') return 'system'
-    return 'file'
-  }, [])
-
-  const submitToServer = useCallback(async (mode: string, summary: ScanResponse['summary'], results: ScanResult[]) => {
-    try {
-      let pcName = 'unknown'
-      try {
-        if (window.electronAPI?.getPCName) {
-          pcName = await window.electronAPI.getPCName()
-        }
-      } catch { /* ignore */ }
-
-      await submitScan({
-        token_id: tokenId ?? undefined,
-        pc_username: pcName,
-        client_version: '0.4.3',
-        mode,
-        total_scanned: summary.totalScanned,
-        suspicious_files: summary.suspiciousFiles,
-        high_risk_count: summary.highRiskCount,
-        scan_time_ms: summary.scanTimeMs,
-        results: results.slice(0, 200).map(r => ({
-          path: r.path,
-          fileName: r.fileName,
-          type: r.type,
-          risk: r.risk,
-          matches: r.matches,
-          sha256: r.sha256,
-          size: r.size,
-          modifiedAt: r.modifiedAt,
-          findingKind: inferFindingKind(r, mode),
-        })),
-      })
-    } catch {
-      // Error already handled by fetchApiWithRetry + offline queue
-    }
-  }, [tokenId])
-
   return (
     <div className="checker-wrapper">
       <div className="checker-header">
@@ -716,6 +669,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
           </div>
           <motion.button
             className="checker-start-btn"
+            data-testid="checker-start-scan"
             onClick={handleStartScan}
             whileHover={prefersReducedMotion ? undefined : { scale: 1.02, y: -1 }}
             whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
@@ -842,7 +796,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                   </div>
                   {groupedResults.deviceSummary.connectedSuspicious.map((r, i) => (
                     <div key={`dma-${i}`} className="device-item danger"
-                      onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}>
+                      onClick={(event) => openFinding(r, event)}>
                       <span className="device-item-icon">⚠️</span>
                       <div className="device-item-info">
                         <span className="device-item-name">{r.fileName}</span>
@@ -864,7 +818,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                   </div>
                   {groupedResults.deviceSummary.dmaHistory.map((r, i) => (
                     <div key={`dmahist-${i}`} className="device-item warning"
-                      onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}>
+                      onClick={(event) => openFinding(r, event)}>
                       <span className="device-item-icon">⏳</span>
                       <div className="device-item-info">
                         <span className="device-item-name">{r.fileName}</span>
@@ -894,7 +848,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                     <div className="devices-safe-list">
                       {groupedResults.deviceSummary.connectedSafe.map((r, i) => (
                         <div key={`safe-${i}`} className="device-item safe"
-                          onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}>
+                          onClick={(event) => openFinding(r, event)}>
                           <span className="device-item-icon">
                             {r.fileName.includes('📱') ? '📱' : r.fileName.includes('💾') ? '💾' : r.fileName.includes('⌨️') ? '⌨️' : r.fileName.includes('📹') ? '📹' : r.fileName.includes('🎵') ? '🎵' : r.fileName.includes('📶') ? '📶' : '🔌'}
                           </span>
@@ -974,7 +928,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                           <div key={`${r.path}-${i}`}
                             className={`cheat-group-item ${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? 'selected' : ''}`}
                             data-risk={r.risk}
-                            onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}
+                            onClick={(event) => openFinding(r, event)}
                           >
                             <span className="cheat-group-item-type">{typeIcon(r.type, 12)}</span>
                             <div className="cheat-group-item-info">
@@ -1009,7 +963,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                     <div key={`other-${i}`}
                       className={`result-row${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? ' selected' : ''}`}
                       data-risk={r.risk}
-                      onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}
+                      onClick={(event) => openFinding(r, event)}
                     >
                       <div className="result-row-main">
                         <div className="result-info">
@@ -1057,7 +1011,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
               <div className="checker-results-list">
                 <motion.div className="checker-groups" variants={containerVariants} initial="hidden" animate="visible">
                   {filteredResults.length > 0 ? (
-                    (['high', 'medium', 'low'] as const).map(riskLevel => {
+                    (['critical', 'high', 'medium', 'low'] as const).map(riskLevel => {
                     const group = filteredResults.filter(r => r.risk === riskLevel)
                     if (group.length === 0) return null
                     const isExpanded = expandedGroups.has(riskLevel)
@@ -1088,6 +1042,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                           <div className="group-header-left">
                             <span className={`group-risk-dot dot-${riskLevel}`} />
                             <span className="group-title">{
+                              riskLevel === 'critical' ? t('groupCritical') :
                               riskLevel === 'high' ? t('groupHigh') :
                               riskLevel === 'medium' ? t('groupMedium') : t('groupLow')
                             }</span>
@@ -1107,9 +1062,10 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
                             {visible.map((r, i) => (
                               <motion.div key={`${r.path}-${i}`}
                                 className={`result-row${selectedResult?.path === r.path && selectedResult?.fileName === r.fileName ? ' selected' : ''}`}
+                                data-testid="checker-result-row"
                                 data-risk={r.risk}
                                 variants={itemVariants}
-                                onClick={() => { setSelectedResult(r); setDetailModalOpen(true) }}
+                                onClick={(event) => openFinding(r, event)}
                               >
                                 <div className="result-row-main">
                                   <div className="result-info">
@@ -1211,7 +1167,7 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
           <div className="checker-actions">
             <Button className="start-button secondary" size="sm" onClick={handleClear}>{t('clear')}</Button>
             <div className="checker-export-group">
-              <Button className="start-button secondary" size="sm" onClick={() => handleExport('html')} title={t('exportHtml')}>
+              <Button data-testid="checker-export-html" className="start-button secondary" size="sm" onClick={() => handleExport('html')} title={t('exportHtml')}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
@@ -1255,7 +1211,11 @@ export default function Checker({ lang, tokenId, onBack, accent, light, dark }: 
           matches={selectedResult.matches}
           size={selectedResult.size}
           sha256={selectedResult.sha256}
+          evidence={selectedResult.evidence}
+          riskScore={selectedResult.riskScore}
+          riskExplanation={selectedResult.riskExplanation}
           lang={lang}
+          returnFocusRef={findingTriggerRef}
         />
       )}
 

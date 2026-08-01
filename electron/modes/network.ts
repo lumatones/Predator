@@ -5,13 +5,13 @@
  * and suspicious IP patterns.
  */
 
-import { execPowerShell, execWithTimeout } from '../utils/exec'
+import { execWithTimeout } from '../utils/exec'
 import fs from 'fs'
 import path from 'path'
 import type { BrowserWindow } from 'electron'
 
 import { sendProgress, clearFindingDedup, addFindingDedup, _WR, type ScanResult } from '../types'
-import { SUSPICIOUS_CATEGORIES, ALL_CHEAT_KEYWORDS, matchKnownCheat } from '../heuristic'
+import { ALL_CHEAT_KEYWORDS } from '../heuristic'
 
 const SUSPICIOUS_DOMAINS = [
   'nightfall', 'unknowncheats', 'mpgh', 'cheater', 'hack', 'cheat',
@@ -159,9 +159,7 @@ export function scanNetstatV2(): ScanResult[] {
       const parts = trimmed.split(/\s+/)
       if (parts.length >= 5) {
         const proto = parts[0]
-        const localAddr = parts[1]
         const foreignAddr = parts[2]
-        const state = parts[3]
         const pid = parseInt(parts[parts.length - 1], 10)
 
         const knownCheatPorts = [1080, 1337, 4444, 5555, 6666, 7777, 8888, 9999, 31337, 12345, 54321, 27015, 27016]

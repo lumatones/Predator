@@ -167,6 +167,15 @@ async function init(): Promise<void> {
 
   // ── Shadow Findings table ──
   await query(`
+    CREATE TABLE IF NOT EXISTS client_hashes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      version VARCHAR(20) UNIQUE NOT NULL,
+      sha256 CHAR(64) NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `)
+
+  await query(`
     CREATE TABLE IF NOT EXISTS shadow_findings (
       id            INT AUTO_INCREMENT PRIMARY KEY,
       token_id      INT,

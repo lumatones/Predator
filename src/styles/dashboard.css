@@ -805,3 +805,39 @@ body {
 
 /* .btn → используй .btn из App.css */
 
+/* ── Responsive dashboard layout ── */
+@media (max-width: 600px) {
+  .dash-wrapper {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .dash-header {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .dash-title {
+    min-width: 0;
+    font-size: var(--text-xl);
+  }
+
+  .dash-header-right {
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+
+  .dash-info-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-card {
+    min-width: 0;
+  }
+
+  .dash-search {
+    min-width: 0;
+  }
+}
+

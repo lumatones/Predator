@@ -130,7 +130,7 @@ function extractCheatName(finding: ScanResult): string | null {
 function calculateConfidence(findings: ScanResult[]): number {
   if (findings.length === 0) return 0
   let score = 0
-  const highCount = findings.filter(f => f.risk === 'high').length
+  const highCount = findings.filter(f => f.risk === 'critical' || f.risk === 'high').length
   const mediumCount = findings.filter(f => f.risk === 'medium').length
   score += Math.min(findings.length * 15, 45)
   score += highCount * 20
@@ -160,7 +160,7 @@ export function groupResults(results: ScanResult[]): GroupedResults {
       existing.push(finding)
       cheatGroupMap.set(cheatName, existing)
     } else {
-      if (finding.risk === 'high') otherHigh.push(finding)
+      if (finding.risk === 'critical' || finding.risk === 'high') otherHigh.push(finding)
       else if (finding.risk === 'medium') otherMedium.push(finding)
       else otherLow.push(finding)
     }
@@ -202,7 +202,7 @@ export function groupResults(results: ScanResult[]): GroupedResults {
   // Build cheat groups
   const cheatGroups: CheatGroup[] = []
   for (const [cheatName, findings] of cheatGroupMap) {
-    const risk: 'high' | 'medium' | 'low' = findings.some(f => f.risk === 'high')
+    const risk: 'high' | 'medium' | 'low' = findings.some(f => f.risk === 'critical' || f.risk === 'high')
       ? 'high'
       : findings.some(f => f.risk === 'medium') ? 'medium' : 'low'
 
@@ -244,7 +244,7 @@ export function groupResults(results: ScanResult[]): GroupedResults {
     deviceSummary,
     summary: {
       totalCheatsDetected: cheatGroups.length,
-      totalHighRisk: results.filter(r => r.risk === 'high').length,
+      totalHighRisk: results.filter(r => r.risk === 'critical' || r.risk === 'high').length,
       totalMediumRisk: results.filter(r => r.risk === 'medium').length,
       totalLowRisk: results.filter(r => r.risk === 'low').length,
     },

@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import type { ScanResult, ScanProgress, ScanResponse, ScanMode } from '../types/electron'
-import { submitScan } from '../api'
 
 const tabCache = new Map<ScanMode, { results: ScanResult[]; summary: ScanResponse['summary'] }>()
 
@@ -89,12 +88,11 @@ export function useScan(tokenId: number | null): UseScanReturn {
       }
       if (!scanRef.current) return
       const mock = mockScan(activeTab)
-      const mockSummary = { totalScanned: mock.scanned, suspiciousFiles: mock.results.length, highRiskCount: mock.results.filter(r => r.risk === 'high').length, scanTimeMs: 1500 }
+      const mockSummary = { totalScanned: mock.scanned, suspiciousFiles: mock.results.length, highRiskCount: mock.results.filter(r => r.risk === 'critical' || r.risk === 'high').length, scanTimeMs: 1500 }
       setResults(mock.results); setSummary(mockSummary)
       tabCache.set(activeTab, { results: mock.results, summary: mockSummary })
       setTabCounts(prev => { const n = new Map(prev); n.set(activeTab, mock.results.length); return n })
       setPhase('done'); scanRef.current = false
-      submitToServer(activeTab, mockSummary, mock.results, tokenId)
       return
     }
 
@@ -106,7 +104,6 @@ export function useScan(tokenId: number | null): UseScanReturn {
         tabCache.set(activeTab, { results: response.results, summary: response.summary })
         setTabCounts(prev => { const n = new Map(prev); n.set(activeTab, response.results.length); return n })
         setPhase('done')
-        submitToServer(activeTab, response.summary, response.results, tokenId)
       }
     } catch (err) {
       if (scanRef.current) { setError(err instanceof Error ? err.message : 'Scan error'); setPhase('idle') }
@@ -131,25 +128,3 @@ export function useScan(tokenId: number | null): UseScanReturn {
   return { activeTab, setActiveTab, phase, progress, results, filteredResults, summary, error, searchQuery, setSearchQuery, tabCounts, handleStartScan, handleClear, handleTabChange }
 }
 
-async function submitToServer(mode: string, summary: ScanResponse['summary'], results: ScanResult[], tokenId: number | null) {
-  try {
-    let pcName = 'unknown'
-    try { if (window.electronAPI?.getPCName) pcName = await window.electronAPI.getPCName() } catch { /* ignore */ }
-    await submitScan({
-      token_id: tokenId ?? undefined, pc_username: pcName,
-      client_version: '0.4.3',
-      mode,
-      total_scanned: summary.totalScanned, suspicious_files: summary.suspiciousFiles,
-      high_risk_count: summary.highRiskCount, scan_time_ms: summary.scanTimeMs,
-      results: results.slice(0, 200).map(r => ({
-        path: r.path, fileName: r.fileName, type: r.type, risk: r.risk,
-        matches: r.matches,
-        sha256: r.sha256,
-        size: r.size,
-        modifiedAt: r.modifiedAt,
-      })),
-    })
-  } catch {
-    // Error already handled by fetchApiWithRetry + offline queue
-  }
-}

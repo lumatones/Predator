@@ -4,8 +4,7 @@
  * Ловит инжекторы по поведению, а не по имени.
  */
 
-import { execPowerShell, execWithTimeout } from './utils/exec'
-import fs from 'fs'
+import { execWithTimeout } from './utils/exec'
 
 export interface BehaviorProfile {
   pid: number

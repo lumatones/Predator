@@ -1,4 +1,4 @@
-import { execPowerShell, execWithTimeout } from '../utils/exec'
+import { execWithTimeout } from '../utils/exec'
 import * as path from 'path'
 import * as fs from 'fs'
 import { ScanResult, addFindingDedup, _WR } from '../types'

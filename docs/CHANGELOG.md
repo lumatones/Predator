@@ -1,5 +1,72 @@
 # Changelog
 
+## v0.5.0 — Аудит безопасности: integrity baseline, серверные хеши, evidence model (2026-08-01)
+
+### 🔐 Аудит безопасности сканера
+
+**C1 — Серверная проверка baseline (critical)**
+- Таблица `client_hashes` добавлена в `server/src/index.ts` (init) + миграция `server/drizzle/0001_client_hashes.sql` (включая journal)
+- Admin POST `/api/admin/client-hash` — superadmin-only, zod-схема, upsert, аудит через `client_hash_register`
+- `scripts/register-client-hash.js` — регистрация sha256 exe после релизной сборки
+- Опциональный шаг регистрации хеша в `scripts/release.js` (срабатывает при наличии ADMIN-кредов)
+- Раньше `CLIENT_HASHES` был пуст и таблица отсутствовала в миграциях → TOFU-режим работал всегда
+
+**C4 — Легальное автообновление больше не даёт ложный «high: tampering»**
+- Ветка различает: bump версии + сервер подтверждает → rebase baseline; сервер MISMATCH → critical + tamper response; downgrade → high
+- TOFU-базлайн перепроверяется против сервера на поздних запусках (самолечение отравленного baseline)
+- 24h-троттлинг перепроверки ключуется на `lastServerCheck` (не `lastVerified`) — закрыт starvation для активных пользователей
+- Severity-эскалация до `critical` при повторах во всех ветках
+- `compareVersions` экспортирован; `IntegrityState.source: 'server' | 'tofu'`
+
+**H1 — `criticalTamperResponse()` подключён (был мёртвым кодом)**
+- Server-verified mismatch (первый запуск/смена версии/TOFU-перепроверка) → немедленный отклик
+- Повторные локальные mismatch/downgrade (tamperCount ≥ 2) → critical + отклик
+
+**H2 — Integrity проверяется во всех режимах скана**
+- `runSelfIntegrityScan` добавлен в quick-scan и cleaner-scan (раньше только full-scan)
+
+**M2 — Убран синхронный ввод-вывод из main-процесса**
+- `verifySelfExeIntegrity` + `scanForInt3Patches` переведены на async `readFileRange` (чанки 1 МБ)
+
+### 🧪 Тесты
+- **19 новых unit-тестов** `electron/__tests__/self-integrity.test.ts`: semver, first-run, update-rebase, downgrade, TOFU self-heal, throttle, starvation-регрессия
+- Итого: **302 electron + 104 server + 4 renderer** тестов, typecheck всех 5 проектов чистый, lint 0 ошибок
+- 3 раунда код-ревью от deepseek-flash — все замечания закрыты
+
+### 📝 Документация
+- `docs/REFACTORING.md` — прогресс 17/19, evidence model и renderer-контракты отмечены готовыми
+- `docs/ROADMAP.md` — v0.6, P0-пункты evidence model/explainable risk отмечены готовыми
+- `docs/CHANGELOG.md` — актуальные записи
+
+### ⚠️ Открытые рекомендации (вне скоупа)
+- **C2**: подпись кода отсутствует (`signAndEditExecutable: false`) — нужен сертификат + `publisherName` для Authenticode-проверки обновлений
+- **C3**: `fetchExpectedHash` доверяет локально настраиваемому `apiUrl` — локальный процесс может поднять фейковый сервер на :3001
+- **M1**: баг приоритетов в PowerShell `verifyImportTable` (`.node`-модули всегда скипаются)
+
+---
+
+## v0.4.5 — Релизный пайплайн: автообновление, NSIS, надёжность (2026-07-31)
+
+### 🐛 Исправление провального релиза
+- Релиз v0.4.5 перевыпущен: ассеты `Predator-0.4.5.exe` + `latest.yml` загружены (были пустыми — workflow падал из-за релиза, созданного вручную через веб-интерфейс)
+
+### 🔧 Релизный пайплайн
+- **`.github/workflows/release.yml`** — удаляет устаревший релиз перед `gh release create` (фикс ошибки 422 «already exists», когда релиз уже создан вручную)
+- **`scripts/release.js`**:
+  - загрузка `.blockmap` — дифференциальные обновления через `electron-updater`
+  - `process.exit(1)` при неудачной загрузке любого ассета (раньше скрипт молча печатал «✅ Релиз готов»)
+  - исправлен текст релиза (потерянный перенос строки и `:3001`)
+
+### 🚀 Автообновление (electron-updater)
+- `win.target`: **portable → nsis** — portable-сборки не поддерживают автообновление (не встраивается `app-update.yml`, exe не может заменить сам себя)
+- Удалён сломанный `include: resources/installer.nsh` (переопределял `MUI_HEADERIMAGE`, который electron-builder передаёт сам); файл удалён как мёртвый код
+- `app-update.yml` теперь встраивается в сборку (owner lumatones / repo Predator / releaseType release)
+
+### ⚠️ Для пользователей portable-версии
+- Ранее скачанные portable-версии не могут обновиться автоматически — нужно один раз скачать новый NSIS-установщик вручную
+
+---
+
 ## v0.4.4
 
 ### Project Cleanup and Housekeeping (2026-07-30)

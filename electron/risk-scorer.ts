@@ -11,7 +11,7 @@
  * should contribute much more to risk than a filename keyword match.
  */
 
-import type { ScanResult } from './types'
+import type { EvidenceRecord, ScanResult } from './types'
 
 // ═══════════════════════════════════════════════════
 // SIGNAL WEIGHTS — higher = more reliable/dangerous
@@ -94,7 +94,7 @@ export function classifySignal(match: string): string {
 // EVIDENCE ACCUMULATOR
 // ═══════════════════════════════════════════════════
 
-interface EvidenceItem {
+export interface EvidenceItem {
   category: string
   weight: number
   risk: 'critical' | 'high' | 'medium' | 'low'
@@ -102,26 +102,132 @@ interface EvidenceItem {
   findingId: string
 }
 
+const SIGNAL_EXPLANATIONS: Record<string, string> = {
+  memory_pattern: 'Память содержит признак, характерный для вмешательства в игровой процесс.',
+  dma_fpga: 'Обнаружен признак DMA/FPGA-оборудования или ПО прямого доступа к памяти.',
+  driver_signature: 'Найден драйвер с проблемной или отсутствующей цифровой подписью.',
+  injection_detected: 'Найден признак инжекта, подозрительного дескриптора или удалённого потока.',
+  debug_port: 'Обнаружен отладочный порт или DevTools-контекст, связанный с вмешательством.',
+  apc_injection: 'Обнаружен признак APC/атомарной инъекции в другой процесс.',
+  process_hollowing: 'Найден признак подмены содержимого легитимного процесса.',
+  yara_match: 'Сработало YARA-правило по известному шаблону.',
+  tlsh_match: 'Найдено fuzzy/TLSH-сходство с известным образцом.',
+  entropy_high: 'Высокая энтропия может указывать на упаковку или сокрытие содержимого.',
+  unsigned_binary: 'Бинарный файл не имеет подтверждённой цифровой подписи.',
+  default: 'Сработал индикатор сканера, требующий ручной проверки.',
+}
+
+function baseConfidence(risk: ScanResult['risk']): number {
+  return risk === 'critical' ? 90 : risk === 'high' ? 78 : risk === 'medium' ? 58 : 35
+}
+
+const GENERATED_DUPLICATE_SUFFIX = /#duplicate:\d+$/
+
+function findingIdFor(result: ScanResult, duplicateIndex?: number): string {
+  const base = (result.findingId || `${result.type}:${result.path}:${result.fileName}`)
+    .replace(GENERATED_DUPLICATE_SUFFIX, '')
+  return duplicateIndex === undefined || duplicateIndex === 0 ? base : `${base}#duplicate:${duplicateIndex + 1}`
+}
+
+function buildFindingEvidence(result: ScanResult): EvidenceRecord[] {
+  const timestamp = result.modifiedAt || new Date().toISOString()
+  return result.matches
+    .filter(match => !match.startsWith('↑ Escalated:'))
+    .map((raw, index) => {
+      const category = classifySignal(raw)
+      const weight = SIGNAL_WEIGHTS[category] ?? SIGNAL_WEIGHTS.default
+      return {
+        id: `${findingIdFor(result)}:e${index + 1}`,
+        source: result.type,
+        category,
+        weight,
+        confidence: Math.round(baseConfidence(result.risk) * (0.55 + weight * 0.45)),
+        explanation: SIGNAL_EXPLANATIONS[category] || SIGNAL_EXPLANATIONS.default,
+        raw,
+        timestamp,
+      }
+    })
+}
+
+const CORRELATION_TYPE_PAIRS = new Set([
+  'browser:file',
+  'file:browser',
+  'file:process',
+  'process:file',
+  'process:registry',
+  'registry:process',
+  'hardware:software',
+  'software:hardware',
+])
+
+function canCorrelate(left: ScanResult, right: ScanResult): boolean {
+  if (!CORRELATION_TYPE_PAIRS.has(`${left.type}:${right.type}`)) return false
+
+  const ignored = new Set([
+    'file', 'process', 'history', 'browser', 'system', 'detected', 'found',
+    'injector', 'suspicious', 'remote', 'thread', 'match', 'signature',
+    'device', 'software', 'driver', 'tool', 'chrome', 'windows', 'prefetch',
+  ])
+  const tokens = (result: ScanResult) => `${result.fileName} ${result.path} ${result.matches.join(' ')}`
+    .toLowerCase()
+    .split(/[^a-z0-9а-яё]+/i)
+    .filter(token => token.length >= 4 && !ignored.has(token))
+  const rightTokens = new Set(tokens(right))
+  return tokens(left).some(token => rightTokens.has(token))
+}
+
+function addCorrelations(results: ScanResult[]): ScanResult[] {
+  const seenIds = new Map<string, number>()
+  const prepared = results.map(result => {
+    const baseId = findingIdFor(result)
+    const duplicateIndex = seenIds.get(baseId) ?? 0
+    seenIds.set(baseId, duplicateIndex + 1)
+    const findingId = findingIdFor(result, duplicateIndex)
+    const normalizedResult = { ...result, findingId }
+    const sourceEvidence = result.evidence ?? buildFindingEvidence(normalizedResult)
+    const evidence = sourceEvidence.map((item, index) => ({
+      ...item,
+      id: `${findingId}:e${index + 1}`,
+      relatedFindingIds: undefined,
+    }))
+    return {
+      ...normalizedResult,
+      evidence,
+    }
+  })
+
+  return prepared.map(result => {
+    const relatedFindingIds = prepared
+      .filter(other => other.findingId !== result.findingId && canCorrelate(result, other))
+      .filter(other => result.evidence?.some(e => e.weight >= 0.6) && other.evidence?.some(e => e.weight >= 0.6))
+      .map(other => other.findingId!)
+      .slice(0, 8)
+
+    if (relatedFindingIds.length === 0) return result
+    return {
+      ...result,
+      evidence: result.evidence?.map(item => ({ ...item, relatedFindingIds })),
+    }
+  })
+}
+
 /**
- * Collect evidence from all scan results and accumulate weighted scores.
+ * Collect evidence from structured results, falling back to legacy matches.
  */
 function collectEvidence(results: ScanResult[]): EvidenceItem[] {
   const evidence: EvidenceItem[] = []
-  const now = Date.now()
-
   for (const r of results) {
-    for (const match of r.matches) {
-      const category = classifySignal(match)
+    const structured = r.evidence ?? buildFindingEvidence(r)
+    for (const item of structured) {
       evidence.push({
-        category,
-        weight: SIGNAL_WEIGHTS[category] ?? SIGNAL_WEIGHTS.default,
+        category: item.category,
+        weight: item.weight,
         risk: r.risk,
-        timestamp: now,
-        findingId: `${r.type}:${r.fileName}`,
+        timestamp: Date.parse(item.timestamp) || Date.now(),
+        findingId: findingIdFor(r),
       })
     }
   }
-
   return evidence
 }
 
@@ -129,11 +235,22 @@ function collectEvidence(results: ScanResult[]): EvidenceItem[] {
 // SCORE CALCULATION
 // ═══════════════════════════════════════════════════
 
+export interface RiskContribution {
+  category: string
+  score: number
+  count: number
+  weight: number
+  confidence: number
+  explanation: string
+}
+
 export interface RiskScore {
   /** Overall risk score 0-100 */
   overall: number
   /** Breakdown by category */
   categories: Record<string, { score: number; count: number }>
+  /** Explainable contribution of each signal category. */
+  contributions: RiskContribution[]
   /** Risk level */
   level: 'critical' | 'high' | 'medium' | 'low' | 'clean'
   /** Evidence count */
@@ -142,6 +259,8 @@ export interface RiskScore {
   escalated: boolean
   /** Adaptive threshold used */
   threshold: number
+  /** Human-readable summary for moderators. */
+  explanation: string
 }
 
 /**
@@ -163,10 +282,12 @@ export function calculateRisk(
     return {
       overall: 0,
       categories: {},
+      contributions: [],
       level: 'clean',
       totalEvidence: 0,
       escalated: false,
       threshold: 30,
+      explanation: 'Структурированные сигналы отсутствуют.',
     }
   }
 
@@ -180,19 +301,29 @@ export function calculateRisk(
     categories[e.category].count++
     categories[e.category].maxRisk = Math.max(
       categories[e.category].maxRisk,
-      e.risk === 'high' ? 3 : e.risk === 'medium' ? 2 : 1,
+      e.risk === 'critical' ? 4 : e.risk === 'high' ? 3 : e.risk === 'medium' ? 2 : 1,
     )
   }
 
   // Calculate per-category scores with diminishing returns
   const categoryScores: Record<string, { score: number; count: number }> = {}
+  const contributions: RiskContribution[] = []
   let rawScore = 0
 
   for (const [cat, data] of Object.entries(categories)) {
     // Use log scale: score = weight_sum * max_risk * log2(1 + count) * 25
     const diversityBonus = Math.log2(1 + data.count)
     const catScore = Math.min(data.totalWeight * data.maxRisk * diversityBonus * 25, 100)
-    categoryScores[cat] = { score: Math.round(catScore), count: data.count }
+    const score = Math.round(catScore)
+    categoryScores[cat] = { score, count: data.count }
+    contributions.push({
+      category: cat,
+      score,
+      count: data.count,
+      weight: Number((data.totalWeight / data.count).toFixed(2)),
+      confidence: Math.min(100, Math.round((data.maxRisk / 4) * 100)),
+      explanation: SIGNAL_EXPLANATIONS[cat] || SIGNAL_EXPLANATIONS.default,
+    })
     rawScore += catScore * data.totalWeight
   }
 
@@ -223,8 +354,10 @@ export function calculateRisk(
     categories: categoryScores,
     level,
     totalEvidence: evidence.length,
+    contributions: contributions.sort((a, b) => b.score - a.score),
     escalated,
     threshold: adaptiveThreshold,
+    explanation: `${evidence.length} сигналов из ${contributions.length} категорий сформировали оценку ${finalScore}/100.`,
   }
 }
 
@@ -272,24 +405,36 @@ export function scoreToLevel(score: number): 'critical' | 'high' | 'medium' | 'l
  * Adds a `weightedRisk` score to each result's matches for downstream use.
  */
 export function rescoreResults(results: ScanResult[]): ScanResult[] {
-  return results.map(r => {
-    let maxWeight = 0
-    let totalWeight = 0
-    for (const match of r.matches) {
-      const category = classifySignal(match)
-      const weight = SIGNAL_WEIGHTS[category] ?? SIGNAL_WEIGHTS.default
-      maxWeight = Math.max(maxWeight, weight)
-      totalWeight += weight
-    }
+  const enriched = addCorrelations(results)
+  return enriched.map(r => {
+    const evidence = r.evidence ?? []
+    const maxWeight = evidence.reduce((max, item) => Math.max(max, item.weight), 0)
+    const totalWeight = evidence.reduce((sum, item) => sum + item.weight, 0)
+    const avgWeight = evidence.length > 0 ? totalWeight / evidence.length : 0
+    const riskScore = Math.round(Math.min(100, (maxWeight * 0.7 + avgWeight * 0.3) * 100))
+    const escalationMatch = `↑ Escalated: weighted signal (${(avgWeight * 100).toFixed(0)}%)`
+    const hasEscalation = r.matches.some(match => match === escalationMatch)
+    const shouldEscalateHigh = r.risk === 'medium' && maxWeight >= 0.8
+    const shouldEscalateMedium = r.risk === 'low' && maxWeight >= 0.6
+    const nextRisk: ScanResult['risk'] = shouldEscalateHigh ? 'high' : shouldEscalateMedium ? 'medium' : r.risk
+    const nextMatches = (shouldEscalateHigh || shouldEscalateMedium) && !hasEscalation
+      ? [...r.matches, escalationMatch]
+      : r.matches
+    const adjustedEvidence = evidence.map(item => ({
+      ...item,
+      confidence: Math.round(baseConfidence(nextRisk) * (0.55 + item.weight * 0.45)),
+    }))
+    const leading = adjustedEvidence.slice().sort((a, b) => b.weight - a.weight)[0]
 
-    // Adjust risk if weighted score contradicts original
-    const avgWeight = r.matches.length > 0 ? totalWeight / r.matches.length : 0
-    if (r.risk === 'medium' && maxWeight >= 0.8) {
-      return { ...r, risk: 'high' as const, matches: [...r.matches, `↑ Escalated: weighted signal (${(avgWeight * 100).toFixed(0)}%)`] }
+    return {
+      ...r,
+      risk: nextRisk,
+      evidence: adjustedEvidence,
+      matches: nextMatches,
+      riskScore,
+      riskExplanation: leading
+        ? `${leading.category}: ${leading.explanation} Confidence ${leading.confidence}%.`
+        : 'Нет структурированных сигналов для оценки.',
     }
-    if (r.risk === 'low' && maxWeight >= 0.6) {
-      return { ...r, risk: 'medium' as const, matches: [...r.matches, `↑ Escalated: weighted signal (${(avgWeight * 100).toFixed(0)}%)`] }
-    }
-    return r
   })
 }

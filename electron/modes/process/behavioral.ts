@@ -14,7 +14,7 @@
  * running at ~240MB with self-spawning child process
  */
 
-import { execPowerShell, execWithTimeout } from '../../utils/exec'
+import { execWithTimeout } from '../../utils/exec'
 
 import { addFindingDedup, type ScanResult } from '../../types'
 import { MASQUERADING_SYSTEM_TOOLS } from '../../cheats-db'

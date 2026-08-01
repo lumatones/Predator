@@ -63,7 +63,8 @@ async function main() {
   // ═══ Проверка 1: Хеш-матч ═══
   console.log('─── ПРОВЕРКА 1: Хеш-матч ───')
   try {
-    const { KNOWN_CHEAT_HASHES } = await import('../electron/cheats-db.ts')
+    const { getKnownCheatHashes } = await import('../electron/cheats-db.ts')
+    const hashes = getKnownCheatHashes()
     const crypto = await import('crypto')
     const hash = crypto.createHash('sha256')
     const stream = fs.createReadStream(TARGET_FILE)
@@ -71,14 +72,14 @@ async function main() {
     const hex = hash.digest('hex')
     console.log(`   SHA256: ${hex}`)
     
-    if (KNOWN_CHEAT_HASHES.includes(hex)) {
-      console.log(`   ✅ НАЙДЕН в базе хешей! (KNOWN_CHEAT_HASHES)`)
+    if (hashes.includes(hex)) {
+      console.log(`   ✅ НАЙДЕН в базе хешей! (getKnownCheatHashes)`)
     } else {
       console.log(`   ❌ НЕ найден в базе хешей.`)
-      console.log(`   Хеш в базе: ${KNOWN_CHEAT_HASHES[0]?.slice(0, 16)}...`)
+      console.log(`   Хеш в базе: ${hashes[0]?.slice(0, 16)}...`)
       
-      if (KNOWN_CHEAT_HASHES.length > 1) {
-        console.log(`   Хеш в базе #2: ${KNOWN_CHEAT_HASHES[1]?.slice(0, 16)}...`)
+      if (hashes.length > 1) {
+        console.log(`   Хеш в базе #2: ${hashes[1]?.slice(0, 16)}...`)
       }
     }
   } catch (err) {

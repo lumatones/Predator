@@ -16,6 +16,8 @@
   top: 24px;
   right: 24px;
   width: 340px;
+  max-width: calc(100vw - 48px);
+  box-sizing: border-box;
   max-height: calc(100vh - 48px);
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -202,8 +204,11 @@
 
 @media (max-width: 420px) {
   .settings-panel {
-    right: 8px; left: 8px; top: 12px;
+    right: 8px;
+    left: 8px;
+    top: 12px;
     width: auto;
+    max-width: none;
     max-height: calc(100vh - 80px);
   }
   .settings-theme-grid { grid-template-columns: 1fr; }

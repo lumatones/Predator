@@ -1,8 +1,8 @@
 # Predator — Roadmap развития
 
-> **Версия документа:** 0.5  
-> **Обновлено:** 2026-07-29  
-> **Текущая версия продукта:** v0.4.2  
+> **Версия документа:** 0.6
+> **Обновлено:** 2026-08-01
+> **Текущая версия продукта:** v0.4.5
 > **Фокус:** качество детекта, меньше false positive, стабильная архитектура, понятный UI для проверяющего
 
 ---
@@ -87,14 +87,22 @@ Predator должен стать не просто сканером файлов
 
 ### P0
 
-- Ввести Evidence Model для Finding:
+- ~~Ввести Evidence Model для Finding~~ — **готово**:
   - источник сигнала;
   - вес сигнала;
   - confidence;
   - human explanation;
   - raw evidence;
   - timestamp;
-  - related findings.
+  - related findings;
+  - стабильный `findingId`/`evidence.id` для повторного scoring и дублей.
+- ~~Сделать Risk Score объяснимым~~ — **готово**:
+  - вклад сигналов показывается в UI и экспортах;
+  - structured evidence используется как единый источник объяснения;
+  - legacy server получает `critical` как совместимый `high`.
+- ~~Ввести ограниченную корреляцию независимых слоёв~~ — **готово**:
+  - разрешены только явные пары detection layers;
+  - связь требует общего meaningful token, чтобы не создавать широкие ложные связи.
 - Сделать Risk Score объяснимым:
   - какие сигналы подняли риск;
   - какие сигналы были нейтральными;
@@ -355,12 +363,14 @@ Predator должен стать не просто сканером файлов
 
 ### P0
 
-- Добавить smoke tests:
-  - запуск приложения;
-  - открытие Checker;
+- ~~Добавить renderer smoke tests~~ — **готово**:
+  - dev-only `?smoke=checker` harness;
   - mock scan;
   - открытие модалки Finding;
-  - export report.
+  - HTML export;
+  - повторяемый Chrome/CDP runner: `npm run test:renderer:smoke`;
+  - renderer contract tests: `npm run test:renderer`.
+  - Примечание: runner требует Node 22+ и установленный Chrome.
 - Добавить Playwright/Electron E2E:
   - onboarding;
   - смена темы;
@@ -535,14 +545,15 @@ Predator должен стать не просто сканером файлов
 
 ### Спринт 2
 
-- Ввести Evidence Model.
-- Обновить формат ScanResult/Report.
-- Добавить risk explanation в HTML/Markdown export.
+- ~~Ввести Evidence Model~~ — готово.
+- ~~Обновить формат ScanResult/Report~~ — готово.
+- ~~Добавить risk explanation в HTML/Markdown export~~ — готово.
+- ~~Добавить renderer contract/smoke-тесты~~ — готово: Vitest-контракты и Chrome/CDP сценарий Checker.
 - Улучшить поиск по результатам Scan.
 
 ### Спринт 3
 
-- Добавить smoke/E2E тесты для главного сценария.
+- Расширить Chrome/CDP smoke до onboarding и переключения ScanMode.
 - Улучшить ScanPipeline cancellation/timeout.
 - Сделать performance trace по Detection Layers.
 

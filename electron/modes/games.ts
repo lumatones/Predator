@@ -6,14 +6,22 @@
  */
 
 import { execPowerShell, execWithTimeout } from '../utils/exec'
-import fs from 'fs'
+import fsp from 'fs/promises'
 import path from 'path'
 import type { BrowserWindow } from 'electron'
 
 import { sendProgress, clearFindingDedup, addFindingDedup, parsePsJson, _PF, _PF86, _HOME, _WR, type ScanResult, type GamePid } from '../types'
-import { SUSPICIOUS_CATEGORIES, SYSTEM_PROC_NAMES, matchKnownCheat, checkDigitalSignature, heuristicFileScan } from '../heuristic'
+import { SYSTEM_PROC_NAMES, matchKnownCheat, checkDigitalSignature } from '../heuristic'
 import { isTrustedPath } from '../cheat-rules'
 import { isPlatformWhitelisted } from '../cheats-db'
+
+async function readDirectoryEntries(dirPath: string): Promise<import('fs').Dirent[] | null> {
+  try {
+    return await fsp.readdir(dirPath, { withFileTypes: true })
+  } catch {
+    return null
+  }
+}
 
 // ═══════════════════════════════════════════════════
 // GAME PROCESS IDs
@@ -48,7 +56,7 @@ function getGamePids(): GamePid[] {
 // GAME MODULE SCAN
 // ═══════════════════════════════════════════════════
 
-export function scanGameModules(): ScanResult[] {
+export async function scanGameModules(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
   const gameProcs = getGamePids()
   if (gameProcs.length === 0) return results
@@ -61,6 +69,7 @@ export function scanGameModules(): ScanResult[] {
       const modules = parsePsJson<{ ModuleName?: string; FileName?: string }>(out)
 
       for (const mod of modules) {
+        if (signal?.aborted) throw new Error('Game module scan aborted')
         if (!mod.ModuleName) continue
         const modName = mod.ModuleName
         const modPath = mod.FileName || ''
@@ -86,7 +95,7 @@ export function scanGameModules(): ScanResult[] {
         }
 
         if (!isPlatformWhitelisted(name, platform) && !isTrusted) {
-          const isSigned = isSystem32 ? true : checkDigitalSignature(modPath)
+          const isSigned = isSystem32 ? true : await checkDigitalSignature(modPath, signal)
           if (!isSigned && addFindingDedup(`mod-unsigned:${pid}:${name}`)) {
             results.push({
               path: modPath,
@@ -113,7 +122,10 @@ export function scanGameModules(): ScanResult[] {
           })
         }
       }
-    } catch (err) { console.warn('[games] scanGameModules proc failed:', (err as Error).message) }
+    } catch (err) {
+      if (signal?.aborted) throw err
+      console.warn('[games] scanGameModules proc failed:', (err as Error).message)
+    }
   }
   return results
 }
@@ -122,7 +134,7 @@ export function scanGameModules(): ScanResult[] {
 // GAME INTEGRITY CHECK
 // ═══════════════════════════════════════════════════
 
-export function scanGameIntegrity(): ScanResult[] {
+export async function scanGameIntegrity(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
   const CRITICAL_MOD_FILES = ['dinput8.dll', 'dsound.dll', 'winmm.dll', 'scripthookv.dll', 'scripthookvdotnet.dll']
   const GTA5_DIRS = [
@@ -137,15 +149,18 @@ export function scanGameIntegrity(): ScanResult[] {
     path.join(_HOME, 'AppData', 'Local', 'FiveM', 'FiveM.app', 'plugins'),
   ]
   for (const dir of FIVEM_DIRS) {
-    if (!fs.existsSync(dir)) continue
-    for (const entry of fs.readdirSync(dir)) {
-      const fullPath = path.join(dir, entry)
-      const lower = entry.toLowerCase()
+    if (signal?.aborted) throw new Error('Game integrity scan aborted')
+    const entries = await readDirectoryEntries(dir)
+    if (!entries) continue
+    for (const entry of entries) {
+      if (signal?.aborted) throw new Error('Game integrity scan aborted')
+      const fullPath = path.join(dir, entry.name)
+      const lower = entry.name.toLowerCase()
       if ((lower.endsWith('.dll') || lower.endsWith('.asi')) && addFindingDedup(`fivem:${fullPath}`)) {
         try {
-          const stat = fs.statSync(fullPath)
+          const stat = await fsp.stat(fullPath)
           results.push({
-            path: fullPath, fileName: entry, type: 'file', risk: 'high',
+            path: fullPath, fileName: entry.name, type: 'file', risk: 'high',
             matches: ['Unauthorized file in FiveM directory', `Location: ${path.basename(dir)}`, 'DLL/ASI in mods/plugins = cheat loader'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
@@ -160,16 +175,19 @@ export function scanGameIntegrity(): ScanResult[] {
     path.join(_HOME, 'RAGEMP'),
   ]
   for (const rageDir of RAGE_DIRS) {
-    if (!fs.existsSync(rageDir)) continue
-    for (const entry of fs.readdirSync(rageDir)) {
-      const fullPath = path.join(rageDir, entry)
-      const lower = entry.toLowerCase()
+    if (signal?.aborted) throw new Error('Game integrity scan aborted')
+    const rageEntries = await readDirectoryEntries(rageDir)
+    if (!rageEntries) continue
+    for (const entry of rageEntries) {
+      if (signal?.aborted) throw new Error('Game integrity scan aborted')
+      const fullPath = path.join(rageDir, entry.name)
+      const lower = entry.name.toLowerCase()
       // dinput8.dll — ASI loader proxy
       if (lower === 'dinput8.dll' && addFindingDedup(`rage:${fullPath}`)) {
         try {
-          const stat = fs.statSync(fullPath)
+          const stat = await fsp.stat(fullPath)
           results.push({
-            path: fullPath, fileName: entry, type: 'file', risk: 'high',
+            path: fullPath, fileName: entry.name, type: 'file', risk: 'high',
             matches: ['dinput8.dll in RAGEMP directory — ASI loader/cheat', 'ScriptHookV injection method used for MP cheating'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
@@ -178,9 +196,9 @@ export function scanGameIntegrity(): ScanResult[] {
       // .asi files — single-player mods loaded in MP
       if (lower.endsWith('.asi') && addFindingDedup(`rage-asi:${fullPath}`)) {
         try {
-          const stat = fs.statSync(fullPath)
+          const stat = await fsp.stat(fullPath)
           results.push({
-            path: fullPath, fileName: entry, type: 'file', risk: 'high',
+            path: fullPath, fileName: entry.name, type: 'file', risk: 'high',
             matches: ['ASI file in RAGEMP directory', 'Single-player cheat loaded in multiplayer'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
@@ -189,17 +207,19 @@ export function scanGameIntegrity(): ScanResult[] {
     }
     // Check client_packages subdirectory for unauthorized JS/Lua resources
     const clientPkgDir = path.join(rageDir, 'client_packages')
-    if (fs.existsSync(clientPkgDir)) {
-      for (const entry of fs.readdirSync(clientPkgDir)) {
-        const fullPath = path.join(clientPkgDir, entry)
-        const lower = entry.toLowerCase()
+    const clientEntries = await readDirectoryEntries(clientPkgDir)
+    if (clientEntries) {
+      for (const entry of clientEntries) {
+        if (signal?.aborted) throw new Error('Game integrity scan aborted')
+        const fullPath = path.join(clientPkgDir, entry.name)
+        const lower = entry.name.toLowerCase()
         const susKeywords = ['cheat', 'hack', 'inject', 'bypass', 'esp', 'aimbot', 'menu', 'executor', 'spoofer']
         if (susKeywords.some(k => lower.includes(k)) && addFindingDedup(`rage-cpkg:${fullPath}`)) {
           try {
-            const stat = fs.statSync(fullPath)
+            const stat = await fsp.stat(fullPath)
             results.push({
-              path: fullPath, fileName: `RAGE client_packages: ${entry}`, type: 'file', risk: 'high',
-              matches: ['Suspicious resource in RAGE MP client_packages', `Name match: ${entry}`],
+              path: fullPath, fileName: `RAGE client_packages: ${entry.name}`, type: 'file', risk: 'high',
+              matches: ['Suspicious resource in RAGE MP client_packages', `Name match: ${entry.name}`],
               size: stat.size, modifiedAt: stat.mtime.toISOString(),
             })
           } catch (err) { console.warn('[games] failed:', (err as Error).message) }
@@ -215,15 +235,18 @@ export function scanGameIntegrity(): ScanResult[] {
   ]
   const SUS_MOD_NAMES = ['aim', 'esp', 'wall', 'money', 'recovery', 'god', 'teleport', 'inject', 'bypass', 'cheat']
   for (const altvDir of ALTV_DIRS) {
-    if (!fs.existsSync(altvDir)) continue
-    for (const entry of fs.readdirSync(altvDir)) {
-      const fullPath = path.join(altvDir, entry)
-      const lower = entry.toLowerCase()
+    if (signal?.aborted) throw new Error('Game integrity scan aborted')
+    const altvEntries = await readDirectoryEntries(altvDir)
+    if (!altvEntries) continue
+    for (const entry of altvEntries) {
+      if (signal?.aborted) throw new Error('Game integrity scan aborted')
+      const fullPath = path.join(altvDir, entry.name)
+      const lower = entry.name.toLowerCase()
       if (SUS_MOD_NAMES.some(k => lower.includes(k)) && addFindingDedup(`altv-name:${fullPath}`)) {
         try {
-          const stat = fs.statSync(fullPath)
+          const stat = await fsp.stat(fullPath)
           results.push({
-            path: fullPath, fileName: entry, type: 'file', risk: 'high',
+            path: fullPath, fileName: entry.name, type: 'file', risk: 'high',
             matches: [`Suspicious ALT:V module name`, `Keyword match in ${path.basename(altvDir)}`],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
@@ -231,23 +254,23 @@ export function scanGameIntegrity(): ScanResult[] {
       }
       // Detect obfuscated module names (random hash-like names — alt:V anti-debug technique)
       const OBFUSCATED_NAME_PATTERN = /^[a-f0-9]{20,64}\.(dll|js)$/i
-      if (OBFUSCATED_NAME_PATTERN.test(entry) && addFindingDedup(`altv-obf:${fullPath}`)) {
+      if (OBFUSCATED_NAME_PATTERN.test(entry.name) && addFindingDedup(`altv-obf:${fullPath}`)) {
         try {
-          const stat = fs.statSync(fullPath)
+          const stat = await fsp.stat(fullPath)
           results.push({
-            path: fullPath, fileName: `ALT:V obfuscated: ${entry}`, type: 'file', risk: 'medium',
+            path: fullPath, fileName: `ALT:V obfuscated: ${entry.name}`, type: 'file', risk: 'medium',
             matches: ['Obfuscated/hash-named module (alt:V anti-debug pattern)', 'Possible renamed cheat DLL or JS payload'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
         } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
       if (lower.endsWith('.dll') && !isTrustedPath(fullPath) && addFindingDedup(`altv-unsign:${fullPath}`)) {
-        const signed = checkDigitalSignature(fullPath)
+        const signed = await checkDigitalSignature(fullPath, signal)
         if (!signed) {
           try {
-            const stat = fs.statSync(fullPath)
-            results.push({
-              path: fullPath, fileName: entry, type: 'file', risk: 'medium',
+          const stat = await fsp.stat(fullPath)
+          results.push({
+            path: fullPath, fileName: entry.name, type: 'file', risk: 'medium',
               matches: ['Unsigned DLL in ALT:V modules directory', 'Possible cheat module'],
               size: stat.size, modifiedAt: stat.mtime.toISOString(),
             })
@@ -258,47 +281,55 @@ export function scanGameIntegrity(): ScanResult[] {
   }
   // ALT:V compiled JS resources — check for obfuscated cheat code
   const altvCompiledDir = path.join(_HOME, 'AppData', 'Local', 'altv', 'resources', 'compiled')
-  if (fs.existsSync(altvCompiledDir)) {
+  const compiledEntries = await readDirectoryEntries(altvCompiledDir)
+  if (compiledEntries) {
     try {
-      for (const entry of fs.readdirSync(altvCompiledDir)) {
-        const fullPath = path.join(altvCompiledDir, entry)
-        const lower = entry.toLowerCase()
+      for (const entry of compiledEntries) {
+        if (signal?.aborted) throw new Error('Game integrity scan aborted')
+        const fullPath = path.join(altvCompiledDir, entry.name)
+        const lower = entry.name.toLowerCase()
         if (!lower.endsWith('.js')) continue
         // Check for suspicious patterns in JS filenames
         if (SUS_MOD_NAMES.some(k => lower.includes(k)) && addFindingDedup(`altv-cjs:${fullPath}`)) {
           try {
-            const stat = fs.statSync(fullPath)
+            const stat = await fsp.stat(fullPath)
             results.push({
-              path: fullPath, fileName: `ALT:V compiled JS: ${entry}`, type: 'file', risk: 'high',
-              matches: [`Suspicious compiled JS resource: ${entry}`, 'Possible obfuscated cheat code'],
+              path: fullPath, fileName: `ALT:V compiled JS: ${entry.name}`, type: 'file', risk: 'high',
+              matches: [`Suspicious compiled JS resource: ${entry.name}`, 'Possible obfuscated cheat code'],
               size: stat.size, modifiedAt: stat.mtime.toISOString(),
             })
           } catch (err) { console.warn('[games] failed:', (err as Error).message) }
         }
       }
-    } catch (err) { console.warn('[games] failed:', (err as Error).message) }
+    } catch (err) {
+      if (signal?.aborted) throw err
+      console.warn('[games] failed:', (err as Error).message)
+    }
   }
 
   for (const gtaPath of GTA5_DIRS) {
-    if (!fs.existsSync(gtaPath)) continue
-    for (const entry of fs.readdirSync(gtaPath)) {
-      const fullPath = path.join(gtaPath, entry)
-      const lower = entry.toLowerCase()
+    if (signal?.aborted) throw new Error('Game integrity scan aborted')
+    const gtaEntries = await readDirectoryEntries(gtaPath)
+    if (!gtaEntries) continue
+    for (const entry of gtaEntries) {
+      if (signal?.aborted) throw new Error('Game integrity scan aborted')
+      const fullPath = path.join(gtaPath, entry.name)
+      const lower = entry.name.toLowerCase()
       if (CRITICAL_MOD_FILES.includes(lower) && addFindingDedup(`gta5-root:${fullPath}`)) {
         try {
-          const stat = fs.statSync(fullPath)
+          const stat = await fsp.stat(fullPath)
           results.push({
-            path: fullPath, fileName: entry, type: 'file', risk: 'high',
-            matches: [`${entry} in GTA 5 root — cheat/mod loader`, 'Used by ScriptHookV/trainers for MP cheating'],
+            path: fullPath, fileName: entry.name, type: 'file', risk: 'high',
+            matches: [`${entry.name} in GTA 5 root — cheat/mod loader`, 'Used by ScriptHookV/trainers for MP cheating'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
         } catch (err) { console.warn('[games] failed:', (err as Error).message) }
       }
       if (lower.endsWith('.asi') && addFindingDedup(`gta5-asi:${fullPath}`)) {
         try {
-          const stat = fs.statSync(fullPath)
+          const stat = await fsp.stat(fullPath)
           results.push({
-            path: fullPath, fileName: entry, type: 'file', risk: 'high',
+            path: fullPath, fileName: entry.name, type: 'file', risk: 'high',
             matches: ['ASI mod in GTA 5 directory', 'Common cheat format (Menyoo, SimpleTrainer, etc.)'],
             size: stat.size, modifiedAt: stat.mtime.toISOString(),
           })
@@ -377,7 +408,7 @@ export function scanOpenHandles(): ScanResult[] {
     for (const line of lines) {
       const m = line.match(/^(\S+)\s+pid:\s+(\d+)\s+type:\s+(\w+)\s+(\w+):\s+(.+)$/i)
       if (!m) continue
-      const [, procName, pidStr, type, , target] = m
+      const [, procName, pidStr, type] = m
       const pid = parseInt(pidStr, 10)
       if (SYSTEM_PROCS.has(procName.toLowerCase())) continue
       if (gamePids.has(pid)) continue
@@ -399,29 +430,38 @@ export function scanOpenHandles(): ScanResult[] {
 // ORCHESTRATOR
 // ═══════════════════════════════════════════════════
 
-export async function runGameScan(win: BrowserWindow | null): Promise<{ results: ScanResult[]; filesScanned: number }> {
+export async function runGameScan(
+  win: BrowserWindow | null,
+  signal?: AbortSignal,
+): Promise<{ results: ScanResult[]; filesScanned: number }> {
   clearFindingDedup()
   const results: ScanResult[] = []
+  const aborted = () => signal?.aborted ?? false
 
+  if (aborted()) return { results, filesScanned: 0 }
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking game processes...', filesFound: 0, filesScanned: 0, totalDirs: 4, dirsDone: 0 })
 
   const masq = scanMasqueradingProcesses()
   for (const r of masq) results.push(r)
+  if (aborted()) return { results, filesScanned: results.length }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking game directories...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 1 })
 
-  const integrity = scanGameIntegrity()
+  const integrity = await scanGameIntegrity(signal)
   for (const r of integrity) results.push(r)
+  if (aborted()) return { results, filesScanned: results.length }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Scanning loaded modules...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 2 })
 
-  const modules = scanGameModules()
+  const modules = await scanGameModules(signal)
   for (const r of modules) results.push(r)
+  if (aborted()) return { results, filesScanned: results.length }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'Checking open handles...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 3 })
 
   const handles = scanOpenHandles()
   for (const r of handles) results.push(r)
+  if (aborted()) return { results, filesScanned: results.length }
 
   await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 4 })
 

@@ -13,7 +13,7 @@
  */
 
 import fs from 'fs'
-import { execPowerShell, execWithTimeout } from './utils/exec'
+import { execPowerShell } from './utils/exec'
 import { parsePsJson } from './types'
 
 // ── Types ──────────────────────────────────────

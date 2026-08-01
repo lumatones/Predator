@@ -1,6 +1,6 @@
 {
   "name": "predator",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Predator — Cheat checker for GTA 5 RP (Majestic)",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:electron": "vitest run electron",
-    "test:renderer": "vitest run src",
+    "test:renderer": "vitest run --config src/vitest.renderer.config.ts",
+    "test:renderer:smoke": "node scripts/renderer-smoke.mjs",
     "electron:dev": "vite & sleep 2 && electron .",
     "electron:build": "npm run build && electron-builder",
     "electron:build:win": "npm run build && electron-builder --win",
@@ -92,6 +93,9 @@
     ]
   },
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "workspaces": [
     "admin"
   ],

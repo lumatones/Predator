@@ -24,6 +24,10 @@ export function exportJson(results: ScanResult[], summary: ScanResponse['summary
       type: r.type,
       risk: r.risk,
       matches: r.matches,
+      evidence: r.evidence,
+      finding_id: r.findingId,
+      risk_score: r.riskScore,
+      risk_explanation: r.riskExplanation,
       size_bytes: r.size,
       modified_at: r.modifiedAt,
     })),
@@ -35,7 +39,7 @@ export function exportJson(results: ScanResult[], summary: ScanResponse['summary
 // ── HTML Export with Chart.js ──
 
 export function exportHtml(results: ScanResult[], summary: ScanResponse['summary']): string {
-  const highCount = results.filter(r => r.risk === 'high').length
+  const highCount = results.filter(r => r.risk === 'critical' || r.risk === 'high').length
   const mediumCount = results.filter(r => r.risk === 'medium').length
   const lowCount = results.filter(r => r.risk === 'low').length
 
@@ -47,7 +51,7 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
 
   const findingsHtml = results
     .sort((a, b) => {
-      const order = { high: 0, medium: 1, low: 2 }
+      const order = { critical: 0, high: 0, medium: 1, low: 2 }
       return (order[a.risk] || 0) - (order[b.risk] || 0)
     })
     .map(r => `
@@ -61,6 +65,7 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
         ${r.matches.slice(0, 3).map(m => `<span class="match-tag">${escapeHtml(m.split(':').slice(1).join(':') || m)}</span>`).join(' ')}
         ${r.matches.length > 3 ? `<span class="match-tag">+${r.matches.length - 3} more</span>` : ''}
       </div>
+      ${r.riskScore !== undefined ? `<div class="finding-evidence">Evidence score: <strong>${r.riskScore}/100</strong>${r.riskExplanation ? ` — ${escapeHtml(r.riskExplanation)}` : ''}</div>` : ''}
       <div class="finding-meta">${r.size > 0 ? formatSize(r.size) : ''} | ${r.modifiedAt.slice(0, 10)}</div>
     </div>
   `).join('\n')
@@ -111,7 +116,7 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
       background: #1e293b; margin: 0.5rem 0; padding: 1rem;
       border-radius: 8px; border-left: 4px solid;
     }
-    .finding.high { border-color: #ef4444; }
+    .finding.high, .finding.critical { border-color: #ef4444; }
     .finding.medium { border-color: #F59E0B; }
     .finding.low { border-color: #22c55e; }
     .finding-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
@@ -119,7 +124,7 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
       padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem;
       font-weight: bold; text-transform: uppercase;
     }
-    .level-high { background: #ef4444; color: white; }
+    .level-high, .level-critical { background: #ef4444; color: white; }
     .level-medium { background: #F59E0B; color: black; }
     .level-low { background: #22c55e; color: black; }
     .finding-path { color: #60a5fa; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.875rem; margin-bottom: 0.5rem; word-break: break-all; }
@@ -240,7 +245,7 @@ export function exportHtml(results: ScanResult[], summary: ScanResponse['summary
 // ── Markdown Export ──
 
 export function exportMarkdown(results: ScanResult[], summary: ScanResponse['summary']): string {
-  const highCount = results.filter(r => r.risk === 'high').length
+  const highCount = results.filter(r => r.risk === 'critical' || r.risk === 'high').length
   const mediumCount = results.filter(r => r.risk === 'medium').length
   const lowCount = results.filter(r => r.risk === 'low').length
   const date = new Date().toLocaleDateString('ru-RU', {
@@ -263,16 +268,23 @@ export function exportMarkdown(results: ScanResult[], summary: ScanResponse['sum
   if (results.length > 0) {
     md += `---\n\n## Threats Found (${results.length})\n\n`
     const sorted = [...results].sort((a, b) => {
-      const order = { high: 0, medium: 1, low: 2 }
+      const order = { critical: 0, high: 0, medium: 1, low: 2 }
       return (order[a.risk] || 0) - (order[b.risk] || 0)
     })
     for (const r of sorted) {
-      const prefix = r.risk === 'high' ? '!!' : r.risk === 'medium' ? '! ' : '  '
+      const prefix = r.risk === 'critical' || r.risk === 'high' ? '!!' : r.risk === 'medium' ? '! ' : '  '
       md += `### ${prefix} ${r.fileName}\n\n`
       md += `- **Type:** \`${r.type}\` | **Risk:** \`${r.risk.toUpperCase()}\`\n`
       md += `- **Path:** \`${r.path}\`\n`
       if (r.size > 0) md += `- **Size:** ${formatSize(r.size)}\n`
       if (r.modifiedAt) md += `- **Modified:** ${r.modifiedAt.slice(0, 10)}\n`
+      if (r.riskScore !== undefined) md += `- **Evidence score:** **${r.riskScore}/100**${r.riskExplanation ? ` — ${r.riskExplanation}` : ''}\\n`
+      if (r.evidence && r.evidence.length > 0) {
+        md += `- **Evidence:**\\n`
+        for (const item of r.evidence.slice(0, 6)) {
+          md += `  - **${item.category}** (${item.confidence}% confidence, ${(item.weight * 100).toFixed(0)}% weight): ${item.explanation}\\n`
+        }
+      }
       if (r.matches.length > 0) {
         md += `- **Matches:**\n`
         for (const m of r.matches.slice(0, 8)) {
@@ -344,8 +356,12 @@ export async function sendToTelegram(
       })
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        return { success: false, error: (errData as any).description || `HTTP ${res.status}` }
+        const errData: unknown = await res.json().catch(() => ({}))
+        const description = typeof errData === 'object' && errData !== null &&
+          'description' in errData && typeof errData.description === 'string'
+          ? errData.description
+          : `HTTP ${res.status}`
+        return { success: false, error: description }
       }
 
       // Small delay between chunks to avoid rate limiting

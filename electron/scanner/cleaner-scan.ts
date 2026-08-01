@@ -6,6 +6,7 @@
 
 import { BrowserWindow } from 'electron'
 import { runAntiTamperScan } from '../anti-tamper'
+import { runSelfIntegrityScan } from '../self-integrity'
 import { runPcCleanerScan } from '../pc-cleaner-detection'
 import { runAntiForensicScan } from '../anti-forensic'
 import { runForensicScan } from '../forensic-traces'
@@ -21,6 +22,10 @@ export async function runCleanerScan(win: BrowserWindow | null): Promise<{ resul
   clearFindingDedup()
 
   results.push(...safeCall('runAntiTamperScan', () => runAntiTamperScan()))
+  try {
+    // H2: verify own executable integrity in every scan mode (not just full)
+    results.push(...await runSelfIntegrityScan())
+  } catch (err) { console.error('[cleaner-scan] runSelfIntegrityScan crashed:', (err as Error).message) }
   if (aborted()) return { results, filesScanned: 0 }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'PC cleaning detection...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 1 })
@@ -36,7 +41,13 @@ export async function runCleanerScan(win: BrowserWindow | null): Promise<{ resul
   if (aborted()) return { results, filesScanned: 0 }
 
   await sendProgress(win, { phase: 'scanning', currentDir: 'IOMMU / DMA integrity...', filesFound: results.length, filesScanned: 0, totalDirs: 4, dirsDone: 4 })
-  results.push(...safeCall('checkIommuStatus', () => checkIommuStatus()))
+  try {
+    results.push(...await checkIommuStatus(signal))
+  } catch (err) {
+    if (aborted()) return { results, filesScanned: 0 }
+    console.warn('[cleaner-scan] IOMMU scan failed:', (err as Error).message)
+  }
+  if (aborted()) return { results, filesScanned: 0 }
 
   await sendProgress(win, { phase: 'done', currentDir: '', filesFound: results.length, filesScanned: results.length, totalDirs: 4, dirsDone: 4 })
   return { results, filesScanned: 0 }

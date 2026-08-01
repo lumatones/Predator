@@ -174,7 +174,7 @@ function calculateConfidence(findings: ScanResult[]): number {
   if (findings.length === 0) return 0
 
   let score = 0
-  const highCount = findings.filter(f => f.risk === 'high').length
+  const highCount = findings.filter(f => f.risk === 'critical' || f.risk === 'high').length
   const mediumCount = findings.filter(f => f.risk === 'medium').length
 
   // Base score from findings count
@@ -213,7 +213,7 @@ export function groupResults(results: ScanResult[]): GroupedResults {
       cheatGroupMap.set(cheatName, existing)
     } else {
       // Ungrouped — sort by risk
-      if (finding.risk === 'high') otherHigh.push(finding)
+      if (finding.risk === 'critical' || finding.risk === 'high') otherHigh.push(finding)
       else if (finding.risk === 'medium') otherMedium.push(finding)
       else otherLow.push(finding)
     }
@@ -222,7 +222,7 @@ export function groupResults(results: ScanResult[]): GroupedResults {
   // Build cheat groups
   const cheatGroups: CheatGroup[] = []
   for (const [cheatName, findings] of cheatGroupMap) {
-    const risk: 'high' | 'medium' | 'low' = findings.some(f => f.risk === 'high')
+    const risk: 'high' | 'medium' | 'low' = findings.some(f => f.risk === 'critical' || f.risk === 'high')
       ? 'high'
       : findings.some(f => f.risk === 'medium')
         ? 'medium'
@@ -278,7 +278,7 @@ export function groupResults(results: ScanResult[]): GroupedResults {
     otherLow,
     summary: {
       totalCheatsDetected: cheatGroups.length,
-      totalHighRisk: results.filter(r => r.risk === 'high').length,
+      totalHighRisk: results.filter(r => r.risk === 'critical' || r.risk === 'high').length,
       totalMediumRisk: results.filter(r => r.risk === 'medium').length,
       totalLowRisk: results.filter(r => r.risk === 'low').length,
     },
@@ -291,8 +291,8 @@ export function groupResults(results: ScanResult[]): GroupedResults {
  */
 export function filterNoiseFindings(results: ScanResult[]): ScanResult[] {
   return results.filter(r => {
-    // Always keep high-risk
-    if (r.risk === 'high') return true
+    // Always keep high- and critical-risk findings
+    if (r.risk === 'critical' || r.risk === 'high') return true
 
     // Always keep medium-risk with strong signals
     if (r.risk === 'medium') {

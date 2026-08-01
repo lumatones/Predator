@@ -6,16 +6,18 @@
  */
 
 import path from 'path'
-import fs from 'fs'
 import fsp from 'fs/promises'
 import type { BrowserWindow } from 'electron'
 
 import { KNOWN_BINARY_SIGNATURES, getScanPaths, TARGET_EXTENSIONS } from '../cheats-db'
-import { heuristicFileScan, SUSPICIOUS_PATTERNS, ALL_CHEAT_KEYWORDS, matchKnownCheat, getFileRiskLevel, checkFileHash } from '../heuristic'
-import { sendProgress, yieldToEventLoop, processBatch, SCAN_CONCURRENCY, clearFindingDedup, type ScanResult } from '../types'
+import { SUSPICIOUS_PATTERNS, ALL_CHEAT_KEYWORDS, matchKnownCheat, getFileRiskLevel, checkFileHash } from '../heuristic'
+import { sendProgress, yieldToEventLoop, processBatch, SCAN_CONCURRENCY, clearFindingDedup, ctx, type ScanResult } from '../types'
 
 // ── Async directory walker ──
-export async function* walkDirAsync(dirPath: string): AsyncGenerator<string> {
+export async function* walkDirAsync(
+  dirPath: string,
+  signal?: AbortSignal,
+): AsyncGenerator<string> {
   try {
     const entries = await fsp.readdir(dirPath, { withFileTypes: true })
     // Check if this is a suspicious location (Downloads, Desktop, Temp)
@@ -27,11 +29,12 @@ export async function* walkDirAsync(dirPath: string): AsyncGenerator<string> {
       dirLower.includes('desktop') || dirLower.includes('загрузки')) &&
       !dirLower.includes('temp')
     for (const entry of entries) {
+      if (signal?.aborted) throw new Error('File walk aborted')
       const fullPath = path.join(dirPath, entry.name)
       if (entry.isDirectory()) {
         if (!entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'Temp') {
           await yieldToEventLoop()
-          yield* walkDirAsync(fullPath)
+          yield* walkDirAsync(fullPath, signal)
         }
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase()
@@ -39,7 +42,8 @@ export async function* walkDirAsync(dirPath: string): AsyncGenerator<string> {
         if (isSuspiciousDir || TARGET_EXTENSIONS.has(ext)) yield fullPath
       }
     }
-  } catch (_e) {
+  } catch (err) {
+    if (signal?.aborted) throw err
     // Log skipped dirs in dev mode for debugging
     if (process.env.NODE_ENV === 'development') {
       console.warn(`[Predator] walkDirAsync: cannot read ${dirPath}`)
@@ -101,47 +105,65 @@ export async function scanFile(filePath: string): Promise<ScanResult | null> {
 // ── Walk cache for getDeepWalkEntries ──
 const _walkCache = new Map<string, string[]>()
 
-function getDeepWalkEntries(dirPath: string, maxDepth = 2): string[] {
+async function getDeepWalkEntries(
+  dirPath: string,
+  maxDepth = 2,
+  signal?: AbortSignal,
+): Promise<string[]> {
   const key = `${dirPath}:${maxDepth}`
   const cached = _walkCache.get(key)
   if (cached !== undefined) return cached
 
   const entries: string[] = []
-  function walk(d: string, depth: number) {
+  async function walk(directory: string, depth: number): Promise<void> {
     if (depth > maxDepth) return
+    if (signal?.aborted) throw new Error('File walk aborted')
+
     try {
-      const dirEntries = fs.readdirSync(d, { withFileTypes: true })
+      const dirEntries = await fsp.readdir(directory, { withFileTypes: true })
       for (const entry of dirEntries) {
-        const fullPath = path.join(d, entry.name)
+        if (signal?.aborted) throw new Error('File walk aborted')
+        const fullPath = path.join(directory, entry.name)
         entries.push(fullPath)
         if (entry.isDirectory() && !entry.name.startsWith('.')) {
-          walk(fullPath, depth + 1)
+          await walk(fullPath, depth + 1)
         }
       }
-    } catch (err) { console.warn('[files] failed:', (err as Error).message) }
+    } catch (err) {
+      if (signal?.aborted) throw err
+      console.warn('[files] failed:', (err as Error).message)
+    }
   }
-  walk(dirPath, 0)
 
-  _walkCache.set(key, entries)
+  await walk(dirPath, 0)
+  if (!signal?.aborted) _walkCache.set(key, entries)
   return entries
 }
 
 /**
  * Scan directories for files matching cheat-specific keywords
  */
-export function scanForCheatFiles(cheatName: string, keywords: string[]): ScanResult[] {
+export async function scanForCheatFiles(
+  cheatName: string,
+  keywords: string[],
+  signal?: AbortSignal,
+): Promise<ScanResult[]> {
   const results: ScanResult[] = []
   const searchDirs = getScanPaths().slice(0, 8)
-
   const allEntries: string[] = []
+
   for (const dir of searchDirs) {
-    if (!fs.existsSync(dir)) continue
+    if (signal?.aborted) throw new Error('Cheat file scan aborted')
     try {
-      allEntries.push(...getDeepWalkEntries(dir, 2))
-    } catch (err) { console.warn('[files] failed:', (err as Error).message) }
+      allEntries.push(...await getDeepWalkEntries(dir, 2, signal))
+    } catch (err) {
+      if (signal?.aborted) throw err
+      console.warn('[files] failed:', (err as Error).message)
+    }
   }
 
   for (const entryPath of allEntries) {
+    if (signal?.aborted) throw new Error('Cheat file scan aborted')
     const lower = path.basename(entryPath).toLowerCase()
     const matches: string[] = []
     for (const keyword of keywords) {
@@ -152,7 +174,7 @@ export function scanForCheatFiles(cheatName: string, keywords: string[]): ScanRe
 
     if (matches.length > 0) {
       try {
-        const stat = fs.statSync(entryPath)
+        const stat = await fsp.stat(entryPath)
         results.push({
           path: entryPath,
           fileName: stat.isDirectory() ? path.basename(entryPath) + '/' : path.basename(entryPath),
@@ -160,7 +182,10 @@ export function scanForCheatFiles(cheatName: string, keywords: string[]): ScanRe
           risk: matches.length >= 2 ? 'high' : 'medium',
           matches, size: stat.size, modifiedAt: stat.mtime.toISOString(),
         })
-      } catch (err) { console.warn('[files] failed:', (err as Error).message) }
+      } catch (err) {
+        if (signal?.aborted) throw err
+        console.warn('[files] failed:', (err as Error).message)
+      }
     }
   }
 
@@ -172,6 +197,7 @@ export async function runFileScan(win: BrowserWindow | null): Promise<{ results:
 
   const results: ScanResult[] = []
   let filesScanned = 0
+  const signal = ctx.abortController?.signal
   const scanDirs = getScanPaths()
 
   for (let i = 0; i < scanDirs.length; i++) {
@@ -186,7 +212,7 @@ export async function runFileScan(win: BrowserWindow | null): Promise<{ results:
     await sendProgress(win, { phase: 'scanning', currentDir: dir, filesFound: results.length, filesScanned, totalDirs: scanDirs.length, dirsDone: i + 1 })
 
     const fileBatch: string[] = []
-    for await (const filePath of walkDirAsync(dir)) {
+    for await (const filePath of walkDirAsync(dir, signal)) {
       fileBatch.push(filePath)
     }
 

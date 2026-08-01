@@ -8,6 +8,10 @@
  * Architecture:
  *   SessionRecorder → ShadowSubmitter → AutoWhitelister → HashSubmitter → ResultUploader
  *
+ * Result upload is owned by the pipeline so every scan — UI and background —
+ * reaches the server exactly once. Submitters guard on tokenId so scans
+ * without an activated token only record locally.
+ *
  * Each step: (results, summary, ctx) => void, MUST NOT throw.
  *
  * v2: Uses TelemetryQueue for reliable delivery with retry + persistence.
@@ -32,6 +36,8 @@ export interface PipelineContext {
   pcUsername: string
   mode: string
   startTime: number
+  /** Client version sent to the server for compatibility tracking. */
+  clientVersion?: string
 }
 
 export interface ScanSummary {
@@ -73,19 +79,19 @@ export async function recordScanSession(
 
     const profile = getProfileSummary()
     recordSession({
-      mode: pctx.mode as any,
+      mode: pctx.mode,
       scanTimeMs: summary.scanTimeMs,
       filesScanned: summary.totalScanned,
       highRiskCount: summary.highRiskCount,
       mediumRiskCount: results.filter(r => r.risk === 'medium').length,
       lowRiskCount: results.filter(r => r.risk === 'low').length,
-      topFindings: results.filter(r => r.risk === 'high').slice(0, 5).map(r => r.fileName),
+      topFindings: results.filter(r => r.risk === 'critical' || r.risk === 'high').slice(0, 5).map(r => r.fileName),
     })
 
     // E19: Update threat actor profiles with detected cheat names
     const grouped = groupResults(weightedResults)
     const cheatNames = grouped.cheatGroups.map(g => g.cheatName)
-    updateThreatActors(cheatNames, weightedResults.filter(r => r.risk === 'high').slice(0, 5).map(r => r.fileName))
+    updateThreatActors(cheatNames, weightedResults.filter(r => r.risk === 'critical' || r.risk === 'high').slice(0, 5).map(r => r.fileName))
 
     if (profile.escalated) {
       console.log(`  📈 Persistent profile: ${profile.totalScans} scans, ${profile.consistencyPercent}% consistent, trend=${profile.trend}`)
@@ -106,7 +112,7 @@ export async function submitShadowFindings(
   pctx: PipelineContext,
 ): Promise<void> {
   try {
-    if (ctx.shadowFindings.length === 0) return
+    if (pctx.tokenId <= 0 || ctx.shadowFindings.length === 0) return
     queuePost('/api/auth/submit-shadow', {
       type: 'shadow-findings',
       token_id: pctx.tokenId,
@@ -183,7 +189,7 @@ export async function submitAllFindings(
   try {
     // File-type results with partial hash = can be classified server-side
     const findingsWithHash = results.filter(r => r.type === 'file' && r.partialHash)
-    if (findingsWithHash.length === 0) return
+    if (pctx.tokenId <= 0 || findingsWithHash.length === 0) return
 
     // Slice to 500 to stay within server schema limits
     const hashes = findingsWithHash.slice(0, 500).map(r => ({
@@ -192,9 +198,9 @@ export async function submitAllFindings(
       file_name: r.fileName,
       file_path: r.path,
       file_size: r.size || 0,
-      risk: r.risk,
+      risk: r.risk === 'critical' ? 'high' : r.risk,
       matches: r.matches.slice(0, 5),
-      risk_score: r.risk === 'high' ? 80 : r.risk === 'medium' ? 50 : 20,
+      risk_score: r.risk === 'critical' ? 90 : r.risk === 'high' ? 80 : r.risk === 'medium' ? 50 : 20,
       has_valid_signature: r.hasValidSignature,
     }))
 
@@ -205,13 +211,29 @@ export async function submitAllFindings(
       pc_username: pctx.pcUsername,
       hashes,
     })
-    console.log(`  CLOUD  Submitted ${hashes.length} findings with hashes (${hashes.filter(h => h.risk === 'high').length} high, ${hashes.filter(h => h.risk === 'medium').length} med, ${hashes.filter(h => h.risk === 'low').length} low)`)
+    console.log(`  CLOUD  Submitted ${hashes.length} findings with hashes (${hashes.filter(h => h.risk === 'high').length} high, ${hashes.filter(h => h.risk === 'medium').length} med, ${hashes.filter(h => h.risk === 'low').length} low)` )
   } catch (err) { console.error('[pipeline:submitAllFindings]', (err as Error).message || err) }
 }
 
 // ═══════════════════════════════════════════════════
-// HANDLER 5: ResultUploader
+// HANDLER 5: ResultUploader — POST /api/auth/submit-scan
 // ═══════════════════════════════════════════════════
+
+/**
+ * Best-effort finding-kind hint for the server-side classifier.
+ * Mirrors the renderer inference so uploads keep the same metadata
+ * regardless of which process performs them.
+ */
+function inferFindingKind(r: ScanResult, mode: string): string | undefined {
+  if (mode === 'dma' || r.type === 'hardware') return 'dma'
+  if (mode === 'cleaner') return 'cleaner'
+  if (r.type === 'process') return 'process'
+  if (r.type === 'browser') return 'browser'
+  if (r.type === 'registry') return 'registry'
+  if (r.type === 'software' || r.type === 'system') return 'system'
+  if (r.type === 'file') return 'file'
+  return undefined
+}
 
 export async function uploadScanResults(
   results: ScanResult[],
@@ -219,23 +241,42 @@ export async function uploadScanResults(
   pctx: PipelineContext,
 ): Promise<void> {
   try {
-    if (results.length === 0) return
+    if (pctx.tokenId <= 0 || results.length === 0) return
 
+    // Results arrive pre-noise-filter (pipeline input = all scored findings), so
+    // the server classifier sees a broader signal set than the filtered
+    // user-facing list, which the summary counts. Evidence is capped at
+    // 5 per result × 200 results = 1000, the server limit.
     queuePost('/api/auth/submit-scan', {
       token_id: pctx.tokenId,
       pc_username: pctx.pcUsername,
+      client_version: pctx.clientVersion,
       mode: pctx.mode,
       total_scanned: summary.totalScanned,
       suspicious_files: summary.suspiciousFiles,
       high_risk_count: summary.highRiskCount,
       scan_time_ms: summary.scanTimeMs,
-      results: results.slice(0, 100).map(r => ({
-        file_name: r.fileName,
+      results: results.slice(0, 200).map(r => ({
         path: r.path,
+        fileName: r.fileName,
         type: r.type,
-        risk: r.risk,
-        matches: r.matches.slice(0, 3),
+        // The legacy server classifier accepts high/medium/low; keep critical local to the client UI.
+        risk: r.risk === 'critical' ? 'high' : r.risk,
+        matches: r.matches.slice(0, 10),
         sha256: r.sha256 || undefined,
+        partialHash: r.partialHash || undefined,
+        size: r.size,
+        modifiedAt: r.modifiedAt,
+        findingKind: inferFindingKind(r, pctx.mode),
+        evidence: r.evidence?.slice(0, 5).map(item => ({
+          ...item,
+          explanation: item.explanation.slice(0, 500),
+          raw: item.raw.slice(0, 1000),
+          relatedFindingIds: item.relatedFindingIds?.slice(0, 8),
+        })),
+        findingId: r.findingId,
+        riskScore: r.riskScore,
+        riskExplanation: r.riskExplanation?.slice(0, 1000),
       })),
     })
   } catch (err) { console.error('[pipeline:uploadScanResults]', (err as Error).message || err) }

@@ -10,8 +10,8 @@
  *   - Registry entries in HKLM\SYSTEM\CurrentControlSet\Services
  */
 
-import { execPowerShell, execWithTimeout } from '../utils/exec'
-import * as fs from 'fs'
+import { execPowerShellAsync, spawnAsyncWithTimeout } from '../utils/exec'
+import fsp from 'fs/promises'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
 import { _WR, type ScanResult, addFindingDedup } from '../types'
@@ -235,7 +235,7 @@ const BYOVD_FILENAME_PATTERNS = [
 let _mergedDrivers: VulnerableDriver[] | null = null
 let _mergedPatterns: string[] | null = null
 
-function loadLolDrivers(): { drivers: VulnerableDriver[]; patterns: string[] } {
+async function loadLolDrivers(): Promise<{ drivers: VulnerableDriver[]; patterns: string[] }> {
   if (_mergedDrivers && _mergedPatterns) {
     return { drivers: _mergedDrivers, patterns: _mergedPatterns }
   }
@@ -250,35 +250,33 @@ function loadLolDrivers(): { drivers: VulnerableDriver[]; patterns: string[] } {
 
   try {
     const jsonPath = path.join(__dirname, '..', 'loldrivers.json')
-    if (fs.existsSync(jsonPath)) {
-      const raw = fs.readFileSync(jsonPath, 'utf-8')
-      const jsonDrivers: VulnerableDriver[] = JSON.parse(raw)
+    const raw = await fsp.readFile(jsonPath, 'utf-8')
+    const jsonDrivers: VulnerableDriver[] = JSON.parse(raw)
 
-      let newCount = 0
-      for (const jd of jsonDrivers) {
-        // Skip duplicates by service name
-        const isDuplicate = jd.serviceNames.some(sn =>
-          hardcodedServiceNames.has(sn.toLowerCase())
-        )
-        if (isDuplicate) continue
+    let newCount = 0
+    for (const jd of jsonDrivers) {
+      // Skip duplicates by service name
+      const isDuplicate = jd.serviceNames.some(sn =>
+        hardcodedServiceNames.has(sn.toLowerCase())
+      )
+      if (isDuplicate) continue
 
-        merged.push(jd)
-        newCount++
+      merged.push(jd)
+      newCount++
 
-        // Extract filename bases for pattern-based broad scan
-        for (const fn of jd.fileNames) {
-          const base = fn.toLowerCase().replace(/\.(sys|dll|exe)$/i, '')
-          if (!patterns.includes(base) && base.length >= 3) {
-            patterns.push(base)
-          }
+      // Extract filename bases for pattern-based broad scan
+      for (const fn of jd.fileNames) {
+        const base = fn.toLowerCase().replace(/\.(sys|dll|exe)$/i, '')
+        if (!patterns.includes(base) && base.length >= 3) {
+          patterns.push(base)
         }
       }
+    }
 
-      if (newCount > 0) {
-        console.log(
-          `[BYOVD] Loaded ${newCount} additional drivers from loldrivers.json (total: ${merged.length})`
-        )
-      }
+    if (newCount > 0) {
+      console.log(
+        `[BYOVD] Loaded ${newCount} additional drivers from loldrivers.json (total: ${merged.length})`
+      )
     }
   } catch {
     // JSON load failed — silently fall back to hardcoded list
@@ -290,13 +288,13 @@ function loadLolDrivers(): { drivers: VulnerableDriver[]; patterns: string[] } {
 }
 
 /** Get all drivers (hardcoded + JSON). Result is cached after first call. */
-function getDrivers(): VulnerableDriver[] {
-  return loadLolDrivers().drivers
+async function getDrivers(): Promise<VulnerableDriver[]> {
+  return (await loadLolDrivers()).drivers
 }
 
 /** Get all filename patterns (hardcoded + JSON). Result is cached after first call. */
-function getPatterns(): string[] {
-  return loadLolDrivers().patterns
+async function getPatterns(): Promise<string[]> {
+  return (await loadLolDrivers()).patterns
 }
 
 // ═══════════════════════════════════════════════════
@@ -307,18 +305,20 @@ function getPatterns(): string[] {
  * Tier 1: Check file existence in System32\drivers + signature verification.
  * This catches drivers installed but not currently loaded.
  */
-function scanByovdFiles(): ScanResult[] {
+async function scanByovdFiles(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
   const driversDir = path.join(_WR, 'System32', 'drivers')
 
-  if (!fs.existsSync(driversDir)) return results
-
   try {
-    const existingFiles = new Set(fs.readdirSync(driversDir).map(f => f.toLowerCase()))
+    const files = await fsp.readdir(driversDir)
+    const existingFiles = new Set(files.map(file => file.toLowerCase()))
+    const exactMatchedFiles = new Set<string>()
+    const drivers = await getDrivers()
 
-    for (const vd of getDrivers()) {
+    for (const vd of drivers) {
       for (const fileName of vd.fileNames) {
         if (existingFiles.has(fileName.toLowerCase())) {
+          exactMatchedFiles.add(fileName.toLowerCase())
           if (addFindingDedup(`byovd-file:${fileName}`)) {
             results.push({
               path: `Hardware: BYOVD Driver File`,
@@ -343,13 +343,11 @@ function scanByovdFiles(): ScanResult[] {
 
     // Broad scan: check for filenames matching BYOVD patterns
     // NOTE: skip files already matched by exact name in the first loop above
-    const alreadyMatched = new Set(
-      results.map(r => r.fileName?.toLowerCase() || '')
-    )
+    const alreadyMatched = exactMatchedFiles
     // ── BATCH: Pre-warm signature cache for all candidate files ──
-    const patterns = getPatterns()
+    const patterns = await getPatterns()
     const candidatePaths: string[] = []
-    for (const file of fs.readdirSync(driversDir)) {
+    for (const file of files) {
       const lower = file.toLowerCase()
       if (alreadyMatched.has(lower)) continue
       if (patterns.some(p => lower.includes(p))) {
@@ -357,16 +355,18 @@ function scanByovdFiles(): ScanResult[] {
       }
     }
     if (candidatePaths.length > 0) {
-      batchCheckSignatures(candidatePaths)
+      await batchCheckSignatures(candidatePaths, 500, signal)
     }
 
     for (const filePath of candidatePaths) {
+      if (signal?.aborted) throw new Error('BYOVD file scan aborted')
       const file = path.basename(filePath)
       const lower = file.toLowerCase()
 
       // Only flag if file is NOT digitally signed (uses shared cache — 0 PowerShell calls)
       try {
-        const isSigned = checkDigitalSignature(filePath)
+        const isSigned = await checkDigitalSignature(filePath, signal)
+        if (signal?.aborted) throw new Error('BYOVD file scan aborted')
 
         if (!isSigned && addFindingDedup(`byovd-pattern:${file}`)) {
           results.push({
@@ -384,9 +384,15 @@ function scanByovdFiles(): ScanResult[] {
             modifiedAt: new Date().toISOString(),
           })
         }
-      } catch { /* sig check optional */ }
+      } catch (err) {
+        if (signal?.aborted) throw err
+        /* signature check optional */
+      }
     }
-  } catch { /* file scan optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* file scan optional */
+  }
 
   return results
 }
@@ -395,7 +401,7 @@ function scanByovdFiles(): ScanResult[] {
  * Tier 2: Check loaded driver services via WMI.
  * This catches drivers currently loaded and running in kernel space.
  */
-function scanByovdServices(): ScanResult[] {
+async function scanByovdServices(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
   try {
@@ -405,7 +411,8 @@ $ErrorActionPreference = 'SilentlyContinue'
 $drivers = Get-CimInstance -ClassName Win32_SystemDriver -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Running' } | Select-Object Name, DisplayName, PathName, State | ConvertTo-Json -Compress
 if ($drivers) { $drivers } else { '[]' }
 `
-    const out = execPowerShell(psScript, { timeout: 8000 }) || ''
+    const out = await execPowerShellAsync(psScript, { timeout: 8000, signal }) || ''
+    if (signal?.aborted) throw new Error('BYOVD services scan aborted')
 
     if (!out || out === '[]' || out.length < 5) return results
 
@@ -418,7 +425,7 @@ if ($drivers) { $drivers } else { '[]' }
     const loadedNames = new Set(driverList.map(d => (d.Name || '').toLowerCase()))
     const loadedPaths = new Set(driverList.map(d => (d.PathName || '').toLowerCase()))
 
-    for (const vd of getDrivers()) {
+    for (const vd of await getDrivers()) {
       // Check by service name
       const matchedService = vd.serviceNames.find(sn => loadedNames.has(sn.toLowerCase()))
       // Check by file path
@@ -451,7 +458,10 @@ if ($drivers) { $drivers } else { '[]' }
         break
       }
     }
-  } catch { /* WMI query optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* WMI query optional */
+  }
 
   return results
 }
@@ -460,17 +470,21 @@ if ($drivers) { $drivers } else { '[]' }
  * Tier 3: Check registry for driver service entries (installed but not running).
  * HKLM\SYSTEM\CurrentControlSet\Services stores all installed drivers.
  */
-function scanByovdRegistry(): ScanResult[] {
+async function scanByovdRegistry(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
   try {
-    for (const vd of getDrivers()) {
+    for (const vd of await getDrivers()) {
       for (const svcName of vd.serviceNames) {
         const regPath = `HKLM\\SYSTEM\\CurrentControlSet\\Services\\${svcName}`
         try {
-          execWithTimeout(`reg query "${regPath}" /v ImagePath 2>nul`, {
+          if (signal?.aborted) throw new Error('BYOVD registry scan aborted')
+          const output = await spawnAsyncWithTimeout('reg', ['query', regPath, '/v', 'ImagePath'], {
             timeout: 2000,
+            signal,
           })
+          if (signal?.aborted) throw new Error('BYOVD registry scan aborted')
+          if (!output?.trim()) continue
 
           if (addFindingDedup(`byovd-reg:${svcName}`)) {
             results.push({
@@ -489,12 +503,16 @@ function scanByovdRegistry(): ScanResult[] {
             })
           }
           break
-        } catch {
+        } catch (err) {
+          if (signal?.aborted) throw err
           // reg query returns non-zero if key not found — expected
         }
       }
     }
-  } catch { /* registry scan optional */ }
+  } catch (err) {
+    if (signal?.aborted) throw err
+    /* registry scan optional */
+  }
 
   return results
 }
@@ -507,17 +525,21 @@ function scanByovdRegistry(): ScanResult[] {
  * Run full BYOVD scan — files + services + registry.
  * Returns ScanResult[] with findings.
  */
-export function scanByovd(): ScanResult[] {
+export async function scanByovd(signal?: AbortSignal): Promise<ScanResult[]> {
   const results: ScanResult[] = []
 
   // Tier 1: File existence + signature
-  results.push(...scanByovdFiles())
+  results.push(...await scanByovdFiles(signal))
+
+  if (signal?.aborted) throw new Error('BYOVD scan aborted')
 
   // Tier 2: Loaded/running services (most important — active threat)
-  results.push(...scanByovdServices())
+  results.push(...await scanByovdServices(signal))
+
+  if (signal?.aborted) throw new Error('BYOVD scan aborted')
 
   // Tier 3: Registry remnants
-  results.push(...scanByovdRegistry())
+  results.push(...await scanByovdRegistry(signal))
 
   return results
 }

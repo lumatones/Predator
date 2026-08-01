@@ -704,11 +704,13 @@
   transition: all var(--duration-slow) var(--ease-out);
 }
 
+.result-row[data-risk="critical"]::before,
 .result-row[data-risk="high"]::before {
   background: var(--accent-red);
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent-red) 50%, transparent);
 }
 
+.result-row[data-risk="critical"]:hover::before,
 .result-row[data-risk="high"]:hover::before {
   box-shadow: 0 0 20px color-mix(in srgb, var(--accent-red) 70%, transparent);
 }
@@ -737,6 +739,7 @@
   box-shadow: 0 2px 12px rgba(0,0,0,0.3), 0 0 0 1px color-mix(in srgb, var(--accent-red) 10%, transparent);
 }
 
+.result-row.selected[data-risk="critical"],
 .result-row.selected[data-risk="high"] {
   box-shadow: 0 0 20px rgba(255,68,68,0.08), 0 2px 12px rgba(0,0,0,0.3);
 }

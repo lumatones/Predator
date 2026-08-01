@@ -8,7 +8,7 @@
  *      — инжектированный код исполняется из heap/RWX → не из .exe/.dll
  */
 
-import { execPowerShell, execWithTimeout } from './utils/exec'
+import { execPowerShell } from './utils/exec'
 import { parsePsJson } from './types'
 
 // ── Types ──────────────────────────────────────

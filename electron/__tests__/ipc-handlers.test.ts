@@ -22,9 +22,6 @@ import os from 'os'
 const MOCK_USER_DATA = '/tmp/predator-test-ipc'
 const CONFIG_PATH = path.join(MOCK_USER_DATA, 'predator-config.json')
 
-// Track saved configs
-let savedConfig: Record<string, unknown> | null = null
-
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn((key: string) => {
@@ -91,7 +88,6 @@ function removeTestConfig(): void {
 
 beforeEach(() => {
   removeTestConfig()
-  savedConfig = null
   vi.clearAllMocks()
 })
 

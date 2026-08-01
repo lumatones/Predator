@@ -86,7 +86,7 @@ export const WelcomeStep: React.FC<WelcomeStepProps> = ({
         animate={{ opacity: 1 }}
         transition={{ delay: 0.8, duration: 0.4 }}
       >
-        <Button className="start-button ob-welcome-btn" onClick={onNext}>
+        <Button data-testid="onboarding-welcome-next" className="start-button ob-welcome-btn" onClick={onNext}>
           {welcomeStart}
         </Button>
       </motion.div>

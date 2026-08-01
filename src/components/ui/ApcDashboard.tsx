@@ -78,7 +78,7 @@ function matchTier(result: ScanResult, tier: TierDef): boolean {
 
 function tierStatus(findings: ScanResult[]): { status: TierStatus; risk: 'high' | 'medium' | 'low' | 'none' } {
   if (findings.length === 0) return { status: 'clean', risk: 'none' }
-  const hasHigh = findings.some(r => r.risk === 'high')
+  const hasHigh = findings.some(r => r.risk === 'critical' || r.risk === 'high')
   const hasMedium = findings.some(r => r.risk === 'medium')
   if (hasHigh) return { status: 'detected', risk: 'high' }
   if (hasMedium) return { status: 'suspicious', risk: 'medium' }
@@ -124,7 +124,7 @@ export function ApcDashboard({ results, lang }: ApcDashboardProps) {
         status,
         risk,
         findings,
-        highCount: findings.filter(r => r.risk === 'high').length,
+        highCount: findings.filter(r => r.risk === 'critical' || r.risk === 'high').length,
         mediumCount: findings.filter(r => r.risk === 'medium').length,
         lowCount: findings.filter(r => r.risk === 'low').length,
       }

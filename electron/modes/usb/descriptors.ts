@@ -6,7 +6,7 @@
  * and historical devices.
  */
 
-import { execPowerShell, execWithTimeout } from '../../utils/exec'
+import { execPowerShell } from '../../utils/exec'
 import { parsePsJson } from '../../types'
 
 // ═══════════════════════════════════════════════════
@@ -265,7 +265,7 @@ $results | ConvertTo-Json -Compress
 
     if (!out || out.length < 5) return { devices, installDates }
 
-    const raw = parsePsJson<{ InstanceId?: string; FriendlyName?: string; Class?: string; Service?: string; InstallDate?: any }>(out)
+    const raw = parsePsJson<{ InstanceId?: string; FriendlyName?: string; Class?: string; Service?: string; InstallDate?: unknown }>(out)
 
     for (const dev of raw) {
       const instanceId = dev.InstanceId || ''
