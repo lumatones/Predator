@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests',
+  testMatch: '**/*.spec.ts',
+  testIgnore: '**/__tests__/**',
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
@@ -13,7 +15,7 @@ export default defineConfig({
     ['list'],
   ],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:3005',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -25,18 +27,18 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm run dev',
+      command: 'npm run dev -- --port 3005 --host 127.0.0.1',
       cwd: '../website',
-      port: 3000,
+      url: 'http://127.0.0.1:3005',
       reuseExistingServer: !process.env.CI,
-      timeout: 30_000,
+      timeout: 60_000,
     },
     {
-      command: 'npm run dev',
+      command: 'npm run dev -- --host 127.0.0.1',
       cwd: '../admin',
-      port: 5173,
+      url: 'http://127.0.0.1:5173',
       reuseExistingServer: !process.env.CI,
-      timeout: 30_000,
+      timeout: 60_000,
     },
   ],
 })
