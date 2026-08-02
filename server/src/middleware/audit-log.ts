@@ -59,7 +59,7 @@ export async function initAuditLog(): Promise<void> {
     await query(`
       CREATE TABLE IF NOT EXISTS admin_audit_log (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        admin_id INT,
+        admin_id BIGINT UNSIGNED,
         admin_username VARCHAR(50) NOT NULL,
         action VARCHAR(50) NOT NULL,
         target_id INT,
