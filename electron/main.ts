@@ -105,6 +105,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      webSecurity: false,  // Allow cross-origin fetch() from file:// for music APIs
     },
     icon: path.join(__dirname, '../resources/icon.png'),
     show: false,
