@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker: `npx` cache crash** — `db-migrate` used `npx drizzle-kit migrate` which failed silently as non-root user with no home directory. Replaced with programmatic migrator.
 - **Docker: Socket.IO proxying** — added dedicated `/socket.io/` nginx location with WebSocket upgrade headers. Admin panel real-time updates now work through the reverse proxy.
 - **Playwright test runner** — fixed port conflict (Windows/Hyper-V reserves 3000), IPv4/IPv6 binding, vitest file collision, and API-unavailable resilience. All 15 e2e tests pass in 6s.
+- **Music player in EXE builds** — `webSecurity: false` in BrowserWindow to bypass CORS/Same-Origin Policy for `file://` protocol. `fetch()` to iTunes, Jamendo, Invidious, and `Audio()` from Pixabay CDN now work in packaged app.
 
 ## [0.5.1] — 2026-07-29
 
@@ -57,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Security: integrity baseline, server client-hashes, evidence model
 - Website: sortable PlayersDB table columns
 
-[unreleased]: https://github.com/lumatones/Predator/compare/v0.5.2...HEAD
+[unreleased]: https://github.com/lumatones/Predator/compare/v0.5.1...HEAD
 [0.5.2]: https://github.com/lumatones/Predator/releases/tag/v0.5.2
 [0.5.1]: https://github.com/lumatones/Predator/releases/tag/v0.5.1
 [0.5.0]: https://github.com/lumatones/Predator/releases/tag/v0.5.0

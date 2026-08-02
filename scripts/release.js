@@ -33,6 +33,35 @@ const EXE_NAME = `Predator-${VERSION}.exe`
 const EXE_PATH = path.join(RELEASE_DIR, EXE_NAME)
 const YML_PATH = path.join(RELEASE_DIR, 'latest.yml')
 
+// ── Changelog parser ──────────────────────────
+/**
+ * Extract the release body for the current version from CHANGELOG.md.
+ * Follows Keep a Changelog format: finds `## [VERSION] — DATE` and
+ * returns everything up to the next `## [` header (or EOF).
+ */
+function getReleaseBody() {
+  const changelogPath = path.join(ROOT, 'CHANGELOG.md')
+  if (!fs.existsSync(changelogPath)) {
+    console.warn('  ⚠️  CHANGELOG.md not found — using empty body')
+    return ''
+  }
+  const text = fs.readFileSync(changelogPath, 'utf-8')
+  const startRe = new RegExp(`^## \\[${VERSION.replace(/\./g, '\\.')}\\]`, 'm')
+  const startMatch = text.match(startRe)
+  if (!startMatch) {
+    console.warn(`  ⚠️  Version [${VERSION}] not found in CHANGELOG.md`)
+    return ''
+  }
+  const startIdx = startMatch.index
+  // Search for the next version header after our section
+  const searchStart = startIdx + startMatch[0].length
+  const nextHeaderRe = /^## \[[\d.]+\]/m
+  const nextMatch = text.slice(searchStart).match(nextHeaderRe)
+  const endIdx = nextMatch ? searchStart + nextMatch.index : text.length
+  // Slice from our header to next header, trim trailing whitespace
+  return text.slice(startIdx, endIdx).trim()
+}
+
 // ── Token resolution ───────────────────────────
 function getToken() {
   // 1. --token= arg
@@ -195,22 +224,7 @@ function uploadAsset(uploadUrl, filePath, fileName) {
     release = await gh('POST', `/repos/${OWNER}/${REPO}/releases`, JSON.stringify({
       tag_name: TAG,
       name: TAG,
-      body: `## ${TAG} — Онбординг, persistence языка/токена, фиксы риск-скоринга\n\n` +
-            `### 🇬🇧 Язык\n` +
-            `- Язык интерфейса сохраняется в конфиг и восстанавливается при старте\n` +
-            `- В настройки добавлен переключатель языка (🇷🇺/🇬🇧)\n` +
-            `- Тема оформления тоже сохраняется между запусками\n\n` +
-            `### 🔑 Токен / активация\n` +
-            `- tokenId сохраняется после активации и восстанавливается при старте — без повторного онбординга\n` +
-            `- При завершённом онбординге приложение сразу открывает главное меню\n\n` +
-            `### 🎯 Онбординг\n` +
-            `- Убран шаг демо-сканирования: Приветствие → Язык → Тема → Токен → главное меню\n\n` +
-            `### 🧮 Риск-скоринг\n` +
-            `- Word-boundary матчинг сигнатур — убраны ложные срабатывания на подстроки\n` +
-            `- Одна сильная улика больше не проигрывает множеству слабых\n` +
-            `- riskScore согласован с меткой риска\n\n` +
-            `### 📦 Установка\n` +
-            `Скачайте ${EXE_NAME} — автообновление обработает будущие версии.`,
+      body: getReleaseBody(),
       draft: false,
       prerelease: false,
     }))
